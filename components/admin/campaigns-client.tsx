@@ -267,7 +267,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
       await fetch('/api/admin/campaigns/setup-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ campaignId }),
+        body: JSON.stringify({ campaignId, force: true }),
       })
       // Immediately update local status
       setSetupStatuses((prev) => ({

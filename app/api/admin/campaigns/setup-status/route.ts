@@ -124,9 +124,9 @@ export async function GET(req: NextRequest) {
           sourceStatus = 'downloading'
         } else if (active && active.status === 'error') {
           sourceStatus = 'error'
-        } else if (setupDone) {
+        } else if (sourceCount > 0) {
           sourceStatus = 'ready'
-        } else if (!hasSourceUrls && sourceCount === 0) {
+        } else if (!hasSourceUrls) {
           sourceStatus = 'no_sources'
         } else {
           sourceStatus = 'pending'
@@ -180,9 +180,9 @@ export async function GET(req: NextRequest) {
       sourceStatus = 'downloading'
     } else if (active && active.status === 'error') {
       sourceStatus = 'error'
-    } else if (setupDone) {
+    } else if (sourceFiles.length > 0) {
       sourceStatus = 'ready'
-    } else if (!hasSourceUrls && sourceFiles.length === 0) {
+    } else if (!hasSourceUrls) {
       sourceStatus = 'no_sources'
     } else {
       sourceStatus = 'pending'
@@ -218,7 +218,7 @@ export async function POST(req: NextRequest) {
   try {
     await requireAdmin()
 
-    const { campaignId } = await req.json()
+    const { campaignId, force } = await req.json()
     if (!campaignId) {
       return NextResponse.json({ error: 'campaignId is required' }, { status: 400 })
     }
@@ -233,7 +233,7 @@ export async function POST(req: NextRequest) {
 
     // Check if already running
     const existing = activeSetups.get(campaignId)
-    if (existing && existing.status === 'downloading') {
+    if (existing && existing.status === 'downloading' && !force) {
       return NextResponse.json({
         message: 'Setup already in progress',
         status: 'downloading',
@@ -241,12 +241,18 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // Check if already done
-    if (isSetupComplete(campaignId)) {
+    // Check if already done (unless force re-trigger)
+    if (!force && isSetupComplete(campaignId)) {
       return NextResponse.json({
         message: 'Setup already completed',
         status: 'ready',
       })
+    }
+
+    // If force retrigger, clear any setup flag
+    const flagPath = path.join(process.env.CAMPAIGN_STORAGE_DIR || path.join(process.cwd(), 'storage', 'campaigns'), campaignId, '.setup_complete')
+    if (fs.existsSync(flagPath)) {
+      try { fs.unlinkSync(flagPath) } catch {}
     }
 
     const cfg = (campaign.config || {}) as Record<string, any>

@@ -9,6 +9,11 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as https from 'https'
 import * as http from 'http'
+import { exec } from 'child_process'
+import { promisify } from 'util'
+import { getYtDlpPath } from './youtube-downloader'
+
+const execAsync = promisify(exec)
 
 export interface DriveDownloadOptions {
   fileIdOrUrl: string       // Google Drive file ID or full URL
@@ -49,8 +54,8 @@ export function extractDriveFileId(fileIdOrUrl: string): string {
 }
 
 /**
- * Create authenticated Google Drive client.
- * Uses GOOGLE_SERVICE_ACCOUNT_JSON env var (JSON string) or falls back to API key.
+ * Create authenticated Google Drive client (optional).
+ * Returns null if no service account or API key is configured.
  */
 function getDriveClient(accessToken?: string) {
   if (accessToken) {
@@ -62,11 +67,13 @@ function getDriveClient(accessToken?: string) {
   // Service account (for admin-owned files)
   const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON
   if (serviceAccountJson) {
-    const auth = new google.auth.GoogleAuth({
-      credentials: JSON.parse(serviceAccountJson),
-      scopes: ['https://www.googleapis.com/auth/drive.readonly'],
-    })
-    return google.drive({ version: 'v3', auth })
+    try {
+      const auth = new google.auth.GoogleAuth({
+        credentials: JSON.parse(serviceAccountJson),
+        scopes: ['https://www.googleapis.com/auth/drive.readonly'],
+      })
+      return google.drive({ version: 'v3', auth })
+    } catch {}
   }
 
   // API key fallback (public files only)
@@ -75,11 +82,58 @@ function getDriveClient(accessToken?: string) {
     return google.drive({ version: 'v3', auth: apiKey })
   }
 
-  throw new Error('No Google auth configured. Set GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_API_KEY env var.')
+  return null
 }
 
 /**
- * Download a file from Google Drive by file ID.
+ * Download HTTP/HTTPS URL following all redirects.
+ */
+function downloadHttpWithRedirects(url: string, destPath: string, maxRedirects = 10): Promise<void> {
+  return new Promise((resolve, reject) => {
+    function fetchUrl(currentUrl: string, redirectsRemaining: number) {
+      if (redirectsRemaining <= 0) {
+        return reject(new Error('Too many redirects'))
+      }
+
+      const client = currentUrl.startsWith('https') ? https : http
+      const req = client.get(currentUrl, (res) => {
+        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          const nextUrl = new URL(res.headers.location, currentUrl).href
+          return fetchUrl(nextUrl, redirectsRemaining - 1)
+        }
+
+        if (res.statusCode !== 200) {
+          return reject(new Error(`HTTP status ${res.statusCode}`))
+        }
+
+        const file = fs.createWriteStream(destPath)
+        res.pipe(file)
+        file.on('finish', () => {
+          file.close()
+          resolve()
+        })
+        file.on('error', (err) => {
+          fs.unlink(destPath, () => {})
+          reject(err)
+        })
+      })
+
+      req.on('error', (err) => {
+        fs.unlink(destPath, () => {})
+        reject(err)
+      })
+    }
+
+    fetchUrl(url, maxRedirects)
+  })
+}
+
+/**
+ * Download a file from Google Drive by file ID or URL.
+ * Automatically tries:
+ *  1. yt-dlp (Native support for public/shared Google Drive videos — zero API credentials needed!)
+ *  2. Google Drive API (if service account or API key configured)
+ *  3. Direct HTTP export download
  */
 export async function downloadDriveFile(options: DriveDownloadOptions): Promise<DriveDownloadResult> {
   const { fileIdOrUrl, outputDir, filename, accessToken } = options
@@ -93,51 +147,97 @@ export async function downloadDriveFile(options: DriveDownloadOptions): Promise<
     return { success: false, error: e.message }
   }
 
+  const baseName = filename
+    ? filename.replace(/[^a-zA-Z0-9_\-]/g, '_')
+    : `drive_${fileId}`
+
+  // ── Strategy 1: yt-dlp (Zero credentials, supports Google Drive video streams) ──
   try {
-    const drive = getDriveClient(accessToken)
+    const ytDlp = getYtDlpPath()
+    const driveUrl = fileIdOrUrl.startsWith('http')
+      ? fileIdOrUrl
+      : `https://drive.google.com/file/d/${fileId}/view`
 
-    // Get file metadata first
-    const meta = await drive.files.get({
-      fileId,
-      fields: 'id,name,mimeType,size',
-      supportsAllDrives: true,
-    })
+    const outTemplate = path.join(outputDir, `${baseName}.%(ext)s`)
+    const cmd = `"${ytDlp}" "${driveUrl}" -o "${outTemplate}" --no-playlist`
+    console.log(`[Drive-Downloader] Attempting yt-dlp download: ${cmd}`)
 
-    const originalName = meta.data.name || `drive_file_${fileId}`
-    const mimeType = meta.data.mimeType || 'application/octet-stream'
-    
-    // Determine output filename
-    const ext = getExtFromMime(mimeType) || path.extname(originalName) || '.bin'
-    const baseName = filename 
-      ? filename.replace(/[^a-zA-Z0-9_\-]/g, '_')
-      : originalName.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_\-]/g, '_')
-    
-    const outputPath = path.join(outputDir, `${baseName}${ext}`)
+    await execAsync(cmd, { timeout: 600000, maxBuffer: 10 * 1024 * 1024 })
 
-    console.log(`[Drive-Downloader] Downloading: ${originalName} → ${outputPath}`)
+    const files = fs.readdirSync(outputDir).filter(f => f.startsWith(baseName) && !f.endsWith('.part'))
+    if (files.length > 0) {
+      const downloadedPath = path.join(outputDir, files[0])
+      console.log(`[Drive-Downloader] ✅ Downloaded via yt-dlp: ${downloadedPath}`)
+      return { success: true, filePath: downloadedPath, filename: files[0] }
+    }
+  } catch (ytErr: any) {
+    console.warn(`[Drive-Downloader] yt-dlp download attempt note: ${ytErr?.message || ytErr}`)
+  }
 
-    // Stream download
-    const response = await drive.files.get(
-      { fileId, alt: 'media', supportsAllDrives: true },
-      { responseType: 'stream' }
-    ) as any
+  // ── Strategy 2: Google Drive API (if credentials configured) ─────────────
+  const drive = getDriveClient(accessToken)
+  if (drive) {
+    try {
+      const meta = await drive.files.get({
+        fileId,
+        fields: 'id,name,mimeType,size',
+        supportsAllDrives: true,
+      })
 
-    await new Promise<void>((resolve, reject) => {
-      const dest = fs.createWriteStream(outputPath)
-      response.data
-        .on('error', reject)
-        .pipe(dest)
-        .on('error', reject)
-        .on('finish', resolve)
-    })
+      const originalName = meta.data.name || `drive_file_${fileId}`
+      const mimeType = meta.data.mimeType || 'application/octet-stream'
+      const ext = getExtFromMime(mimeType) || path.extname(originalName) || '.mp4'
+      const name = filename
+        ? `${filename.replace(/[^a-zA-Z0-9_\-]/g, '_')}${ext}`
+        : originalName.replace(/[^a-zA-Z0-9_\-.]/g, '_')
 
-    console.log(`[Drive-Downloader] ✅ Saved: ${outputPath}`)
-    return { success: true, filePath: outputPath, filename: `${baseName}${ext}`, mimeType }
+      const outputPath = path.join(outputDir, name)
+      console.log(`[Drive-Downloader] Downloading via Google API: ${originalName} → ${outputPath}`)
 
-  } catch (error: any) {
-    const errMsg = error?.message || 'Drive download failed'
-    console.error(`[Drive-Downloader] ❌ ${errMsg}`)
-    return { success: false, error: errMsg }
+      const response = await drive.files.get(
+        { fileId, alt: 'media', supportsAllDrives: true },
+        { responseType: 'stream' }
+      ) as any
+
+      await new Promise<void>((resolve, reject) => {
+        const dest = fs.createWriteStream(outputPath)
+        response.data
+          .on('error', reject)
+          .pipe(dest)
+          .on('error', reject)
+          .on('finish', resolve)
+      })
+
+      console.log(`[Drive-Downloader] ✅ Saved via Google API: ${outputPath}`)
+      return { success: true, filePath: outputPath, filename: name, mimeType }
+    } catch (apiErr: any) {
+      console.warn(`[Drive-Downloader] Google API download failed: ${apiErr.message}`)
+    }
+  }
+
+  // ── Strategy 3: Direct HTTP export download ─────────────────────────────
+  try {
+    const directUrl = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t`
+    const outputPath = path.join(outputDir, `${baseName}.mp4`)
+    console.log(`[Drive-Downloader] Attempting direct HTTP download: ${directUrl}`)
+
+    await downloadHttpWithRedirects(directUrl, outputPath)
+    if (fs.existsSync(outputPath)) {
+      const stats = fs.statSync(outputPath)
+      if (stats.size > 10240) {
+        console.log(`[Drive-Downloader] ✅ Saved via direct HTTP: ${outputPath} (${(stats.size / 1024 / 1024).toFixed(1)} MB)`)
+        return { success: true, filePath: outputPath, filename: `${baseName}.mp4` }
+      } else {
+        fs.unlinkSync(outputPath)
+      }
+    }
+  } catch (httpErr: any) {
+    console.warn(`[Drive-Downloader] Direct HTTP download failed: ${httpErr.message}`)
+  }
+
+  return {
+    success: false,
+    error: `Failed to download Drive file (${fileId}). Please verify the link is public ("Anyone with the link can view").`,
   }
 }
 
@@ -152,7 +252,7 @@ export async function downloadDriveUrls(
   accessToken?: string
 ): Promise<DriveDownloadResult[]> {
   const urls = urlsString
-    .split(',')
+    .split(/[\r\n,;]+/)
     .map(u => u.trim())
     .filter(u => u.length > 0 && (u.includes('drive.google.com') || u.includes('docs.google.com')))
 

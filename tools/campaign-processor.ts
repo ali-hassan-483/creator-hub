@@ -103,9 +103,22 @@ export function countEditedClips(campaignId: string): number {
     .length
 }
 
-/** Check if campaign setup was already completed */
+/** Check if campaign setup was already completed (flag exists AND source files exist) */
 export function isSetupComplete(campaignId: string): boolean {
-  return fs.existsSync(getSetupFlagPath(campaignId))
+  const flagPath = getSetupFlagPath(campaignId)
+  if (!fs.existsSync(flagPath)) return false
+
+  const sourcesDir = getSourcesDir(campaignId)
+  if (!fs.existsSync(sourcesDir)) return false
+
+  const sourceFiles = fs.readdirSync(sourcesDir).filter(f => !f.startsWith('.'))
+  if (sourceFiles.length === 0) {
+    // Stale or empty setup flag — clean up so setup can be retriggered
+    try { fs.unlinkSync(flagPath) } catch {}
+    return false
+  }
+
+  return true
 }
 
 /**
@@ -134,7 +147,7 @@ export async function runCampaignSetup(
     fs.mkdirSync(dir, { recursive: true })
   }
 
-  // Return early if already setup
+  // Return early if already setup with actual files
   if (isSetupComplete(campaignId)) {
     log('✅ Already setup — loading existing files')
     return {
@@ -166,6 +179,10 @@ export async function runCampaignSetup(
   }
 
   log(`📹 Downloaded ${sourceVideoPaths.length} source video(s)`)
+
+  if (sourceUrls.trim() && sourceVideoPaths.length === 0) {
+    throw new Error('No source videos could be downloaded from the provided Drive/YouTube URL(s). Make sure Google Drive link is public ("Anyone with the link can view").')
+  }
 
   // ── Step 2: Download logos + hooks + CTAs ─────────────────────────────────
   log('📥 Step 2/4: Downloading assets (logo, hooks, CTAs)...')

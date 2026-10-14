@@ -33,7 +33,7 @@ export interface DownloadResult {
 /**
  * Resolves yt-dlp binary path. Supports Windows (yt-dlp.exe) and Linux (yt-dlp).
  */
-function getYtDlpPath(): string {
+export function getYtDlpPath(): string {
   const isWindows = process.platform === 'win32'
   const candidates = isWindows
     ? ['yt-dlp.exe', 'C:\\yt-dlp\\yt-dlp.exe', 'D:\\yt-dlp\\yt-dlp.exe']
@@ -169,7 +169,7 @@ export async function downloadVideoURLs(
   quality: 'best' | '1080p' | '720p' | '480p' | '360p' = 'best'
 ): Promise<DownloadResult[]> {
   const urls = urlsString
-    .split(',')
+    .split(/[\r\n,;]+/)
     .map(u => u.trim())
     .filter(u => u.length > 0 && (u.includes('youtube.com') || u.includes('youtu.be')))
 
