@@ -68,7 +68,7 @@ export async function transcribeWithWhisper(videoPath: string, outputDir: string
 
     // Run Whisper with word timestamps
     const cmd = `${whisperBin} "${audioPath}" --output_dir "${outputDir}" --output_format json --word_timestamps True --model base`
-    await execAsync(cmd, { maxBuffer: 20 * 1024 * 1024 })
+    await execAsync(cmd, { maxBuffer: 20 * 1024 * 1024, timeout: 600000 })
 
     // Read output JSON
     const jsonFiles = fs.readdirSync(outputDir).filter(f => f.endsWith('.json') && f.includes('audio_temp'))
