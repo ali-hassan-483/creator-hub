@@ -297,6 +297,24 @@ export async function maintainCampaignClipPool(
     const hookPath = hookFiles.length > 0 ? hookFiles[currentCount % hookFiles.length] : undefined
     const ctaPath = ctaFiles.length > 0 ? ctaFiles[currentCount % ctaFiles.length] : undefined
 
+    // Include On-Screen Text Hook banner on video (matching the campaign preview mockup)
+    const renderBanners = [...banners]
+    const hookText = metadata.onScreenText || (cfg.onScreenTextPool ? cfg.onScreenTextPool.split('\n')[0] : '')
+    if (hookText && hookText.trim()) {
+      renderBanners.unshift({
+        text: hookText.trim(),
+        font: cfg.onScreenFontName || 'Arial',
+        textColor: cfg.onScreenTextColor || 'white',
+        positionHeight: parseFloat(cfg.onScreenPositionHeightPercent ?? '27'),
+        fontSize: parseInt(cfg.onScreenSizePx ?? '64', 10),
+        background: cfg.onScreenBackground || 'black@0.5',
+        styledWordCount: parseInt(cfg.onScreenStyledWordCount ?? '0', 10),
+        styledWordsColor: cfg.onScreenStyledWordsColor || 'yellow',
+        showOnlyInLastSeconds: false,
+        lastSecondsDuration: 0,
+      })
+    }
+
     // Render Video via FFMPEG
     const editRes = await editVideoClip({
       inputPath: sourceVideo,
@@ -312,7 +330,7 @@ export async function maintainCampaignClipPool(
       logoPath,
       overlayPosition: cfg.overlayPosition || 'top_right',
       overlayWidth: parseFloat(cfg.overlayWidth || '15'),
-      banners,
+      banners: renderBanners,
     })
 
     if (!editRes.success) {

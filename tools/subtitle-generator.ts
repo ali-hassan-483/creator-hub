@@ -183,10 +183,11 @@ export async function transcribeVideo(videoPath: string, outputDir: string): Pro
 // ─── Text Case Transform ──────────────────────────────────────────────────────
 
 function applyTextCase(text: string, textCases: string[]): string {
-  if (textCases.includes('UPPERCASE')) return text.toUpperCase()
-  if (textCases.includes('lowercase')) return text.toLowerCase()
-  if (textCases.includes('Normal')) {
-    // Title case for important words
+  if (!textCases || textCases.length === 0) return text
+  const casesLower = textCases.map(c => (c || '').toLowerCase())
+  if (casesLower.some(c => c.includes('upper'))) return text.toUpperCase()
+  if (casesLower.some(c => c.includes('lower'))) return text.toLowerCase()
+  if (casesLower.some(c => c.includes('normal') || c.includes('title'))) {
     return text.replace(/\b\w+/g, (w) =>
       w.length > 3 ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w.toLowerCase()
     )
@@ -250,10 +251,18 @@ export function generateAssSubtitles(
     canvasHeight = 1920,
   } = config
 
-  const marginV = Math.round(canvasHeight * (placementHeight / 100))
+  // In ASS format with Alignment 2 (bottom-center), MarginV is distance from the BOTTOM.
+  // placementHeight is % from the TOP (e.g. 70 means 70% from top = 30% from bottom).
+  const marginV = Math.max(40, Math.round(canvasHeight * ((100 - Math.min(95, Math.max(5, placementHeight))) / 100)))
   const assColor = hexToAssColor(textColor)
   const assOutline = hexToAssColor(outlineColor)
   const assHighlight = hexToAssColor(speakingWordHighlight)
+
+  // Map font name safely for ASS (no commas allowed in ASS style field)
+  let cleanFont = (font || 'Arial').replace(/,/g, '').trim()
+  if (cleanFont.toLowerCase().includes('montenegrin') || cleanFont.toLowerCase().includes('dela')) {
+    cleanFont = 'Dela Gothic One'
+  }
 
   const header = `[Script Info]
 ScriptType: v4.00+
@@ -264,8 +273,8 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,${font || 'Arial'},${fontSize},${assColor},${assHighlight},${assOutline},&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,${marginV},1
-Style: Highlight,${font || 'Arial'},${fontSize},${assHighlight},${assColor},${assOutline},&H80000000,-1,0,0,0,100,100,0,0,1,3,2,2,20,20,${marginV},1
+Style: Default,${cleanFont},${fontSize},${assColor},${assHighlight},${assOutline},&H80000000,-1,0,0,0,100,100,0,0,1,4,2,2,20,20,${marginV},1
+Style: Highlight,${cleanFont},${fontSize},${assHighlight},${assColor},${assOutline},&H80000000,-1,0,0,0,100,100,0,0,1,4,2,2,20,20,${marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

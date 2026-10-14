@@ -258,32 +258,22 @@ function buildBannerFilters(banners: BannerConfig[], totalDuration: number): str
       ? `enable='between(t,${totalDuration - banner.lastSecondsDuration},${totalDuration})'`
       : `enable=1`
 
-    // Escape text for FFMPEG
+    // Escape text for FFMPEG drawtext filter
     const safeText = banner.text
-      .replace(/'/g, "\\'")
+      .replace(/\\/g, '\\\\')
+      .replace(/'/g, "'\\\\''")
       .replace(/:/g, '\\:')
+      .replace(/%/g, '\\%')
       .replace(/\[/g, '\\[')
       .replace(/\]/g, '\\]')
 
     // Background box behind text
-    const bgFilter = `drawbox=x=0:y=${y}-10:w=iw:h=${fontSize + 20}:color=${bgColor}@${bgAlpha}:t=fill:${timeCond}`
+    const bgFilter = `drawbox=x=0:y=${y}-12:w=iw:h=${fontSize + 24}:color=${bgColor}@${bgAlpha}:t=fill:${timeCond}`
     filters.push(bgFilter)
 
-    // Main text
-    const textFilter = `drawtext=text='${safeText}':fontsize=${fontSize}:fontcolor=${fontColor}:x=(w-tw)/2:y=${y}:${timeCond}`
+    // Main text with border outline for readability
+    const textFilter = `drawtext=text='${safeText}':fontsize=${fontSize}:fontcolor=${fontColor}:borderw=3:bordercolor=black:x=(w-tw)/2:y=${y}:${timeCond}`
     filters.push(textFilter)
-
-    // Styled words (first N words in a different color)
-    if (banner.styledWordCount > 0 && banner.styledWordsColor) {
-      const words = banner.text.split(' ')
-      const styledPart = words.slice(0, banner.styledWordCount).join(' ')
-      const safeStyled = styledPart
-        .replace(/'/g, "\\'")
-        .replace(/:/g, '\\:')
-      // Draw styled words overlay at same position
-      const styledFilter = `drawtext=text='${safeStyled}':fontsize=${fontSize}:fontcolor=${banner.styledWordsColor}:x=(w-tw_main)/2:y=${y}:${timeCond}`
-      filters.push(styledFilter)
-    }
   }
 
   return filters.join(',')
