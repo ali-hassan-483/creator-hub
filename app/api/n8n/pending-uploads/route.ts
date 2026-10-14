@@ -78,12 +78,24 @@ export async function GET(req: NextRequest) {
         const clipFullPath = path.join(clipsDir, clipFileName)
         const cfg = (campaign.config as any) || {}
 
-        // Build Title & Description based on campaign config
-        const title = cfg.onScreenTextPool
+        // Look for corresponding .meta.json file
+        const metaFileName = clipFileName.replace(/\.mp4$/, '.meta.json')
+        const metaFullPath = path.join(clipsDir, metaFileName)
+
+        let title = cfg.onScreenTextPool
           ? cfg.onScreenTextPool.split('\n')[0].slice(0, 60)
           : `${campaign.name} Short`
+        let description = `${cfg.predefinedDescription || ''}\n\n${cfg.linksInDescription || ''}`.trim()
+        let tags = ['shorts', 'viral', (cfg.niche || 'trending').toLowerCase()]
 
-        const description = `${cfg.predefinedDescription || ''}\n\n${cfg.linksInDescription || ''}`.trim()
+        if (fs.existsSync(metaFullPath)) {
+          try {
+            const meta = JSON.parse(fs.readFileSync(metaFullPath, 'utf8'))
+            if (meta.title) title = meta.title
+            if (meta.description) description = meta.description
+            if (meta.hashtags && Array.isArray(meta.hashtags)) tags = meta.hashtags
+          } catch {}
+        }
 
         jobs.push({
           channel: {

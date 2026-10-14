@@ -1128,7 +1128,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                             title="Total edited clips ready for submission"
                           >
                             <Film size={12} />
-                            <span>{c.availableClips ?? 0} Clips</span>
+                            <span>{ss.clipCount ?? c.availableClips ?? 0} Clips</span>
                           </span>
 
                           <button
