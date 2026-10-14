@@ -46,10 +46,11 @@ services:
     ports:
       - '3000:3000'
     environment:
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@postgres:5432/content_platform
+      DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://redis:6379
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
-      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-https://creatorhub.chickenkiller.com}
+      AUTH_TRUST_HOST: "true"
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
     depends_on:
       postgres:
