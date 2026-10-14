@@ -8,6 +8,7 @@ import {
   FileSpreadsheet, FileJson, Check, ExternalLink, HelpCircle,
   Type, Palette, Film, Captions, Link as LinkIcon, Image, Sliders, Upload, Edit
 } from 'lucide-react'
+import { CampaignPreviewMockup } from './campaign-preview-mockup'
 
 interface UserOption {
   id: string
@@ -545,14 +546,15 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
       name: c.name || '',
       status: c.status || 'active',
       minViews: c.minViews || 0,
-      briefContent: cfg.briefContent || '',
+      briefText: cfg.briefText || cfg.briefContent || '',
       dailyPostLimit: cfg.dailyPostLimit ?? 45,
+      readyToPost: (cfg.readyToPost as 'no' | 'yes') || 'no',
+      submissionLink: cfg.submissionLink || '',
       whopChannelName: cfg.whopChannelName || '',
       subcampaignGid: cfg.subcampaignGid || '',
       niche: cfg.niche || 'Gaming',
-      discordChannelId: cfg.discordChannelId || '',
-      youtubeTargetMode: cfg.youtubeTargetMode || 'specific_channel',
-      targetYoutubeChannelId: cfg.targetYoutubeChannelId || '',
+      fixYoutubeMentions: (cfg.fixYoutubeMentions as 'no' | 'yes') || 'no',
+      enablePendingTasks: (cfg.enablePendingTasks as 'disabled' | 'enabled') || 'disabled',
       sourceVideoUrls: cfg.sourceVideoUrls || '',
       specifyTimeRanges: cfg.specifyTimeRanges ?? false,
       minEngagementRate: cfg.minEngagementRate ?? 0,
@@ -564,7 +566,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
       hookVideoUrls: cfg.hookVideoUrls || '',
       ctaVideoUrls: cfg.ctaVideoUrls || '',
       onScreenTextPool: cfg.onScreenTextPool || '',
-      singleOnScreenTextOnly: cfg.singleOnScreenTextOnly ?? false,
+      singleOnScreenTextOnly: (cfg.singleOnScreenTextOnly as 'no' | 'yes') || 'no',
       ftcDisclosure: cfg.ftcDisclosure || '',
       onScreenTextAiGuide: cfg.onScreenTextAiGuide || '',
       onScreenMaxCharacters: cfg.onScreenMaxCharacters ?? 50,
@@ -947,8 +949,8 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
 
       {/* CREATE / EDIT CAMPAIGN MODAL (Screenshots 1 through 5) */}
       {isCreateOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-4xl w-full p-6 space-y-6 max-h-[92vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-7xl w-full p-4 sm:p-6 space-y-6 max-h-[94vh] overflow-y-auto">
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-border">
               <div>
@@ -987,8 +989,11 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
             )}
 
             <form onSubmit={handleCreateCampaign} className="space-y-6">
-              {/* SECTION: AUTO-FILL SETTINGS FROM BRIEF (GEMINI AI) */}
-              <div className="bg-muted/40 border border-border rounded-xl p-4 space-y-3">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                {/* Left Column: Form Settings (7 cols) */}
+                <div className="lg:col-span-7 space-y-6">
+                  {/* SECTION: AUTO-FILL SETTINGS FROM BRIEF (GEMINI AI) */}
+                  <div className="bg-muted/40 border border-border rounded-xl p-4 space-y-3">
                 <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary">
                   <Sparkles size={14} />
                   <span>Auto-Fill Settings from Brief (Gemini AI)</span>
@@ -2007,6 +2012,13 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                   </label>
                 </div>
               </div>
+            </div>
+
+            {/* Right Column: Sticky Live 9:16 Mobile Phone Mockup (5 cols) */}
+            <div className="lg:col-span-5 lg:sticky lg:top-0 space-y-4 pt-1">
+              <CampaignPreviewMockup formData={formData} />
+            </div>
+          </div>
 
               {/* Modal Buttons (Screenshot 5 - Save Campaign) */}
               <div className="flex justify-end gap-2 pt-4 border-t border-border">

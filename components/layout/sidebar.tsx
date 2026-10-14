@@ -39,6 +39,7 @@ const adminNav: NavItem[] = [
   { href: '/admin/whop-accounts', label: 'Whop Accounts', icon: <ShoppingBag size={17} /> },
   { href: '/admin/ip-management', label: 'IP Management', icon: <Globe size={17} /> },
   { href: '/admin/campaigns', label: 'Campaigns', icon: <Megaphone size={17} /> },
+  { href: '/admin/sandbox-test', label: 'Sandbox Test', icon: <PlaySquare size={17} className="text-emerald-500" /> },
   { href: '/admin/earnings', label: 'Earnings', icon: <DollarSign size={17} /> },
   { href: '/admin/settings', label: 'Settings', icon: <Settings size={17} /> },
 ]

@@ -1,0 +1,2054 @@
+{
+  "name": "Whop - David (1)",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        16,
+        400
+      ],
+      "id": "f884e762-f8d3-41bb-8215-a71c56b917e6",
+      "name": "Manual Trigger"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1_Lo-fjE5DwKcizC2MAUuK8E5-LVh1TyVPUqiHkwdXRk/edit?usp=drive_link",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_Lo-fjE5DwKcizC2MAUuK8E5-LVh1TyVPUqiHkwdXRk/edit#gid=0"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "status",
+              "lookupValue": "pending"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        240,
+        400
+      ],
+      "id": "b9cea4d3-433b-4825-a8bd-d31497ab6f10",
+      "name": "Get Master Sheet",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googleApi": {
+          "id": "8O5l87SGvHH4fLpT",
+          "name": "Google Service Account - David"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        464,
+        400
+      ],
+      "id": "8146457f-4612-42af-8b52-9c26618dd8c8",
+      "name": "Loop Over Channels"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst c = item.json;\nconst sheetLink = (c['sheet link'] || c['sheet link '] || '').trim();\n\nlet sheetGid = '0';\nconst gidMatch = sheetLink.match(/[#&?]gid=(\\d+)/);\nif (gidMatch) sheetGid = gidMatch[1];\n\nreturn [{\n  json: {\n    channelName: c['channel'] || '',\n    sheetLink: sheetLink,\n    sheetGid: sheetGid,\n    channelId: c['channel id'] || '',\n    credential_name: c['credential_name'] || '',\n    refresh_token: c['refresh_token'] || '',\n    client_id: c['client id'] || c['client_id'] || '',\n    secret_id: c['secret id'] || c['secret_id'] || '',\n    masterRowNumber: c['row_number'] || '',\n    mail: c['mail'] || c['email'] || c['Email'] || ''\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        400
+      ],
+      "id": "f3677865-7e2d-4e59-8c29-34b6360e322d",
+      "name": "Extract Channel Data"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.sheetLink }}",
+          "mode": "url",
+          "__regex": "https:\\/\\/(?:drive|docs)\\.google\\.com(?:\\/.*|)\\/d\\/([0-9a-zA-Z\\-_]+)(?:\\/.*|)"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $json.sheetGid }}",
+          "mode": "id"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Status",
+              "lookupValue": "pending"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        912,
+        400
+      ],
+      "id": "82239e15-2a70-45b4-9f5c-6b6b9785dfcb",
+      "name": "Get Pending Videos",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googleApi": {
+          "id": "8O5l87SGvHH4fLpT",
+          "name": "Google Service Account - David"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst ch = $('Extract Channel Data').first().json;\n\nconst pending = items.filter(i => {\n  const s = (i.json['Status'] || i.json['status'] || '').toString().trim().toLowerCase();\n  return s === 'pending';\n});\n\nif (pending.length === 0) {\n  return [{ json: { noVideos: true, channelName: ch.channelName, mail: ch.mail, sheetLink: ch.sheetLink, sheetGid: ch.sheetGid } }];\n}\n\nreturn pending.map(i => ({ json: { ...i.json, noVideos: false, channelName: ch.channelName, sheetLink: ch.sheetLink, sheetGid: ch.sheetGid, channelId: ch.channelId, credential_name: ch.credential_name, refresh_token: ch.refresh_token, client_id: ch.client_id, secret_id: ch.secret_id, mail: ch.mail } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        400
+      ],
+      "id": "52e2084e-7bce-43d1-9765-18f455b1f4cc",
+      "name": "Normalize & Filter Pending"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.noVideos }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              },
+              "id": "no-videos-cond-001"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1344,
+        400
+      ],
+      "id": "62ed197f-d091-48d4-a31a-5024f8cd0a15",
+      "name": "No Videos?"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1_Lo-fjE5DwKcizC2MAUuK8E5-LVh1TyVPUqiHkwdXRk/edit?gid=0#gid=0",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1wy-0PJ_HuidZd2ru0uXdlR8KY6RgNbdazPP49cLdfI4/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "channel": "={{ $json.channelName }}",
+            "status": "No Video Available"
+          },
+          "matchingColumns": [
+            "channel"
+          ],
+          "schema": [
+            {
+              "id": "Channel Name",
+              "displayName": "Channel Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "channel",
+              "displayName": "channel",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "gmail",
+              "displayName": "gmail",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "sheet link",
+              "displayName": "sheet link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "refresh_token",
+              "displayName": "refresh_token",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "client id",
+              "displayName": "client id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "secret id",
+              "displayName": "secret id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "credential_name",
+              "displayName": "credential_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "channel id",
+              "displayName": "channel id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1792,
+        256
+      ],
+      "id": "51a27e1c-753e-4cce-a184-46e4bfd15c2b",
+      "name": "Mark Change Sheet",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googleApi": {
+          "id": "8O5l87SGvHH4fLpT",
+          "name": "Google Service Account - David"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        496
+      ],
+      "id": "75255325-ac0e-4c42-ae29-03efcb106473",
+      "name": "Limit 1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\n\nconst driveUrl = (item.json['URL'] || item.json['url'] || '').trim();\n\nlet fileId = '';\nconst match = driveUrl.match(/\\/d\\/([a-zA-Z0-9_-]+)/);\nif (match) fileId = match[1];\n\nif (!fileId) throw new Error('File ID nahi mila: ' + driveUrl);\n\nconst title = (item.json['Title '] || item.json['Title'] || '')  // 👈 space wala pehle\n  .replace(/[<>]/g, '')\n  .trim()\n  .substring(0, 100);\n\nconst description = (item.json['Description'] || item.json['description'] || '')\n  .replace(/[<>]/g, '')\n  .trim()\n  .substring(0, 4990);\n\nif (!title) throw new Error('Title empty hai. Value: ' + JSON.stringify(item.json['Title ']));\n\nreturn [{\n  json: {\n    ...item.json,\n    driveUrl,\n    fileId,\n    title,\n    description\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        496
+      ],
+      "id": "2c5e9c7d-c680-46b3-9b02-0bc4d45b54e6",
+      "name": "Extract Video Info"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.fileId }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        2000,
+        496
+      ],
+      "id": "d447843b-7a4f-4be9-a791-f89ae93fd6e2",
+      "name": "Download From Drive",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googleApi": {
+          "id": "8O5l87SGvHH4fLpT",
+          "name": "Google Service Account - David"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst meta = $('Extract Video Info').first().json;\nreturn [{ json: { ...meta }, binary: item.binary }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2224,
+        496
+      ],
+      "id": "eca50b38-8197-40eb-92ed-31428cece0f4",
+      "name": "Attach Meta To Binary"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://oauth2.googleapis.com/token",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "client_id",
+              "value": "={{ $json.client_id }}"
+            },
+            {
+              "name": "client_secret",
+              "value": "={{ $json.secret_id }}"
+            },
+            {
+              "name": "refresh_token",
+              "value": "={{ $json.refresh_token }}"
+            },
+            {
+              "name": "grant_type",
+              "value": "refresh_token"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2448,
+        496
+      ],
+      "id": "36c628ac-7882-4685-a462-6b7ec870d633",
+      "name": "Refresh Token",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const tokenResp = $input.first().json;\nconst access_token = tokenResp.access_token;\nif (!access_token) throw new Error('No access_token received: ' + JSON.stringify(tokenResp));\n\nconst video = $('Attach Meta To Binary').first();\nreturn [{ json: { ...video.json, access_token }, binary: video.binary }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2672,
+        480
+      ],
+      "id": "f6ff3c6a-4881-4c72-b449-2cdb3e5915f2",
+      "name": "Prep Token"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.access_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json; charset=UTF-8"
+            },
+            {
+              "name": "X-Upload-Content-Type",
+              "value": "video/mp4"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  snippet: {\n    title: $json.title,\n    description: $json.description,\n    categoryId: \"22\",\n    defaultLanguage: \"en\"\n  },\n  status: {\n    privacyStatus: \"public\",\n    selfDeclaredMadeForKids: false\n  }\n}\n}}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2880,
+        480
+      ],
+      "id": "d5f8fc0f-87b9-4d8b-a707-e63deaadfca4",
+      "name": "Initialize YouTube Upload",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $input.first().json;\nconst uploadUrl = resp.headers?.location || resp.headers?.Location;\nif (!uploadUrl) throw new Error('Upload URL nahi mili: ' + JSON.stringify(resp.headers));\n\nconst videoItem = $('Prep Token').first();\nreturn [{ json: { ...videoItem.json, uploadUrl }, binary: videoItem.binary }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3072,
+        256
+      ],
+      "id": "a1e56bef-c677-404c-8997-bd3dc7004940",
+      "name": "Extract Upload URL"
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $input.first().json;\nconst meta = $('Extract Upload URL').first().json;\nconst videoId = resp.id || '';\nconst videoLink = videoId ? 'https://youtu.be/' + videoId : '';\n\nconst now = new Date();\nconst dd = String(now.getUTCDate() + 5/24 | 0).padStart(2,'0');\nconst pkt = new Date(Date.now() + 5*60*60*1000);\nconst dateStr = String(pkt.getUTCDate()).padStart(2,'0') + '/' + String(pkt.getUTCMonth()+1).padStart(2,'0') + '/' + pkt.getUTCFullYear();\n\nreturn [{\n  json: {\n    ...meta,\n    youtubeVideoId: videoId,\n    youtubeLink: videoLink,\n    uploadSuccess: true,\n    uploadDate: dateStr\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3536,
+        256
+      ],
+      "id": "540cfa83-6baa-4380-80f7-6d5aeb207aa5",
+      "name": "After Upload"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.sheetLink }}",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $json.sheetGid }}",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "URL": "={{ $json.URL || $json.url }}",
+            "Status": "done",
+            "Date": "={{ $json.uploadDate }}",
+            "Video Url": "={{ $json.youtubeLink }}"
+          },
+          "matchingColumns": [
+            "URL"
+          ],
+          "schema": [
+            {
+              "id": "URL",
+              "displayName": "URL",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Video Url",
+              "displayName": "Video Url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3728,
+        256
+      ],
+      "id": "1d7039bc-a0b5-41dc-9744-1184e49edc0e",
+      "name": "Update Video Status",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googleApi": {
+          "id": "8O5l87SGvHH4fLpT",
+          "name": "Google Service Account - David"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1_Lo-fjE5DwKcizC2MAUuK8E5-LVh1TyVPUqiHkwdXRk/edit?gid=0#gid=0",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_Lo-fjE5DwKcizC2MAUuK8E5-LVh1TyVPUqiHkwdXRk/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "channel": "={{ $('Extract Channel Data').first().json.channelName }}",
+            "status": "done"
+          },
+          "matchingColumns": [
+            "channel"
+          ],
+          "schema": [
+            {
+              "id": "Channel Name",
+              "displayName": "Channel Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "channel",
+              "displayName": "channel",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "gmail",
+              "displayName": "gmail",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sheet link",
+              "displayName": "sheet link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "refresh_token",
+              "displayName": "refresh_token",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "client id",
+              "displayName": "client id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "secret id",
+              "displayName": "secret id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "credential_name",
+              "displayName": "credential_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "channel id",
+              "displayName": "channel id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        4192,
+        256
+      ],
+      "id": "91af5807-39b7-411e-8071-057ba0f71825",
+      "name": "Mark Channel Done",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googleApi": {
+          "id": "8O5l87SGvHH4fLpT",
+          "name": "Google Service Account - David"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1584,
+        1280
+      ],
+      "id": "5a865ae5-149d-466a-b0a0-88e96a648968",
+      "name": "Merge Back"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst meta = $('Extract Video Info').first().json;\nreturn [{\n  json: {\n    row_number: meta.row_number || '',\n    URL: meta.URL || meta.url || '',\n    sheetLink: meta.sheetLink || '',\n    sheetGid: meta.sheetGid || '0',\n    channelName: meta.channelName || '',\n    errorMessage: 'Google Drive download failed',\n    hasError: true\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        704
+      ],
+      "id": "351274cb-ceb5-4095-9a36-2d155f02e1e8",
+      "name": "Handle Drive Error"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "sendTo": "alishaadeel25@gmail.com",
+        "subject": "=⚠️ Drive Download Error — {{ $('Extract Channel Data').first().json.channelName }}",
+        "message": "=<h2>⚠️ Google Drive Download Failed</h2>\n<p>Channel: <strong>{{ $('Extract Channel Data').first().json.channelName }}</strong></p>\n<p>Video URL: {{ $json.URL }}</p>\n<p>The video could not be downloaded from Google Drive. Please check the file permissions — it should be set to \"Anyone with the link\".</p>\n<br>\n<p>— n8n Auto-Upload Bot 🤖</p>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        2240,
+        704
+      ],
+      "id": "92606158-c9ea-4926-be9d-256e91e93d90",
+      "name": "Gmail Drive Error",
+      "webhookId": "d6cc040b-4aa4-4ebf-99a9-d5643c410715",
+      "credentials": {
+        "googleApi": {
+          "id": "ThmDdxznT0kWXYwd",
+          "name": "Google Service Account - alishaadeel123"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.sheetLink }}",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $json.sheetGid }}",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "URL": "={{ $json.URL }}",
+            "Status": "drive error"
+          },
+          "matchingColumns": [
+            "URL"
+          ],
+          "schema": [
+            {
+              "id": "URL",
+              "displayName": "URL",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2464,
+        704
+      ],
+      "id": "0c469dfa-89bc-4d5e-8818-c730006342c5",
+      "name": "Mark Drive Error",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googleApi": {
+          "id": "8O5l87SGvHH4fLpT",
+          "name": "Google Service Account - David"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst video = $('Attach Meta To Binary').first().json;\nreturn [{\n  json: {\n    URL: video.URL || video.url || '',\n    sheetLink: video.sheetLink || '',\n    sheetGid: video.sheetGid || '0',\n    channelName: video.channelName || '',\n    errorMessage: 'Auth token refresh failed: 401 unauthorized',\n    hasError: true\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3104,
+        1040
+      ],
+      "id": "90bc0f4c-b1b4-4830-b10a-4662b28b5b2a",
+      "name": "Handle Auth Error"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "sendTo": "david.thompsondt5656@gmail.com",
+        "subject": "=⚠️ Auth Error — {{ $json.channelName }}",
+        "message": "=<h2>⚠️ YouTube Auth Failed</h2>\n<p>Channel: <strong>{{ $json.channelName }}</strong></p>\n<p>The refresh token has expired or been revoked.</p>\n<p>Please update the refresh_token in the master sheet.</p>\n<br>\n<p>— n8n Auto-Upload Bot 🤖</p>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        3312,
+        1040
+      ],
+      "id": "de6a31f1-57f5-490e-b21c-134e504dd4af",
+      "name": "Gmail Auth Error",
+      "webhookId": "e7f7d90b-1885-4604-bcb4-40982139cc4c",
+      "credentials": {
+        "googleApi": {
+          "id": "ThmDdxznT0kWXYwd",
+          "name": "Google Service Account - alishaadeel123"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.sheetLink }}",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $json.sheetGid }}",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "URL": "={{ $json.URL }}",
+            "Status": "Auth Error"
+          },
+          "matchingColumns": [
+            "URL"
+          ],
+          "schema": [
+            {
+              "id": "URL",
+              "displayName": "URL",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3536,
+        1040
+      ],
+      "id": "a47b7259-1c0a-4701-a98c-089cd5fb0506",
+      "name": "Mark Auth Error",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googleApi": {
+          "id": "8O5l87SGvHH4fLpT",
+          "name": "Google Service Account - David"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst errorMsg = item.json.error?.message || item.json.message || JSON.stringify(item.json.error) || '';\nconst isQuota = errorMsg.toLowerCase().includes('quotaexceeded') || errorMsg.toLowerCase().includes('quota');\n\nconst video = $('Prep Token').first().json;\nreturn [{\n  json: {\n    URL: video.URL || video.url || '',\n    sheetLink: video.sheetLink || '',\n    sheetGid: video.sheetGid || '0',\n    channelName: video.channelName || '',\n    title: video.title || '',\n    mail: video.mail || '',\n    isQuotaError: isQuota,\n    errorMessage: isQuota ? 'YouTube API Quota Exceeded' : ('Upload Init Failed: ' + errorMsg)\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3072,
+        704
+      ],
+      "id": "1cb25e25-d259-4ce5-a7db-d5d4f9b1d928",
+      "name": "Handle Upload Init Error"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.isQuotaError }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              },
+              "id": "quota-check-001"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3296,
+        704
+      ],
+      "id": "74a6409a-d596-46c7-b58f-25f4195647c2",
+      "name": "Is Quota Error?"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "sendTo": "david.thompsondt5656@gmail.com",
+        "subject": "=🚫 YouTube Quota Exceeded — {{ $json.channelName }} — {{ $json.mail }}",
+        "message": "=<h2>🚫 YouTube API Quota Exhausted</h2>\n<p>Channel: <strong>{{ $json.channelName }}</strong></p>\n<p>The daily YouTube API quota has been exceeded.</p>\n<p>The upload will be retried tomorrow.</p>\n<br>\n<p>— n8n Auto-Upload Bot 🤖</p>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        3536,
+        560
+      ],
+      "id": "00ccf9ce-01d4-49d1-989a-a606a622191d",
+      "name": "Gmail Quota Error",
+      "webhookId": "a155db85-eb0d-467f-922a-d05f3f3f198a",
+      "credentials": {
+        "googleApi": {
+          "id": "ThmDdxznT0kWXYwd",
+          "name": "Google Service Account - alishaadeel123"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "sendTo": "david.thompsondt5656@gmail.com",
+        "subject": "=⚠️ Upload Init Error — {{ $json.channelName }}",
+        "message": "=<h2>⚠️ YouTube Upload Initialization Failed</h2>\n<p>Channel: <strong>{{ $json.channelName }}</strong></p>\n<p>Video Title: {{ $json.title }}</p>\n<p>Error: {{ $json.errorMessage }}</p>\n<p>The title may be empty or invalid. Please check the sheet and try again.</p>\n<br>\n<p>— n8n Auto-Upload Bot 🤖</p>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        3536,
+        816
+      ],
+      "id": "75c5a707-208d-4645-b52a-de72ae1ac924",
+      "name": "Gmail Upload Init Error",
+      "webhookId": "d765a162-a730-491c-a62e-c1778af90388",
+      "credentials": {
+        "googleApi": {
+          "id": "ThmDdxznT0kWXYwd",
+          "name": "Google Service Account - alishaadeel123"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.sheetLink }}",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $json.sheetGid }}",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "URL": "={{ $json.URL }}",
+            "Status": "Upload Error"
+          },
+          "matchingColumns": [
+            "URL"
+          ],
+          "schema": [
+            {
+              "id": "URL",
+              "displayName": "URL",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3808,
+        816
+      ],
+      "id": "406a355d-7669-4928-9510-95a687892833",
+      "name": "Mark Upload Error",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googleApi": {
+          "id": "8O5l87SGvHH4fLpT",
+          "name": "Google Service Account - David"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## ▶️ TRIGGER\nManual — button click se shuru",
+        "width": 400,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "5bc7beed-ead9-4a5b-96c1-b70ba5235e94",
+      "name": "Note: Trigger"
+    },
+    {
+      "parameters": {
+        "content": "## 🔄 CHANNEL LOOP\nMaster sheet → pending channels → ek ek process",
+        "width": 812,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        480,
+        0
+      ],
+      "id": "58a07ef2-19f9-4433-809a-6bece40d93bc",
+      "name": "Note: Loop"
+    },
+    {
+      "parameters": {
+        "content": "## 📥 VIDEO PIPELINE\nSheet se title/desc → Drive se video download → Binary + meta attach",
+        "width": 900,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1552,
+        16
+      ],
+      "id": "7ad2da1d-ea74-4686-8e0d-f38736eb8bbd",
+      "name": "Note: Pipeline"
+    },
+    {
+      "parameters": {
+        "content": "## ☁️ YOUTUBE UPLOAD\nToken refresh → Init upload → PUT binary → Sheet update (done + date + link)",
+        "width": 1800,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2672,
+        16
+      ],
+      "id": "926c6b8e-3ae2-418e-ba07-ec8c96214dde",
+      "name": "Note: Upload"
+    },
+    {
+      "parameters": {
+        "content": "## ⚠️ ERROR HANDLING\nDrive fail → email + sheet mark\nAuth fail → email + sheet mark\nQuota → email + STOP\nUpload init fail → email + sheet mark",
+        "width": 700,
+        "color": 2
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3056,
+        1280
+      ],
+      "id": "08bd0c9a-ec08-4472-8963-6ef696f90f9c",
+      "name": "Note: Errors"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $json.uploadUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "video/mp4"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3296,
+        256
+      ],
+      "id": "2176f35d-2964-4fa0-a58e-ed8d14b2972a",
+      "name": "zs"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1_Lo-fjE5DwKcizC2MAUuK8E5-LVh1TyVPUqiHkwdXRk/edit?gid=0#gid=0",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_Lo-fjE5DwKcizC2MAUuK8E5-LVh1TyVPUqiHkwdXRk/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "channel": "={{ $('Extract Channel Data').first().json.channelName }}",
+            "status": "Quota Error"
+          },
+          "matchingColumns": [
+            "channel"
+          ],
+          "schema": [
+            {
+              "id": "Channel Name",
+              "displayName": "Channel Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "channel",
+              "displayName": "channel",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "gmail",
+              "displayName": "gmail",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sheet link",
+              "displayName": "sheet link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "refresh_token",
+              "displayName": "refresh_token",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "client id",
+              "displayName": "client id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "secret id",
+              "displayName": "secret id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "credential_name",
+              "displayName": "credential_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "channel id",
+              "displayName": "channel id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3808,
+        560
+      ],
+      "id": "c6fc66b2-3b15-4015-93c3-2533c57c0533",
+      "name": "Update row in sheet",
+      "credentials": {
+        "googleApi": {
+          "id": "8O5l87SGvHH4fLpT",
+          "name": "Google Service Account - David"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1PXtf7bXEU-q483NE3TaY4oL12aLBUI1iswJNRpbz5rM/edit?gid=0#gid=0",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Submissions",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1PXtf7bXEU-q483NE3TaY4oL12aLBUI1iswJNRpbz5rM/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Campaign Name": "Lovable Clipping",
+            "Whop Campaign Channel Link": "https://whop.com/joined/lovable-clipping/content-rewards-T1NluLUJL7I2lN/app/",
+            "YT Short link": "={{ $('After Upload').first().json.youtubeLink }}",
+            "Video Title": "={{ $('After Upload').first().json.title }}",
+            "Demographics Screenshot Path": "={{ $('Extract Channel Data').first().json.channelName.replace('@', '') + '.png' }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Campaign Name",
+              "displayName": "Campaign Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Whop Campaign Channel Link",
+              "displayName": "Whop Campaign Channel Link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Video Title",
+              "displayName": "Video Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "YT Short link",
+              "displayName": "YT Short link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Demographics Screenshot Path",
+              "displayName": "Demographics Screenshot Path",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Subcampaign",
+              "displayName": "Subcampaign",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Submission Status",
+              "displayName": "Submission Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Error Details",
+              "displayName": "Error Details",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        4416,
+        256
+      ],
+      "id": "675bddb4-3677-4b11-b05e-922d81c7edf2",
+      "name": "Append row in sheet1",
+      "credentials": {
+        "googleApi": {
+          "id": "8O5l87SGvHH4fLpT",
+          "name": "Google Service Account - David"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 30
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        3936,
+        256
+      ],
+      "id": "2bb886a9-6bae-48ce-8b2a-7cb9bdbe39c1",
+      "name": "Wait",
+      "webhookId": "94c03757-c80c-4013-94a7-5a7bf534e889"
+    },
+    {
+      "parameters": {
+        "tableId": "videos",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "title",
+              "fieldValue": "={{ $('After Upload').first().json.title }}"
+            },
+            {
+              "fieldId": "file_id",
+              "fieldValue": "={{ $('Extract Video Info').first().json.fileId }}"
+            },
+            {
+              "fieldId": "channel",
+              "fieldValue": "={{ $('Extract Channel Data').first().json.channelName }}"
+            },
+            {
+              "fieldId": "upload_date",
+              "fieldValue": "=$now"
+            },
+            {
+              "fieldId": "youtube_link",
+              "fieldValue": "={{ $('After Upload').first().json.youtubeLink }}"
+            },
+            {
+              "fieldId": "campaign",
+              "fieldValue": "Lovable Clipping"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "done"
+            },
+            {
+              "fieldId": "youtube_id",
+              "fieldValue": "={{ $('After Upload').first().json.youtubeLink.match(/(?:v=|\\/shorts\\/|youtu\\.be\\/)([a-zA-Z0-9_-]{6,})/)?.[1] || $('After Upload').first().json.youtubeLink.split('/').pop() }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        4656,
+        256
+      ],
+      "id": "73adde15-a1f9-4ee2-aa5d-b7c865c8c1f2",
+      "name": "Create a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "mDcvIAvqzMOfJouq",
+          "name": "Supabase account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Master Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Master Sheet": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Channels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Channels": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Extract Channel Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Channel Data": {
+      "main": [
+        [
+          {
+            "node": "Get Pending Videos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Pending Videos": {
+      "main": [
+        [
+          {
+            "node": "Normalize & Filter Pending",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize & Filter Pending": {
+      "main": [
+        [
+          {
+            "node": "No Videos?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No Videos?": {
+      "main": [
+        [
+          {
+            "node": "Mark Change Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Limit 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Change Sheet": {
+      "main": [
+        [
+          {
+            "node": "Merge Back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit 1": {
+      "main": [
+        [
+          {
+            "node": "Extract Video Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Video Info": {
+      "main": [
+        [
+          {
+            "node": "Download From Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download From Drive": {
+      "main": [
+        [
+          {
+            "node": "Attach Meta To Binary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Drive Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach Meta To Binary": {
+      "main": [
+        [
+          {
+            "node": "Refresh Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Refresh Token": {
+      "main": [
+        [
+          {
+            "node": "Prep Token",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Auth Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Token": {
+      "main": [
+        [
+          {
+            "node": "Initialize YouTube Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize YouTube Upload": {
+      "main": [
+        [
+          {
+            "node": "Extract Upload URL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Upload Init Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Upload URL": {
+      "main": [
+        [
+          {
+            "node": "zs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "After Upload": {
+      "main": [
+        [
+          {
+            "node": "Update Video Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Video Status": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Channel Done": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Drive Error": {
+      "main": [
+        [
+          {
+            "node": "Gmail Drive Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Drive Error": {
+      "main": [
+        [
+          {
+            "node": "Mark Drive Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Drive Error": {
+      "main": [
+        [
+          {
+            "node": "Merge Back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Auth Error": {
+      "main": [
+        [
+          {
+            "node": "Gmail Auth Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Auth Error": {
+      "main": [
+        [
+          {
+            "node": "Mark Auth Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Auth Error": {
+      "main": [
+        [
+          {
+            "node": "Merge Back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Upload Init Error": {
+      "main": [
+        [
+          {
+            "node": "Is Quota Error?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Quota Error?": {
+      "main": [
+        [
+          {
+            "node": "Gmail Quota Error",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail Upload Init Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Quota Error": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Upload Init Error": {
+      "main": [
+        [
+          {
+            "node": "Mark Upload Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Upload Error": {
+      "main": [
+        [
+          {
+            "node": "Merge Back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Back": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Channels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "zs": {
+      "main": [
+        [
+          {
+            "node": "After Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Merge Back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet1": {
+      "main": [
+        [
+          {
+            "node": "Create a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Mark Channel Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a row": {
+      "main": [
+        [
+          {
+            "node": "Merge Back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "e7141b9f-0d1f-4f78-9c91-b368087c3507",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5f29e94beb80ae23c6fd0a7c824a0053cb021cbdd5fb81e0cfe02f974820ef40"
+  },
+  "nodeGroups": [],
+  "id": "JJuFkY9JprvUTMSG",
+  "tags": []
+}

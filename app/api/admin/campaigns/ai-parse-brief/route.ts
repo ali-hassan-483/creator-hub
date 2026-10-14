@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth-helpers'
+import { callUnifiedAi } from '@/lib/ai-provider'
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,11 +13,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Please paste a campaign brief to scan.' }, { status: 400 })
     }
 
-    const apiKey = geminiApiKey || process.env.GEMINI_API_KEY
-
-    // If Gemini API Key is available, use Google Gemini AI
-    if (apiKey) {
-      const prompt = `You are an AI assistant that extracts content campaign brief settings into a structured JSON.
+    const prompt = `You are an AI assistant that extracts content campaign brief settings into a structured JSON.
 Parse the following campaign brief text and extract these fields:
 - campaignName: string
 - niche: string
@@ -52,35 +49,31 @@ Brief Text:
 ${briefText}
 """
 
-Return ONLY valid JSON matching this schema with no markdown code blocks.`
+Return ONLY a valid JSON object matching this schema without markdown code blocks.`
 
-      try {
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { response_mime_type: 'application/json' },
-            }),
-          }
-        )
+    try {
+      const { text, provider } = await callUnifiedAi(
+        prompt,
+        'You extract structured campaign settings from text briefs. Always output valid JSON only.'
+      )
 
-        if (response.ok) {
-          const result = await response.json()
-          const text = result?.candidates?.[0]?.content?.parts?.[0]?.text
-          if (text) {
-            const parsed = JSON.parse(text)
-            return NextResponse.json({ parsed, source: 'gemini' })
-          }
-        }
-      } catch (aiErr) {
-        console.error('Gemini AI parse error:', aiErr)
+      if (text) {
+        let jsonStr = text.trim()
+        const match = jsonStr.match(/```json\s*([\s\S]*?)```/) || jsonStr.match(/\{[\s\S]*\}/)
+        if (match) jsonStr = match[1] || match[0]
+
+        const parsed = JSON.parse(jsonStr)
+        return NextResponse.json({
+          parsed,
+          source: provider,
+          message: `Successfully extracted settings using ${provider === 'openrouter' ? 'OpenRouter Fallback AI' : 'Google Gemini AI'}`,
+        })
       }
+    } catch (aiErr: any) {
+      console.error('Unified AI parse error:', aiErr?.message || aiErr)
     }
 
-    // Heuristic Fallback parser if API key is not yet provided or Gemini times out
+    // Heuristic Fallback parser if both Gemini and OpenRouter fail
     const text = briefText
     const parsed: Record<string, any> = {}
 
@@ -117,7 +110,7 @@ Return ONLY valid JSON matching this schema with no markdown code blocks.`
     return NextResponse.json({
       parsed,
       source: 'heuristic',
-      notice: apiKey ? undefined : 'Scanned via basic parser. Add GEMINI_API_KEY in .env for full AI scanning.',
+      notice: 'Parsed using rule heuristics.',
     })
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Brief scan failed.' }, { status: 500 })

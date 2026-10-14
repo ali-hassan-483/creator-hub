@@ -44,38 +44,13 @@ export interface AiMetadataConfig {
   campaignName?: string
 }
 
-import { executeGeminiWithFailover } from '../lib/gemini-pool'
+import { callUnifiedAi } from '../lib/ai-provider'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function callGemini(prompt: string, systemInstruction?: string): Promise<string> {
-  return executeGeminiWithFailover(async (apiKey) => {
-    const body: any = {
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 4096,
-      },
-    }
-
-    if (systemInstruction) {
-      body.systemInstruction = { parts: [{ text: systemInstruction }] }
-    }
-
-    const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-
-    if (!response.ok) {
-      const err = await response.text()
-      throw new Error(`Gemini API error ${response.status}: ${err}`)
-    }
-
-    const data = await response.json() as any
-    return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || ''
-  })
+  const result = await callUnifiedAi(prompt, systemInstruction)
+  return result.text
 }
 
 function extractJSON<T>(text: string, fallback: T): T {

@@ -1,0 +1,285 @@
+{
+  "name": "Views Monitor - David",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 3
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "ff7263d2-ffe1-425c-8ced-242f871b45e7",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "videos",
+        "returnAll": true,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "done"
+            },
+            {
+              "keyName": "views_status",
+              "condition": "eq",
+              "keyValue": "checking"
+            },
+            {
+              "keyName": "upload_date",
+              "condition": "gte",
+              "keyValue": "={{ $now.minus({ days: 7 }) }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        224,
+        144
+      ],
+      "id": "ef7ca513-72ad-4b33-8e4f-f4a22ea1b146",
+      "name": "Get many rows",
+      "credentials": {
+        "supabaseApi": {
+          "id": "mDcvIAvqzMOfJouq",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst ids = items.map(i => i.json.youtube_id).filter(Boolean);\nconst batches = [];\nfor (let i = 0; i < ids.length; i += 50) {\n  batches.push(ids.slice(i, i + 50));\n} \nreturn batches.map(b => ({ json: { ids: b.join(',') } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        144
+      ],
+      "id": "f76a999c-9dec-41f5-a456-4066eecfc7ee",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "url": "=https://www.googleapis.com/youtube/v3/videos?part=statistics&id={{ $json.ids }}&key=AIzaSyBEVjS3bDbfwjfCK1IBfzMWwiTTD0siYvg",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        704,
+        144
+      ],
+      "id": "30ff4341-8bf5-476d-b472-61191aebb93d",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const campaigns = $('Get Campaigns').all();\nconst thresholdByCampaign = {};\nfor (const c of campaigns) {\n  thresholdByCampaign[c.json.name] = c.json.min_views;\n} \nconst statsById = {};\nfor (const batch of $input.all()) {\n  const items = batch.json.items || [];\n  for (const item of items) {\n    statsById[item.id] = Number(item.statistics.viewCount || 0);\n  }\n}\nconst videos = $('Get many rows').all();\nconst results = [];\nfor (const video of videos) {\n  const v = video.json;\n  const views = statsById[v.youtube_id];\n  if (views === undefined) continue;\n  const threshold = thresholdByCampaign[v.campaign] ?? Infinity;\n  const qualified = views >= threshold;\n  results.push({ json: { id: v.id, views, views_status: qualified ? 'qualified' : 'checking', review_status: qualified ? 'awaiting_requirements' : null, last_checked_at: new Date().toISOString(), } });\n} \nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        -32
+      ],
+      "id": "eb1c9d72-5674-4d30-96d5-6e517bb0fb30",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "videos",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "views",
+              "fieldValue": "={{ $json.views }}"
+            },
+            {
+              "fieldId": "views_status",
+              "fieldValue": "={{ $json.views_status }}"
+            },
+            {
+              "fieldId": "review_status",
+              "fieldValue": "={{ $json.review_status }}"
+            },
+            {
+              "fieldId": "last_checked_at",
+              "fieldValue": "={{ $json.last_checked_at }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1328,
+        -32
+      ],
+      "id": "46915a07-265c-4db8-ad55-b3c9d660abf8",
+      "name": "Update a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "mDcvIAvqzMOfJouq",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "campaigns",
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        208,
+        -176
+      ],
+      "id": "8501cda6-289c-4fd8-9944-1261a2fcab9a",
+      "name": "Get Campaigns",
+      "credentials": {
+        "supabaseApi": {
+          "id": "mDcvIAvqzMOfJouq",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        912,
+        -32
+      ],
+      "id": "82bf5b86-6f24-4661-8944-c80898b044fe",
+      "name": "Merge"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Campaigns",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get many rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many rows": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Update a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Campaigns": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "9a3d62c8-d8b4-498e-80a3-1881a25ac9b2",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5f29e94beb80ae23c6fd0a7c824a0053cb021cbdd5fb81e0cfe02f974820ef40"
+  },
+  "nodeGroups": [],
+  "id": "bLO5OdM2Wy7w1oGv",
+  "tags": []
+}
