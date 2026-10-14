@@ -1,0 +1,385 @@
+{
+  "name": "Creator Hub - YouTube Auto Upload",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ],
+      "id": "schedule-trigger-1",
+      "name": "Schedule Trigger (Every 1h)"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        140
+      ],
+      "id": "manual-trigger-1",
+      "name": "Manual Trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://creatorhub.chickenkiller.com/api/n8n/pending-uploads",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        220
+      ],
+      "id": "fetch-pending-jobs",
+      "name": "Fetch Pending Jobs from Creator Hub"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst first = items[0]?.json;\n\nif (!first || !first.jobs || first.jobs.length === 0) {\n  return [];\n}\n\nreturn first.jobs.map(job => ({\n  json: job\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        220
+      ],
+      "id": "split-jobs",
+      "name": "Split Jobs"
+    },
+    {
+      "parameters": {
+        "url": "=https://creatorhub.chickenkiller.com{{ $json.clip.streamUrl }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        220
+      ],
+      "id": "download-video-file",
+      "name": "Download Clip Binary"
+    },
+    {
+      "parameters": {
+        "jsCode": "const binary = $input.first().binary;\nconst job = $('Split Jobs').item.json;\n\nreturn [{\n  json: job,\n  binary\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        220
+      ],
+      "id": "merge-job-and-binary",
+      "name": "Merge Job & Binary"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://oauth2.googleapis.com/token",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "client_id",
+              "value": "={{ $json.channel.clientId }}"
+            },
+            {
+              "name": "client_secret",
+              "value": "={{ $json.channel.clientSecret }}"
+            },
+            {
+              "name": "refresh_token",
+              "value": "={{ $json.channel.refreshToken }}"
+            },
+            {
+              "name": "grant_type",
+              "value": "refresh_token"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        220
+      ],
+      "id": "refresh-access-token",
+      "name": "Get Google Access Token"
+    },
+    {
+      "parameters": {
+        "jsCode": "const tokenResp = $input.first().json;\nconst accessToken = tokenResp.access_token;\nif (!accessToken) {\n  throw new Error('Failed to obtain Google access token: ' + JSON.stringify(tokenResp));\n}\n\nconst meta = $('Merge Job & Binary').item.json;\nconst binary = $('Merge Job & Binary').item.binary;\n\nreturn [{\n  json: {\n    ...meta,\n    accessToken\n  },\n  binary\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        220
+      ],
+      "id": "prep-upload-token",
+      "name": "Prep Upload Token"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.accessToken }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json; charset=UTF-8"
+            },
+            {
+              "name": "X-Upload-Content-Type",
+              "value": "video/mp4"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"snippet\": {\n    \"title\": \"{{ $json.clip.title }}\",\n    \"description\": \"{{ $json.clip.description }}\",\n    \"tags\": {{ JSON.stringify($json.clip.tags) }},\n    \"categoryId\": \"24\"\n  },\n  \"status\": {\n    \"privacyStatus\": \"public\",\n    \"selfDeclaredMadeForKids\": false\n  }\n}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        220
+      ],
+      "id": "init-youtube-upload",
+      "name": "Init YouTube Upload"
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $input.first().json;\nconst uploadUrl = resp.headers?.location || resp.headers?.Location;\nif (!uploadUrl) {\n  throw new Error('Resumable upload URL not found in headers: ' + JSON.stringify(resp.headers));\n}\n\nconst prev = $('Prep Upload Token').item;\nreturn [{\n  json: {\n    ...prev.json,\n    uploadUrl\n  },\n  binary: prev.binary\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        220
+      ],
+      "id": "extract-upload-url",
+      "name": "Extract Upload URL"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $json.uploadUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "video/mp4"
+            }
+          ]
+        },
+        "sendBinaryData": true,
+        "binaryPropertyName": "data",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        220
+      ],
+      "id": "upload-binary-to-youtube",
+      "name": "Upload Binary to YouTube"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://creatorhub.chickenkiller.com/api/n8n/upload-complete",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"channelId\": \"{{ $('Extract Upload URL').item.json.channel.id }}\",\n  \"campaignId\": \"{{ $('Extract Upload URL').item.json.campaign.id }}\",\n  \"youtubeVideoId\": \"{{ $json.id }}\",\n  \"youtubeLink\": \"https://youtu.be/{{ $json.id }}\",\n  \"title\": \"{{ $('Extract Upload URL').item.json.clip.title }}\",\n  \"clipFilename\": \"{{ $('Extract Upload URL').item.json.clip.filename }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2200,
+        220
+      ],
+      "id": "notify-creator-hub",
+      "name": "Notify Creator Hub (Success)"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (Every 1h)": {
+      "main": [
+        [
+          {
+            "node": "Fetch Pending Jobs from Creator Hub",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch Pending Jobs from Creator Hub",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Pending Jobs from Creator Hub": {
+      "main": [
+        [
+          {
+            "node": "Split Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Jobs": {
+      "main": [
+        [
+          {
+            "node": "Download Clip Binary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Clip Binary": {
+      "main": [
+        [
+          {
+            "node": "Merge Job & Binary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Job & Binary": {
+      "main": [
+        [
+          {
+            "node": "Get Google Access Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Google Access Token": {
+      "main": [
+        [
+          {
+            "node": "Prep Upload Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Upload Token": {
+      "main": [
+        [
+          {
+            "node": "Init YouTube Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Init YouTube Upload": {
+      "main": [
+        [
+          {
+            "node": "Extract Upload URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Upload URL": {
+      "main": [
+        [
+          {
+            "node": "Upload Binary to YouTube",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Binary to YouTube": {
+      "main": [
+        [
+          {
+            "node": "Notify Creator Hub (Success)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
