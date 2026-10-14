@@ -43,6 +43,8 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
+    env_file:
+      - .env
     ports:
       - '3000:3000'
     environment:
@@ -52,6 +54,9 @@ services:
       NEXTAUTH_URL: ${NEXTAUTH_URL:-https://creatorhub.chickenkiller.com}
       AUTH_TRUST_HOST: "true"
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_API_KEYS: ${GEMINI_API_KEYS:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -83,11 +88,16 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     restart: unless-stopped
+    env_file:
+      - .env
     command: npm run worker:automation
     environment:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@postgres:5432/content_platform
       REDIS_URL: redis://redis:6379
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_API_KEYS: ${GEMINI_API_KEYS:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -119,11 +129,16 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     restart: unless-stopped
+    env_file:
+      - .env
     command: npm run worker:editor
     environment:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@postgres:5432/content_platform
       REDIS_URL: redis://redis:6379
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_API_KEYS: ${GEMINI_API_KEYS:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
