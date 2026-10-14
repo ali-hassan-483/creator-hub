@@ -1,12 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Megaphone, Plus, Search, Trash2, Users,
   CheckCircle2, PauseCircle, Clock, AlertCircle,
   Eye, Settings, Layers, Download, Sparkles, RefreshCw,
   FileSpreadsheet, FileJson, Check, ExternalLink, HelpCircle,
-  Type, Palette, Film, Captions, Link as LinkIcon, Image, Sliders, Upload, Edit
+  Type, Palette, Film, Captions, Link as LinkIcon, Image, Sliders, Upload, Edit,
+  Loader2, HardDriveDownload, CircleAlert
 } from 'lucide-react'
 import { CampaignPreviewMockup } from './campaign-preview-mockup'
 
@@ -213,6 +214,65 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
   const [aiScanning, setAiScanning] = useState(false)
   const [aiMessage, setAiMessage] = useState('')
   const [error, setError] = useState('')
+
+  // Setup/Download Status Tracking
+  const [setupStatuses, setSetupStatuses] = useState<Record<string, {
+    status: string
+    progress: string | null
+    sourceCount: number
+    error: string | null
+  }>>({})
+
+  // Poll setup statuses every 5 seconds
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null
+
+    async function fetchSetupStatuses() {
+      try {
+        const res = await fetch('/api/admin/campaigns/setup-status')
+        if (res.ok) {
+          const data = await res.json()
+          const map: Record<string, any> = {}
+          for (const s of data.statuses || []) {
+            map[s.campaignId] = {
+              status: s.status,
+              progress: s.progress,
+              sourceCount: s.sourceCount,
+              error: s.error,
+            }
+          }
+          setSetupStatuses(map)
+        }
+      } catch {}
+    }
+
+    fetchSetupStatuses()
+    interval = setInterval(fetchSetupStatuses, 5000)
+
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [campaigns])
+
+  async function handleRetriggerSetup(campaignId: string) {
+    try {
+      await fetch('/api/admin/campaigns/setup-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaignId }),
+      })
+      // Immediately update local status
+      setSetupStatuses((prev) => ({
+        ...prev,
+        [campaignId]: {
+          ...prev[campaignId],
+          status: 'downloading',
+          progress: '📥 Starting campaign setup...',
+          error: null,
+        },
+      }))
+    } catch {}
+  }
 
   // Filter
   const filteredCampaigns = campaigns.filter((c) => {
@@ -788,7 +848,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                 <th className="text-left px-5 py-3.5 font-medium">Campaign Identity</th>
                 <th className="text-left px-5 py-3.5 font-medium">Niche & Submissions</th>
                 <th className="text-left px-5 py-3.5 font-medium">Clipping Strategy</th>
-                <th className="text-left px-5 py-3.5 font-medium">Banners / Subs</th>
+                <th className="text-left px-5 py-3.5 font-medium">Source Setup</th>
                 <th className="text-left px-5 py-3.5 font-medium">User Access</th>
                 <th className="text-left px-5 py-3.5 font-medium">Status</th>
                 <th className="text-right px-5 py-3.5 font-medium">Actions</th>
@@ -797,7 +857,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
             <tbody className="divide-y divide-border">
               {filteredCampaigns.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-5 py-12 text-center text-muted-foreground">
+                  <td colSpan={8} className="px-5 py-12 text-center text-muted-foreground">
                     No campaigns found. Click &quot;Create Campaign&quot; to configure a new campaign.
                   </td>
                 </tr>
@@ -855,17 +915,87 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                           </span>
                         </div>
                       </td>
-
-                      {/* Banners & Subtitles */}
+                      {/* Source Setup Status */}
                       <td className="px-5 py-4 text-xs">
-                        <div className="space-y-0.5">
-                          <span className="font-medium text-foreground">
-                            {cfg.numBottomBanners || 0} Banners
-                          </span>
-                          <span className="block text-[11px] text-muted-foreground">
-                            Subs: {cfg.enableSubtitles?.includes('Enabled') ? 'Yes' : 'Off'}
-                          </span>
-                        </div>
+                        {(() => {
+                          const ss = setupStatuses[c.id]
+                          if (!ss) return <span className="text-muted-foreground">Loading...</span>
+
+                          if (ss.status === 'downloading') {
+                            return (
+                              <div className="space-y-1">
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 animate-pulse">
+                                  <Loader2 size={11} className="animate-spin" />
+                                  <span>Downloading...</span>
+                                </span>
+                                <p className="text-[10px] text-muted-foreground truncate max-w-[160px]" title={ss.progress || ''}>
+                                  {ss.progress}
+                                </p>
+                              </div>
+                            )
+                          }
+
+                          if (ss.status === 'ready' || ss.status === 'completed') {
+                            return (
+                              <div className="space-y-0.5">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                  <CheckCircle2 size={11} />
+                                  <span>Ready</span>
+                                </span>
+                                <span className="block text-[11px] text-muted-foreground">
+                                  {ss.sourceCount} source(s) · {c.availableClips ?? 0} clips
+                                </span>
+                              </div>
+                            )
+                          }
+
+                          if (ss.status === 'error') {
+                            return (
+                              <div className="space-y-1">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-destructive/10 text-destructive border border-destructive/20">
+                                  <CircleAlert size={11} />
+                                  <span>Error</span>
+                                </span>
+                                <p className="text-[10px] text-destructive truncate max-w-[160px]" title={ss.error || ''}>
+                                  {ss.error}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRetriggerSetup(c.id)}
+                                  className="text-[10px] text-primary font-semibold hover:underline"
+                                >
+                                  ↻ Retry Setup
+                                </button>
+                              </div>
+                            )
+                          }
+
+                          if (ss.status === 'no_sources') {
+                            return (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-muted text-muted-foreground border border-border">
+                                <HardDriveDownload size={11} />
+                                <span>No URLs</span>
+                              </span>
+                            )
+                          }
+
+                          // pending
+                          return (
+                            <div className="space-y-1">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                                <Clock size={11} />
+                                <span>Pending</span>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleRetriggerSetup(c.id)}
+                                className="block text-[10px] text-primary font-semibold hover:underline"
+                              >
+                                ▶ Start Download
+                              </button>
+                            </div>
+                          )
+                        })()}
                       </td>
 
                       {/* User Access */}

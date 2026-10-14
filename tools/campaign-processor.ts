@@ -152,7 +152,7 @@ export async function runCampaignSetup(
 
   // ── Step 1: Download source videos ────────────────────────────────────────
   log('📥 Step 1/4: Downloading source videos...')
-  const sourceUrls: string = cfg.driveYoutubeUrls || ''
+  const sourceUrls: string = cfg.sourceVideoUrls || cfg.driveYoutubeUrls || ''
   let sourceVideoPaths: string[] = []
 
   if (sourceUrls) {
@@ -175,14 +175,16 @@ export async function runCampaignSetup(
   if (logoPath) logoPaths.push(logoPath)
 
   let hookPaths: string[] = []
-  if (cfg.hookUrls) {
-    const hookResults = await downloadDriveUrls(cfg.hookUrls, hooksDir, 'hook')
+  const hookUrls = cfg.hookVideoUrls || cfg.hookUrls || ''
+  if (hookUrls) {
+    const hookResults = await downloadDriveUrls(hookUrls, hooksDir, 'hook')
     hookPaths = hookResults.filter(r => r.success && r.filePath).map(r => r.filePath!)
   }
 
   let ctaPaths: string[] = []
-  if (cfg.ctaUrls) {
-    const ctaResults = await downloadDriveUrls(cfg.ctaUrls, ctasDir, 'cta')
+  const ctaUrls = cfg.ctaVideoUrls || cfg.ctaUrls || ''
+  if (ctaUrls) {
+    const ctaResults = await downloadDriveUrls(ctaUrls, ctasDir, 'cta')
     ctaPaths = ctaResults.filter(r => r.success && r.filePath).map(r => r.filePath!)
   }
 
