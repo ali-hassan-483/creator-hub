@@ -282,6 +282,25 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
     } catch {}
   }
 
+  async function handleGenerateClips(campaignId: string) {
+    try {
+      await fetch('/api/admin/campaigns/setup-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaignId, action: 'generate_clips' }),
+      })
+      setSetupStatuses((prev) => ({
+        ...prev,
+        [campaignId]: {
+          ...prev[campaignId],
+          clipStatus: 'generating',
+          clipProgress: '⚙️ Starting clip generation...',
+          clipError: null,
+        },
+      }))
+    } catch {}
+  }
+
   // Filter
   const filteredCampaigns = campaigns.filter((c) => {
     const matchesSearch =
@@ -1036,13 +1055,31 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                                         {ss.clipError}
                                       </p>
                                     )}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleGenerateClips(c.id)}
+                                      className="text-[10px] text-primary font-semibold hover:underline block"
+                                    >
+                                      ↻ Retry Clips
+                                    </button>
                                   </div>
                                 )}
                                 {ss.clipStatus === 'pending' && (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-muted text-muted-foreground border border-border">
-                                    <Clock size={10} />
-                                    <span>Pending</span>
-                                  </span>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-muted text-muted-foreground border border-border">
+                                      <Clock size={10} />
+                                      <span>Pending</span>
+                                    </span>
+                                    {ss.sourceCount > 0 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleGenerateClips(c.id)}
+                                        className="text-[10px] text-primary font-semibold hover:underline"
+                                      >
+                                        ▶ Generate
+                                      </button>
+                                    )}
+                                  </div>
                                 )}
                               </div>
                             </div>

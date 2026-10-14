@@ -112,6 +112,24 @@ services:
       redis:
         condition: service_healthy
 
+  # Continuous Clip Editor Background Worker (Target 300 Clips Pool)
+  worker-editor:
+    container_name: cap_worker_editor
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    command: npm run worker:editor
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@postgres:5432/content_platform
+      REDIS_URL: redis://redis:6379
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   redis_data:

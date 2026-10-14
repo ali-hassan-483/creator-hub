@@ -12,6 +12,7 @@ import {
   runCampaignSetup,
   countEditedClips,
 } from '@/tools/campaign-processor'
+import { maintainCampaignClipPool } from '@/tools/continuous-edit-engine'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,15 +24,93 @@ const activeSetups = new Map<string, {
   error?: string
 }>()
 
+// In-memory progress tracker for active clip generation
+const activeClipGenerations = new Map<string, {
+  status: 'generating' | 'completed' | 'error'
+  progress: string
+  startedAt: number
+  error?: string
+}>()
+
 export function getSetupTracker() {
   return activeSetups
 }
 
+export function getClipGenTracker() {
+  return activeClipGenerations
+}
+
 /**
- * Derive clip generation status from DB automations for a campaign.
+ * Trigger background clip generation using maintainCampaignClipPool
+ */
+export function triggerClipGeneration(campaignId: string, cfg: Record<string, any>) {
+  const existing = activeClipGenerations.get(campaignId)
+  if (existing && existing.status === 'generating') {
+    return false
+  }
+
+  activeClipGenerations.set(campaignId, {
+    status: 'generating',
+    progress: '⚙️ Starting clip generation engine...',
+    startedAt: Date.now(),
+  })
+
+  maintainCampaignClipPool(campaignId, cfg, (progress) => {
+    const entry = activeClipGenerations.get(campaignId)
+    if (entry) {
+      entry.progress = progress.lastMessage || `⚙️ Rendering clips (${progress.currentClips}/${progress.targetClips})...`
+      if (progress.status === 'completed') {
+        entry.status = 'completed'
+      } else if (progress.status === 'error') {
+        entry.status = 'error'
+        entry.error = progress.lastMessage
+      }
+    }
+  })
+    .then((count) => {
+      activeClipGenerations.set(campaignId, {
+        status: 'completed',
+        progress: `✅ ${count} clips ready in pool!`,
+        startedAt: activeClipGenerations.get(campaignId)?.startedAt || Date.now(),
+      })
+      console.log(`[ClipGen] ✅ Campaign ${campaignId} generated ${count} clips`)
+    })
+    .catch((err) => {
+      activeClipGenerations.set(campaignId, {
+        status: 'error',
+        progress: `❌ Clip generation error: ${err.message}`,
+        startedAt: activeClipGenerations.get(campaignId)?.startedAt || Date.now(),
+        error: err.message,
+      })
+      console.error(`[ClipGen] ❌ Campaign ${campaignId} clip gen failed:`, err.message)
+    })
+
+  return true
+}
+
+/**
+ * Derive clip generation status from active generator or DB automations for a campaign.
  */
 async function getClipStatus(campaignId: string, clipCount: number) {
-  // Check if any automation is currently running/queued for this campaign
+  // Check active in-memory clip generation first
+  const activeGen = activeClipGenerations.get(campaignId)
+  if (activeGen && activeGen.status === 'generating') {
+    return {
+      clipStatus: 'generating' as const,
+      clipProgress: activeGen.progress || `⚙️ Generating clips... (${clipCount} ready so far)`,
+      clipError: null,
+    }
+  }
+
+  if (activeGen && activeGen.status === 'error' && clipCount === 0) {
+    return {
+      clipStatus: 'error' as const,
+      clipProgress: null,
+      clipError: activeGen.error || 'Clip generation failed',
+    }
+  }
+
+  // Check if any DB automation is currently running/queued for this campaign
   const activeAutomation = await prisma.automation.findFirst({
     where: {
       campaignId,
@@ -58,7 +137,7 @@ async function getClipStatus(campaignId: string, clipCount: number) {
     orderBy: { createdAt: 'desc' },
   })
 
-  if (lastAutomation?.status === 'failed') {
+  if (lastAutomation?.status === 'failed' && clipCount === 0) {
     return {
       clipStatus: 'error',
       clipProgress: null,
@@ -218,7 +297,7 @@ export async function POST(req: NextRequest) {
   try {
     await requireAdmin()
 
-    const { campaignId, force } = await req.json()
+    const { campaignId, force, action } = await req.json()
     if (!campaignId) {
       return NextResponse.json({ error: 'campaignId is required' }, { status: 400 })
     }
@@ -231,6 +310,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
     }
 
+    const cfg = (campaign.config || {}) as Record<string, any>
+
+    // ── ACTION: Generate Clips Directly ──────────────────────────────────────
+    if (action === 'generate_clips') {
+      const sourcesDir = getSourcesDir(campaignId)
+      const sourceCount = fs.existsSync(sourcesDir)
+        ? fs.readdirSync(sourcesDir).filter(f => !f.startsWith('.')).length
+        : 0
+
+      if (sourceCount === 0) {
+        return NextResponse.json({
+          error: 'No source videos found. Please download source videos first.',
+        }, { status: 400 })
+      }
+
+      triggerClipGeneration(campaignId, {
+        ...cfg,
+        campaignName: campaign.name,
+        niche: cfg.niche || 'general',
+      })
+
+      return NextResponse.json({
+        message: 'Clip generation started in background!',
+        status: 'generating',
+        campaignId,
+      })
+    }
+
+    // ── ACTION: Setup / Source Download ──────────────────────────────────────
     // Check if already running
     const existing = activeSetups.get(campaignId)
     if (existing && existing.status === 'downloading' && !force) {
@@ -254,8 +362,6 @@ export async function POST(req: NextRequest) {
     if (fs.existsSync(flagPath)) {
       try { fs.unlinkSync(flagPath) } catch {}
     }
-
-    const cfg = (campaign.config || {}) as Record<string, any>
 
     // Mark as downloading
     activeSetups.set(campaignId, {
@@ -282,6 +388,13 @@ export async function POST(req: NextRequest) {
           startedAt: activeSetups.get(campaignId)?.startedAt || Date.now(),
         })
         console.log(`[CampaignSetup] ✅ ${campaign.name} (${campaignId}) setup complete`)
+
+        // 🚀 Auto-trigger clip generation once sources & transcripts are ready!
+        triggerClipGeneration(campaignId, {
+          ...cfg,
+          campaignName: campaign.name,
+          niche: cfg.niche || 'general',
+        })
       })
       .catch((err) => {
         activeSetups.set(campaignId, {
