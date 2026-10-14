@@ -35,10 +35,14 @@ interface SandboxResult {
   duration: number
 }
 
-export function AdminSandboxTestClient() {
-  const [campaigns, setCampaigns] = useState<CampaignOption[]>([])
-  const [selectedCampaignId, setSelectedCampaignId] = useState('')
-  const [loadingCampaigns, setLoadingCampaigns] = useState(true)
+interface AdminSandboxTestClientProps {
+  initialCampaigns?: CampaignOption[]
+}
+
+export function AdminSandboxTestClient({ initialCampaigns = [] }: AdminSandboxTestClientProps) {
+  const [campaigns, setCampaigns] = useState<CampaignOption[]>(initialCampaigns)
+  const [selectedCampaignId, setSelectedCampaignId] = useState(initialCampaigns[0]?.id || '')
+  const [loadingCampaigns, setLoadingCampaigns] = useState(initialCampaigns.length === 0)
 
   // Rendering state
   const [rendering, setRendering] = useState(false)
@@ -52,7 +56,11 @@ export function AdminSandboxTestClient() {
         const res = await fetch('/api/admin/campaigns')
         if (res.ok) {
           const data = await res.json()
-          setCampaigns(data.campaigns || [])
+          const list = Array.isArray(data) ? data : (data.campaigns || [])
+          setCampaigns(list)
+          if (!selectedCampaignId && list.length > 0) {
+            setSelectedCampaignId(list[0].id)
+          }
         }
       } catch (e: any) {
         console.error(e)
