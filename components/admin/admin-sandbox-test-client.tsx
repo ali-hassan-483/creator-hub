@@ -91,7 +91,15 @@ export function AdminSandboxTestClient({ initialCampaigns = [] }: AdminSandboxTe
         body: JSON.stringify({ campaignId: selectedCampaignId }),
       })
 
-      const data = await res.json()
+      const rawText = await res.text()
+      let data: any
+      try {
+        data = JSON.parse(rawText)
+      } catch {
+        const cleanMsg = rawText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300)
+        throw new Error(cleanMsg || `Server error (${res.status})`)
+      }
+
       if (!res.ok) throw new Error(data.error || 'Failed to render sandbox clip.')
 
       setResult(data)

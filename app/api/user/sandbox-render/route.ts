@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/auth-helpers'
+import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -68,10 +68,12 @@ export async function GET(req: NextRequest) {
  * Generates ONE test compiled clip for a selected campaign locally/VPS
  */
 export async function POST(req: NextRequest) {
-  const session = await requireAuth()
-  const userId = session.user.id
-
   try {
+    const session = await auth()
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized. Please log in to test sandbox clips.' }, { status: 401 })
+    }
+    const userId = session.user.id
     const { campaignId } = await req.json()
     if (!campaignId) {
       return NextResponse.json({ error: 'Please select a campaign' }, { status: 400 })
