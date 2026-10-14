@@ -328,7 +328,8 @@ export async function burnSubtitlesIntoVideo(
     process.env.FFMPEG_PATH || 'ffmpeg',
     `-i "${inputVideo}"`,
     `-vf "ass='${safeAssPath}'"`,
-    `-c:v libx264 -preset fast -crf 23`,
+    `-c:v libx264 -preset veryfast -crf 23`,
+    `-threads 0`,
     `-c:a copy`,
     `-y "${outputVideo}"`,
   ].join(' ')

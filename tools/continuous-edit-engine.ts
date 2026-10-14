@@ -303,6 +303,7 @@ export async function maintainCampaignClipPool(
       outputPath: rawClipPath,
       startTime: slice.startTime,
       endTime: slice.endTime,
+      preset: 'veryfast',
       hookPath,
       ctaPath,
       backgroundStyle: backgroundStyles,
