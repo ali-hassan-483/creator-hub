@@ -1,0 +1,478 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  admin
+  user
+}
+
+enum ChannelStatus {
+  active
+  inactive
+  error
+  pending
+}
+
+enum CampaignStatus {
+  draft
+  active
+  paused
+  ended
+}
+
+enum AutomationStatus {
+  queued
+  running
+  completed
+  failed
+  cancelled
+}
+
+enum AutomationRunType {
+  immediate
+  scheduled
+}
+
+enum ScheduleRecurrence {
+  once
+  daily
+  weekly
+  custom
+}
+
+enum ScheduleStatus {
+  active
+  paused
+  completed
+  cancelled
+}
+
+enum CredentialStatus {
+  active
+  expired
+  invalid
+}
+
+enum TaskStatus {
+  pending
+  requirements_completed
+  ready_for_review
+  approved
+  rejected
+}
+
+enum EarningStatus {
+  pending
+  confirmed
+  paid
+}
+
+// ─── Users & Auth ────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String    @map("password_hash")
+  role          Role      @default(user)
+  name          String?
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  lastLoginAt   DateTime? @map("last_login_at")
+
+  // Relations
+  assignedIp         IpAddress?              @relation("UserIp")
+  channels           Channel[]
+  campaignAccess     CampaignUserAccess[]
+  credentials        Credential[]
+  geminiConfig       GeminiConfig?
+  discordConfig      DiscordConfig?
+  automations        Automation[]
+  scheduledAutos     ScheduledAutomation[]
+  analyticsSnapshots AnalyticsSnapshot[]
+  pendingTasks       PendingTask[]           @relation("TaskUser")
+  reviewedTasks      PendingTask[]           @relation("TaskReviewer")
+  taskHistory        TaskStatusHistory[]
+  earnings           Earning[]
+  activityLogs       ActivityLog[]
+  campaignsCreated   Campaign[]
+
+  @@map("users")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+
+  @@map("sessions")
+}
+
+// ─── IP / VPS Management ─────────────────────────────────────────────────────
+
+model IpAddress {
+  id          String    @id @default(cuid())
+  ipAddress   String    @map("ip_address")
+  port        Int?
+  username    String?
+  passwordEnc String?   @map("password_enc") // AES-256-GCM encrypted
+  label       String?
+  notes       String?
+  isAvailable Boolean   @default(true) @map("is_available")
+  assignedTo  String?   @unique @map("assigned_to")
+  assignedAt  DateTime? @map("assigned_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  user User? @relation("UserIp", fields: [assignedTo], references: [id])
+
+  @@map("ip_addresses")
+}
+
+// ─── Channels ─────────────────────────────────────────────────────────────────
+
+model Channel {
+  id              String        @id @default(cuid())
+  userId          String        @map("user_id")
+  channelIdExt    String?       @map("channel_id_ext") // External platform ID (UC...)
+  channelName     String?       @map("channel_name")
+  channelHandle   String?       @map("channel_handle") // e.g. @MyChannel
+  channelEmail    String?       @map("channel_email")  // YouTube account email
+  whopEmail       String?       @map("whop_email")     // Associated Whop account email
+  niche           String?                              // e.g. Gaming, Tech, Finance
+  clientId        String?       @map("client_id")      // Google OAuth Client ID
+  clientSecretEnc String?       @map("client_secret_enc") // Encrypted Client Secret
+  refreshTokenEnc String?       @map("refresh_token_enc") // Encrypted Refresh Token
+  platform        String        @default("youtube")
+  status          ChannelStatus @default(active)
+  extraData       Json?         @map("extra_data")
+  addedAt         DateTime      @default(now()) @map("added_at")
+  removedAt       DateTime?     @map("removed_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  user               User                         @relation(fields: [userId], references: [id])
+  automationChannels AutomationChannel[]
+  scheduledChannels  ScheduledAutomationChannel[]
+  analyticsSnapshots AnalyticsSnapshot[]
+  videoAnalytics     VideoAnalytic[]
+  pendingTasks       PendingTask[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([addedAt])
+  @@map("channels")
+}
+
+// ─── Campaigns ────────────────────────────────────────────────────────────────
+
+model Campaign {
+  id          String         @id @default(cuid())
+  name        String
+  description String?
+  status      CampaignStatus @default(draft)
+  minViews    Int?           @map("min_views")
+  config      Json? // TBD campaign-specific fields
+  createdBy   String         @map("created_by")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  creator       User                 @relation(fields: [createdBy], references: [id])
+  userAccess    CampaignUserAccess[]
+  automations   Automation[]
+  scheduledAutos ScheduledAutomation[]
+  pendingTasks  PendingTask[]
+  earnings      Earning[]
+
+  @@map("campaigns")
+}
+
+model CampaignUserAccess {
+  id         String   @id @default(cuid())
+  campaignId String   @map("campaign_id")
+  userId     String   @map("user_id")
+  grantedAt  DateTime @default(now()) @map("granted_at")
+
+  campaign Campaign @relation(fields: [campaignId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@unique([campaignId, userId])
+  @@map("campaign_user_access")
+}
+
+// ─── Credentials ──────────────────────────────────────────────────────────────
+
+model Credential {
+  id             String           @id @default(cuid())
+  userId         String           @map("user_id")
+  credentialType String           @map("credential_type") // e.g. 'youtube_email'
+  label          String?
+  email          String?
+  cookiesEnc     String?          @map("cookies_enc") // AES-256-GCM encrypted
+  extraEnc       String?          @map("extra_enc") // AES-256-GCM encrypted
+  status         CredentialStatus @default(active)
+  lastUsedAt     DateTime?        @map("last_used_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  user                  User                   @relation(fields: [userId], references: [id])
+  automationCredentials AutomationCredential[]
+
+  @@index([userId])
+  @@index([credentialType])
+  @@map("credentials")
+}
+
+// ─── Gemini Config ────────────────────────────────────────────────────────────
+
+model GeminiConfig {
+  id        String   @id @default(cuid())
+  userId    String   @unique @map("user_id")
+  apiKeyEnc String?  @map("api_key_enc") // AES-256-GCM encrypted
+  config    Json? // TBD Gemini-specific fields
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("gemini_configs")
+}
+
+// ─── Discord Config ───────────────────────────────────────────────────────────
+
+model DiscordConfig {
+  id            String   @id @default(cuid())
+  userId        String   @unique @map("user_id")
+  webhookUrlEnc String?  @map("webhook_url_enc") // AES-256-GCM encrypted
+  label         String?
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("discord_configs")
+}
+
+// ─── Automations ──────────────────────────────────────────────────────────────
+
+model Automation {
+  id           String            @id @default(cuid())
+  userId       String            @map("user_id")
+  campaignId   String?           @map("campaign_id")
+  name         String?
+  runType      AutomationRunType @map("run_type")
+  status       AutomationStatus  @default(queued)
+  options      Json?
+  startedAt    DateTime?         @map("started_at")
+  completedAt  DateTime?         @map("completed_at")
+  errorMessage String?           @map("error_message")
+  workerJobId  String?           @map("worker_job_id")
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+
+  user        User                   @relation(fields: [userId], references: [id])
+  campaign    Campaign?              @relation(fields: [campaignId], references: [id])
+  channels    AutomationChannel[]
+  credentials AutomationCredential[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("automations")
+}
+
+model AutomationChannel {
+  id           String @id @default(cuid())
+  automationId String @map("automation_id")
+  channelId    String @map("channel_id")
+
+  automation Automation @relation(fields: [automationId], references: [id])
+  channel    Channel    @relation(fields: [channelId], references: [id])
+
+  @@map("automation_channels")
+}
+
+model AutomationCredential {
+  id           String @id @default(cuid())
+  automationId String @map("automation_id")
+  credentialId String @map("credential_id")
+
+  automation Automation @relation(fields: [automationId], references: [id])
+  credential Credential @relation(fields: [credentialId], references: [id])
+
+  @@map("automation_credentials")
+}
+
+// ─── Scheduled Automations ───────────────────────────────────────────────────
+
+model ScheduledAutomation {
+  id             String             @id @default(cuid())
+  userId         String             @map("user_id")
+  campaignId     String?            @map("campaign_id")
+  name           String?
+  cronExpression String?            @map("cron_expression")
+  scheduledTime  DateTime?          @map("scheduled_time")
+  recurrenceType ScheduleRecurrence @default(once) @map("recurrence_type")
+  status         ScheduleStatus     @default(active)
+  options        Json?
+  lastRunAt      DateTime?          @map("last_run_at")
+  nextRunAt      DateTime?          @map("next_run_at")
+  bullmqJobId    String?            @map("bullmq_job_id")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  user     User                         @relation(fields: [userId], references: [id])
+  campaign Campaign?                    @relation(fields: [campaignId], references: [id])
+  channels ScheduledAutomationChannel[]
+
+  @@index([userId])
+  @@map("scheduled_automations")
+}
+
+model ScheduledAutomationChannel {
+  id                    String @id @default(cuid())
+  scheduledAutomationId String @map("scheduled_automation_id")
+  channelId             String @map("channel_id")
+
+  scheduledAutomation ScheduledAutomation @relation(fields: [scheduledAutomationId], references: [id])
+  channel             Channel             @relation(fields: [channelId], references: [id])
+
+  @@map("scheduled_automation_channels")
+}
+
+// ─── Analytics ────────────────────────────────────────────────────────────────
+
+model AnalyticsSnapshot {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  channelId  String   @map("channel_id")
+  fetchedAt  DateTime @default(now()) @map("fetched_at")
+  videosData Json?    @map("videos_data")
+
+  user    User    @relation(fields: [userId], references: [id])
+  channel Channel @relation(fields: [channelId], references: [id])
+
+  @@index([userId])
+  @@index([channelId])
+  @@map("analytics_snapshots")
+}
+
+model VideoAnalytic {
+  id            String    @id @default(cuid())
+  channelId     String    @map("channel_id")
+  videoIdExt    String    @map("video_id_ext")
+  title         String?
+  publishedAt   DateTime? @map("published_at")
+  viewCount     BigInt    @default(0) @map("view_count")
+  extraData     Json?     @map("extra_data")
+  lastFetchedAt DateTime? @map("last_fetched_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  channel      Channel       @relation(fields: [channelId], references: [id])
+  pendingTasks PendingTask[]
+
+  @@unique([channelId, videoIdExt])
+  @@index([channelId])
+  @@index([viewCount])
+  @@map("video_analytics")
+}
+
+// ─── Pending Tasks ────────────────────────────────────────────────────────────
+
+model PendingTask {
+  id                 String     @id @default(cuid())
+  userId             String     @map("user_id")
+  campaignId         String     @map("campaign_id")
+  channelId          String     @map("channel_id")
+  videoId            String?    @map("video_id")
+  videoIdExt         String?    @map("video_id_ext")
+  viewCountAtTrigger BigInt?    @map("view_count_at_trigger")
+  status             TaskStatus @default(pending)
+  requirementsData   Json?      @map("requirements_data") // TBD proof fields
+  notes              String?
+  reviewedBy         String?    @map("reviewed_by")
+  reviewedAt         DateTime?  @map("reviewed_at")
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @updatedAt @map("updated_at")
+
+  user     User              @relation("TaskUser", fields: [userId], references: [id])
+  campaign Campaign          @relation(fields: [campaignId], references: [id])
+  channel  Channel           @relation(fields: [channelId], references: [id])
+  video    VideoAnalytic?    @relation(fields: [videoId], references: [id])
+  reviewer User?             @relation("TaskReviewer", fields: [reviewedBy], references: [id])
+  history  TaskStatusHistory[]
+  earnings Earning[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("pending_tasks")
+}
+
+model TaskStatusHistory {
+  id             String   @id @default(cuid())
+  taskId         String   @map("task_id")
+  previousStatus String?  @map("previous_status")
+  newStatus      String   @map("new_status")
+  changedBy      String?  @map("changed_by")
+  notes          String?
+  changedAt      DateTime @default(now()) @map("changed_at")
+
+  task    PendingTask @relation(fields: [taskId], references: [id])
+  changer User?       @relation(fields: [changedBy], references: [id])
+
+  @@index([taskId])
+  @@map("task_status_history")
+}
+
+// ─── Earnings ─────────────────────────────────────────────────────────────────
+
+model Earning {
+  id              String        @id @default(cuid())
+  userId          String        @map("user_id")
+  campaignId      String?       @map("campaign_id")
+  taskId          String?       @map("task_id")
+  amount          Decimal       @db.Decimal(12, 4)
+  currency        String        @default("USD")
+  status          EarningStatus @default(pending)
+  calculationData Json?         @map("calculation_data") // TBD earning logic
+  notes           String?
+  earnedAt        DateTime?     @map("earned_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  user     User         @relation(fields: [userId], references: [id])
+  campaign Campaign?    @relation(fields: [campaignId], references: [id])
+  task     PendingTask? @relation(fields: [taskId], references: [id])
+
+  @@index([userId])
+  @@map("earnings")
+}
+
+// ─── Activity Logs ────────────────────────────────────────────────────────────
+
+model ActivityLog {
+  id         String   @id @default(cuid())
+  userId     String?  @map("user_id")
+  action     String
+  entityType String?  @map("entity_type")
+  entityId   String?  @map("entity_id")
+  metadata   Json?
+  ipAddr     String?  @map("ip_addr")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("activity_logs")
+}

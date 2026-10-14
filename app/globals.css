@@ -1,0 +1,196 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 216 28% 96%; /* #f0f3f8 */
+    --foreground: 222 24% 22%; /* #2b3345 */
+    --card: 216 28% 96%;       /* #f0f3f8 */
+    --card-foreground: 222 24% 22%;
+    --popover: 216 28% 96%;
+    --popover-foreground: 222 24% 22%;
+    --primary: 262 83% 58%;    /* Purple accent #7c3aed */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 20% 92%;
+    --secondary-foreground: 222 24% 22%;
+    --muted: 220 20% 92%;
+    --muted-foreground: 218 16% 52%;
+    --accent: 220 20% 92%;
+    --accent-foreground: 222 24% 22%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 220 20% 88%;
+    --input: 220 20% 88%;
+    --ring: 262 83% 58%;
+    --radius: 1rem;
+    --sidebar-background: 216 28% 96%;
+    --sidebar-foreground: 222 24% 22%;
+    --sidebar-primary: 262 83% 58%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 20% 90%;
+    --sidebar-accent-foreground: 222 24% 22%;
+    --sidebar-border: 220 20% 88%;
+    --sidebar-ring: 262 83% 58%;
+  }
+
+  .dark {
+    --background: 222 20% 10%; /* #13161c */
+    --foreground: 210 40% 98%;
+    --card: 222 20% 12%;       /* #181c24 */
+    --card-foreground: 210 40% 98%;
+    --popover: 222 20% 12%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 262 83% 62%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 222 20% 18%;
+    --input: 222 20% 18%;
+    --ring: 262 83% 62%;
+    --sidebar-background: 222 20% 10%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-primary: 262 83% 62%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 222 20% 14%;
+    --sidebar-accent-foreground: 210 40% 96%;
+    --sidebar-border: 222 20% 16%;
+    --sidebar-ring: 262 83% 62%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-[#f0f3f8] dark:bg-[#13161c] text-foreground;
+  }
+}
+
+/* 🎨 Neumorphic Design System Utilities */
+.neu-flat {
+  background: #f0f3f8;
+  box-shadow: 6px 6px 14px rgba(166, 175, 195, 0.55), -6px -6px 14px rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+}
+
+.dark .neu-flat {
+  background: #181c24;
+  box-shadow: 6px 6px 14px rgba(10, 12, 16, 0.7), -6px -6px 14px rgba(35, 41, 53, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.neu-pressed {
+  background: #ebedf2;
+  box-shadow: inset 3px 3px 6px rgba(166, 175, 195, 0.6), inset -3px -3px 6px rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(166, 175, 195, 0.25);
+}
+
+.dark .neu-pressed {
+  background: #14171e;
+  box-shadow: inset 3px 3px 6px rgba(10, 12, 16, 0.8), inset -3px -3px 6px rgba(35, 41, 53, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.neu-button {
+  background: #f0f3f8;
+  box-shadow: 4px 4px 10px rgba(166, 175, 195, 0.5), -4px -4px 10px rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  transition: all 0.15s ease-in-out;
+}
+
+.neu-button:hover {
+  box-shadow: 2px 2px 5px rgba(166, 175, 195, 0.6), -2px -2px 5px rgba(255, 255, 255, 0.95);
+  transform: translateY(1px);
+}
+
+.neu-button:active {
+  box-shadow: inset 3px 3px 6px rgba(166, 175, 195, 0.6), inset -3px -3px 6px rgba(255, 255, 255, 0.9);
+  transform: translateY(2px);
+}
+
+.dark .neu-button {
+  background: #1e232d;
+  box-shadow: 4px 4px 10px rgba(10, 12, 16, 0.7), -4px -4px 10px rgba(35, 41, 53, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.dark .neu-button:active {
+  box-shadow: inset 3px 3px 6px rgba(10, 12, 16, 0.8), inset -3px -3px 6px rgba(35, 41, 53, 0.4);
+}
+
+.neu-primary-button {
+  background: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%);
+  box-shadow: 4px 4px 12px rgba(124, 58, 237, 0.35), -3px -3px 8px rgba(255, 255, 255, 0.5);
+  color: white;
+  transition: all 0.15s ease-in-out;
+}
+
+.neu-primary-button:hover {
+  box-shadow: 2px 2px 6px rgba(124, 58, 237, 0.45);
+  transform: translateY(1px);
+}
+
+.neu-primary-button:active {
+  box-shadow: inset 2px 2px 6px rgba(0, 0, 0, 0.3);
+  transform: translateY(2px);
+}
+
+/* 🌟 Global Neumorphism Mapping across ALL pages */
+.bg-card {
+  background: #f0f3f8 !important;
+  box-shadow: 6px 6px 14px rgba(166, 175, 195, 0.55), -6px -6px 14px rgba(255, 255, 255, 0.95) !important;
+  border: 1px solid rgba(255, 255, 255, 0.7) !important;
+  border-radius: 1.5rem !important;
+}
+
+.dark .bg-card {
+  background: #181c24 !important;
+  box-shadow: 6px 6px 14px rgba(10, 12, 16, 0.7), -6px -6px 14px rgba(35, 41, 53, 0.5) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Sunken Neumorphic Inputs & Textareas */
+input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]),
+textarea,
+select {
+  background: #ebedf2 !important;
+  box-shadow: inset 3px 3px 6px rgba(166, 175, 195, 0.6), inset -3px -3px 6px rgba(255, 255, 255, 0.9) !important;
+  border: 1px solid rgba(166, 175, 195, 0.25) !important;
+  border-radius: 0.85rem !important;
+}
+
+.dark input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]),
+.dark textarea,
+.dark select {
+  background: #14171e !important;
+  box-shadow: inset 3px 3px 6px rgba(10, 12, 16, 0.8), inset -3px -3px 6px rgba(35, 41, 53, 0.4) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Primary Action Buttons */
+.bg-primary {
+  background: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%) !important;
+  box-shadow: 4px 4px 12px rgba(124, 58, 237, 0.35), -3px -3px 8px rgba(255, 255, 255, 0.5) !important;
+  color: white !important;
+  border: none !important;
+  border-radius: 0.85rem !important;
+  transition: all 0.15s ease-in-out !important;
+}
+
+.bg-primary:hover {
+  box-shadow: 2px 2px 6px rgba(124, 58, 237, 0.45) !important;
+  transform: translateY(1px);
+}
+
+.bg-primary:active {
+  box-shadow: inset 2px 2px 6px rgba(0, 0, 0, 0.3) !important;
+  transform: translateY(2px);
+}
