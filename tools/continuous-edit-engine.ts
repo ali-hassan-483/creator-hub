@@ -181,11 +181,11 @@ export async function maintainCampaignClipPool(
   let batchMetadataIndex = 0
 
   const refreshBatchMetadata = async () => {
-    log('🤖 Fetching batch of 50 metadata sets from Gemini (using Title/Desc/OnScreen guidelines only, NO script)...')
+    log('🤖 Fetching batch of 15 metadata sets from AI (using Title/Desc/OnScreen guidelines only)...')
     try {
-      batchMetadataPool = await generateBatchMetadataFromGuidelines(50, metaConfig)
+      batchMetadataPool = await generateBatchMetadataFromGuidelines(15, metaConfig)
       batchMetadataIndex = 0
-      log(`✅ Batch of ${batchMetadataPool.length} metadata sets received from Gemini in ONE API call.`)
+      log(`✅ Batch of ${batchMetadataPool.length} metadata sets received in ONE API call.`)
     } catch (err: any) {
       log(`⚠️ Failed to generate batch metadata: ${err.message}`)
     }
