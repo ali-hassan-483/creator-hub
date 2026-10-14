@@ -35,20 +35,37 @@ export async function GET() {
       },
     })
 
-    const formatted = campaigns.map((c) => ({
-      id: c.id,
-      name: c.name,
-      description: c.description,
-      status: c.status,
-      minViews: c.minViews,
-      config: c.config,
-      createdAt: c.createdAt.toISOString(),
-      updatedAt: c.updatedAt.toISOString(),
-      assignedUsers: c.userAccess.map((ua) => ua.user),
-      pendingTasksCount: c._count.pendingTasks,
-      automationsCount: c._count.automations,
-      earningsCount: c._count.earnings,
-    }))
+    const { countEditedClips, getSourcesDir } = await import('@/tools/campaign-processor')
+    const fs = await import('fs')
+
+    const formatted = campaigns.map((c) => {
+      let editedClipsCount = 0
+      let sourceFilesCount = 0
+      try {
+        editedClipsCount = countEditedClips(c.id)
+        const sourcesDir = getSourcesDir(c.id)
+        if (fs.existsSync(sourcesDir)) {
+          sourceFilesCount = fs.readdirSync(sourcesDir).filter((f) => !f.startsWith('.')).length
+        }
+      } catch {}
+
+      return {
+        id: c.id,
+        name: c.name,
+        description: c.description,
+        status: c.status,
+        minViews: c.minViews,
+        config: c.config,
+        createdAt: c.createdAt.toISOString(),
+        updatedAt: c.updatedAt.toISOString(),
+        assignedUsers: c.userAccess.map((ua) => ua.user),
+        pendingTasksCount: c._count.pendingTasks,
+        automationsCount: c._count.automations,
+        earningsCount: c._count.earnings,
+        availableClips: editedClipsCount,
+        sourceFilesCount,
+      }
+    })
 
     return NextResponse.json(formatted)
   } catch (err: any) {

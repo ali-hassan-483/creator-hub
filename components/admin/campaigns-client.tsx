@@ -6,7 +6,7 @@ import {
   CheckCircle2, PauseCircle, Clock, AlertCircle,
   Eye, Settings, Layers, Download, Sparkles, RefreshCw,
   FileSpreadsheet, FileJson, Check, ExternalLink, HelpCircle,
-  Type, Palette, Film, Captions, Link as LinkIcon, Image, Sliders, Upload
+  Type, Palette, Film, Captions, Link as LinkIcon, Image, Sliders, Upload, Edit
 } from 'lucide-react'
 
 interface UserOption {
@@ -27,6 +27,8 @@ interface CampaignItem {
   pendingTasksCount: number
   automationsCount: number
   earningsCount: number
+  availableClips?: number
+  sourceFilesCount?: number
 }
 
 interface CampaignsClientProps {
@@ -194,6 +196,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
 
   // Modals
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [editingCampaign, setEditingCampaign] = useState<CampaignItem | null>(null)
   const [accessModalCampaign, setAccessModalCampaign] = useState<CampaignItem | null>(null)
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [uploadModalCampaign, setUploadModalCampaign] = useState<CampaignItem | null>(null)
@@ -477,27 +480,51 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
     }
 
     try {
-      const res = await fetch('/api/admin/campaigns', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: formData.name.trim(),
-          description: formData.audioNotes || null,
-          status: formData.status,
-          minViews: Number(formData.minViews) || 0,
-          config,
-          assignAllUsers: formData.assignAllUsers,
-          assignedUserIds: formData.assignAllUsers ? [] : formData.assignedUserIds,
-        }),
-      })
+      if (editingCampaign) {
+        // Edit existing campaign
+        const res = await fetch(`/api/admin/campaigns/${editingCampaign.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: formData.name.trim(),
+            description: formData.audioNotes || null,
+            status: formData.status,
+            minViews: Number(formData.minViews) || 0,
+            config,
+            assignAllUsers: formData.assignAllUsers,
+            assignedUserIds: formData.assignAllUsers ? [] : formData.assignedUserIds,
+          }),
+        })
 
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Failed to create campaign')
+        if (!res.ok) {
+          const data = await res.json()
+          throw new Error(data.error || 'Failed to update campaign')
+        }
+      } else {
+        // Create new campaign
+        const res = await fetch('/api/admin/campaigns', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: formData.name.trim(),
+            description: formData.audioNotes || null,
+            status: formData.status,
+            minViews: Number(formData.minViews) || 0,
+            config,
+            assignAllUsers: formData.assignAllUsers,
+            assignedUserIds: formData.assignAllUsers ? [] : formData.assignedUserIds,
+          }),
+        })
+
+        if (!res.ok) {
+          const data = await res.json()
+          throw new Error(data.error || 'Failed to create campaign')
+        }
       }
 
       await refreshCampaigns()
       setIsCreateOpen(false)
+      setEditingCampaign(null)
       setFormData(defaultFormState)
       setAiMessage('')
     } catch (err: any) {
@@ -505,6 +532,80 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
     } finally {
       setLoading(false)
     }
+  }
+
+  function handleOpenEdit(c: CampaignItem) {
+    const cfg = c.config || {}
+    setEditingCampaign(c)
+    setError('')
+    setAiMessage('')
+
+    setFormData({
+      ...defaultFormState,
+      name: c.name || '',
+      status: c.status || 'active',
+      minViews: c.minViews || 0,
+      briefContent: cfg.briefContent || '',
+      dailyPostLimit: cfg.dailyPostLimit ?? 45,
+      whopChannelName: cfg.whopChannelName || '',
+      subcampaignGid: cfg.subcampaignGid || '',
+      niche: cfg.niche || 'Gaming',
+      discordChannelId: cfg.discordChannelId || '',
+      youtubeTargetMode: cfg.youtubeTargetMode || 'specific_channel',
+      targetYoutubeChannelId: cfg.targetYoutubeChannelId || '',
+      sourceVideoUrls: cfg.sourceVideoUrls || '',
+      specifyTimeRanges: cfg.specifyTimeRanges ?? false,
+      minEngagementRate: cfg.minEngagementRate ?? 0,
+      audioNotes: cfg.audioNotes || c.description || '',
+      clippingStrategies: Array.isArray(cfg.clippingStrategies) ? cfg.clippingStrategies : ['multi_cut'],
+      shortDuration: cfg.shortDuration ?? 25,
+      startOffset: cfg.startOffset ?? 0,
+      volumeMultiplier: cfg.volumeMultiplier ?? 1.0,
+      hookVideoUrls: cfg.hookVideoUrls || '',
+      ctaVideoUrls: cfg.ctaVideoUrls || '',
+      onScreenTextPool: cfg.onScreenTextPool || '',
+      singleOnScreenTextOnly: cfg.singleOnScreenTextOnly ?? false,
+      ftcDisclosure: cfg.ftcDisclosure || '',
+      onScreenTextAiGuide: cfg.onScreenTextAiGuide || '',
+      onScreenMaxCharacters: cfg.onScreenMaxCharacters ?? 50,
+      titlesAiGuide: cfg.titlesAiGuide || '',
+      descriptionsAiGuide: cfg.descriptionsAiGuide || '',
+      maxTitleCharacters: cfg.maxTitleCharacters ?? 60,
+      predefinedDescription: cfg.predefinedDescription || '',
+      useOnlyPredefinedDesc: cfg.useOnlyPredefinedDesc ?? false,
+      linksInDescription: cfg.linksInDescription || '',
+      logoOverlayUrl: cfg.logoOverlayUrl || '',
+      overlayPosition: cfg.overlayPosition || 'top-left',
+      overlayWidthPercent: cfg.overlayWidthPercent ?? 60,
+      numBottomBanners: cfg.numBottomBanners ?? 0,
+      banners: Array.isArray(cfg.banners) && cfg.banners.length > 0 ? cfg.banners : defaultBanners,
+      onScreenFontName: cfg.onScreenFontName || 'Montenegrin Gothic One',
+      useSameFontForBannersAndSubs: cfg.useSameFontForBannersAndSubs ?? false,
+      onScreenTextColor: cfg.onScreenTextColor || 'white',
+      onScreenPositionHeightPercent: cfg.onScreenPositionHeightPercent ?? 27,
+      onScreenSizePx: cfg.onScreenSizePx ?? 64,
+      onScreenBackground: cfg.onScreenBackground || 'black@0.5',
+      onScreenStyledWordCount: cfg.onScreenStyledWordCount ?? 0,
+      onScreenStyledWordsColor: cfg.onScreenStyledWordsColor || 'yellow',
+      useSameForSpeakingWordHighlight: cfg.useSameForSpeakingWordHighlight ?? false,
+      backgroundStyles: Array.isArray(cfg.backgroundStyles) ? cfg.backgroundStyles : ['Split Mirror Blur'],
+      foregroundCornerStyles: Array.isArray(cfg.foregroundCornerStyles) ? cfg.foregroundCornerStyles : ['Sharp Rectangular Edges'],
+      enableSubtitles: cfg.enableSubtitles || 'Disabled (Fallback to AI Captions)',
+      subtitleFonts: cfg.subtitleFonts || 'Montenegrin Gothic One',
+      subtitleColors: cfg.subtitleColors || 'white',
+      outlineColors: cfg.outlineColors || 'black',
+      subtitleWordSize: cfg.subtitleWordSize ?? 100,
+      subtitlesPlacementHeightPercent: cfg.subtitlesPlacementHeightPercent ?? 80,
+      maxWordsPerScreen: cfg.maxWordsPerScreen ?? 5,
+      speakingWordHighlight: cfg.speakingWordHighlight || 'yellow',
+      subtitleTextCases: Array.isArray(cfg.subtitleTextCases) ? cfg.subtitleTextCases : ['ALL UPPERCASE'],
+      adminGuideLinks: cfg.adminGuideLinks || '',
+      useStylingPresets: cfg.useStylingPresets ?? false,
+      assignAllUsers: c.assignedUsers.length === 0,
+      assignedUserIds: c.assignedUsers.map((u) => u.id),
+    })
+
+    setIsCreateOpen(true)
   }
 
   // Export Campaigns Handler
@@ -800,14 +901,32 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                       {/* Actions */}
                       <td className="px-5 py-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          {/* Available Clips Badge in Admin */}
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
+                            title="Total edited clips ready for submission"
+                          >
+                            <Film size={12} />
+                            <span>{c.availableClips ?? 0} Clips</span>
+                          </span>
+
                           <button
                             onClick={() => handleOpenUploadModal(c)}
                             className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md bg-purple-500/10 text-purple-600 dark:text-purple-400 hover:bg-purple-500/20 transition-colors"
                             title="Upload Source Videos or Clips directly to VPS"
                           >
                             <Upload size={13} />
-                            <span>Upload Clips</span>
+                            <span>Upload</span>
                           </button>
+
+                          <button
+                            onClick={() => handleOpenEdit(c)}
+                            className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md transition-colors"
+                            title="Edit Campaign"
+                          >
+                            <Edit size={15} />
+                          </button>
+
                           <button
                             onClick={() => handleDelete(c.id)}
                             className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
@@ -826,20 +945,27 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
         </div>
       </div>
 
-      {/* CREATE CAMPAIGN MODAL (Screenshots 1 through 5) */}
+      {/* CREATE / EDIT CAMPAIGN MODAL (Screenshots 1 through 5) */}
       {isCreateOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
           <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-4xl w-full p-6 space-y-6 max-h-[92vh] overflow-y-auto">
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-border">
               <div>
-                <h3 className="text-xl font-bold text-foreground">Create Campaign</h3>
+                <h3 className="text-xl font-bold text-foreground">
+                  {editingCampaign ? 'Edit Campaign' : 'Create Campaign'}
+                </h3>
                 <p className="text-xs text-muted-foreground">
-                  Configure clipping strategy, submission targets, source video links, bottom banners, subtitles, and styling.
+                  {editingCampaign
+                    ? `Update settings, clipping strategies, banners, or subtitles for "${editingCampaign.name}"`
+                    : 'Configure clipping strategy, submission targets, source video links, bottom banners, subtitles, and styling.'}
                 </p>
               </div>
               <button
-                onClick={() => setIsCreateOpen(false)}
+                onClick={() => {
+                  setIsCreateOpen(false)
+                  setEditingCampaign(null)
+                }}
                 className="text-muted-foreground hover:text-foreground text-sm p-1 rounded-md hover:bg-muted"
               >
                 ✕
@@ -1896,7 +2022,9 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                   disabled={loading}
                   className="px-6 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors shadow-sm"
                 >
-                  {loading ? 'Saving Campaign...' : 'Save Campaign'}
+                  {loading
+                    ? (editingCampaign ? 'Updating Campaign...' : 'Saving Campaign...')
+                    : (editingCampaign ? 'Update Campaign' : 'Save Campaign')}
                 </button>
               </div>
             </form>

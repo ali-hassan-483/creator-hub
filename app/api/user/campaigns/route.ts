@@ -27,7 +27,29 @@ export async function GET() {
       },
     })
 
-    return NextResponse.json(campaigns)
+    // Add available clips count for each campaign
+    const { countEditedClips, getSourcesDir } = await import('@/tools/campaign-processor')
+    const fs = await import('fs')
+
+    const enriched = campaigns.map((c) => {
+      let editedClipsCount = 0
+      let sourceFilesCount = 0
+      try {
+        editedClipsCount = countEditedClips(c.id)
+        const sourcesDir = getSourcesDir(c.id)
+        if (fs.existsSync(sourcesDir)) {
+          sourceFilesCount = fs.readdirSync(sourcesDir).filter((f) => !f.startsWith('.')).length
+        }
+      } catch {}
+
+      return {
+        ...c,
+        availableClips: editedClipsCount,
+        sourceFilesCount,
+      }
+    })
+
+    return NextResponse.json(enriched)
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 })
   }

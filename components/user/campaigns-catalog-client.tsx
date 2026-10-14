@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import {
   Megaphone, Eye, Zap, Search, CheckCircle2,
-  AlertCircle, ArrowRight, FileText, Sparkles, Clock, ExternalLink
+  AlertCircle, ArrowRight, FileText, Sparkles, Clock, ExternalLink, Film
 } from 'lucide-react'
 
 interface UserCampaignItem {
@@ -92,13 +92,21 @@ export function CampaignsCatalogClient({ initialCampaigns }: CampaignsCatalogCli
                   {c.description || 'No detailed instructions provided.'}
                 </p>
 
-                {/* Min Views Requirement Badge */}
-                {c.minViews && (
-                  <div className="mt-3.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-500/10 text-purple-600 dark:text-purple-400 text-xs font-semibold border border-purple-500/20">
-                    <Eye size={13} />
-                    <span>Goal: {c.minViews.toLocaleString()} Views</span>
+                <div className="flex flex-wrap items-center gap-2 mt-3.5">
+                  {/* Available Clips Badge */}
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-semibold border border-blue-500/20">
+                    <Film size={13} />
+                    <span>{(c as any).availableClips ?? 0} Clips Ready</span>
                   </div>
-                )}
+
+                  {/* Min Views Requirement Badge */}
+                  {c.minViews && (
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-500/10 text-purple-600 dark:text-purple-400 text-xs font-semibold border border-purple-500/20">
+                      <Eye size={13} />
+                      <span>Goal: {c.minViews.toLocaleString()} Views</span>
+                    </div>
+                  )}
+                </div>
 
                 {/* Custom parameters preview */}
                 {c.config && Object.keys(c.config).length > 0 && (
