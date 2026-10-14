@@ -103,7 +103,7 @@ export async function transcribeWithWhisper(videoPath: string, outputDir: string
 import { executeGeminiWithFailover } from '../lib/gemini-pool'
 
 /**
- * Transcribe using Gemini API (gemini-2.0-flash with audio inline data).
+ * Transcribe using Gemini API (gemini-3.8-flash with audio inline data).
  * Fallback when Whisper is not available.
  * Uses Multi-Key Failover pool across all user keys.
  */
@@ -123,7 +123,7 @@ Return ONLY a JSON array of segments like:
 No markdown, no explanation. Pure JSON only.`
 
     return await executeGeminiWithFailover(async (apiKey) => {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

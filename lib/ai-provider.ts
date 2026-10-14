@@ -128,7 +128,7 @@ async function callGeminiDirect(
   prompt: string,
   systemInstruction?: string
 ): Promise<string> {
-  const GEMINI_MODEL = 'gemini-2.0-flash'
+  const GEMINI_MODEL = 'gemini-3.8-flash'
   const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
 
   return executeGeminiWithFailover(async (apiKey) => {
