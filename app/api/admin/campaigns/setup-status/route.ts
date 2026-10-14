@@ -338,6 +338,25 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    // ── ACTION: Reset / Delete Generated Clips ──────────────────────────────
+    if (action === 'reset_clips') {
+      const clipsDir = getClipsDir(campaignId)
+      if (fs.existsSync(clipsDir)) {
+        const files = fs.readdirSync(clipsDir)
+        for (const file of files) {
+          try {
+            fs.rmSync(path.join(clipsDir, file), { recursive: true, force: true })
+          } catch {}
+        }
+      }
+      activeClipGenerations.delete(campaignId)
+      return NextResponse.json({
+        message: 'All generated clips deleted successfully!',
+        campaignId,
+        clipCount: 0,
+      })
+    }
+
     // ── ACTION: Setup / Source Download ──────────────────────────────────────
     // Check if already running
     const existing = activeSetups.get(campaignId)
