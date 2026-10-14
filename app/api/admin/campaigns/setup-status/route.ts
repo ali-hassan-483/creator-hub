@@ -10,7 +10,7 @@ import {
   getClipsDir,
   isSetupComplete,
   runCampaignSetup,
-  getExistingSourceVideos,
+  countEditedClips,
 } from '@/tools/campaign-processor'
 
 export const dynamic = 'force-dynamic'
@@ -28,8 +28,70 @@ export function getSetupTracker() {
 }
 
 /**
+ * Derive clip generation status from DB automations for a campaign.
+ */
+async function getClipStatus(campaignId: string, clipCount: number) {
+  // Check if any automation is currently running/queued for this campaign
+  const activeAutomation = await prisma.automation.findFirst({
+    where: {
+      campaignId,
+      status: { in: ['running', 'queued'] },
+    },
+    select: { status: true, startedAt: true, name: true },
+    orderBy: { createdAt: 'desc' },
+  })
+
+  if (activeAutomation) {
+    return {
+      clipStatus: activeAutomation.status === 'running' ? 'generating' : 'queued',
+      clipProgress: activeAutomation.status === 'running'
+        ? `⚙️ Generating clips... (${clipCount} ready so far)`
+        : `⏳ Queued for clip generation`,
+      clipError: null,
+    }
+  }
+
+  // Check most recent automation for errors
+  const lastAutomation = await prisma.automation.findFirst({
+    where: { campaignId },
+    select: { status: true, errorMessage: true, completedAt: true },
+    orderBy: { createdAt: 'desc' },
+  })
+
+  if (lastAutomation?.status === 'failed') {
+    return {
+      clipStatus: 'error',
+      clipProgress: null,
+      clipError: lastAutomation.errorMessage || 'Clip generation failed',
+    }
+  }
+
+  if (clipCount > 0) {
+    return {
+      clipStatus: 'ready',
+      clipProgress: `✅ ${clipCount} clip(s) ready`,
+      clipError: null,
+    }
+  }
+
+  if (lastAutomation?.status === 'completed') {
+    return {
+      clipStatus: 'ready',
+      clipProgress: '✅ Last run completed (0 new clips)',
+      clipError: null,
+    }
+  }
+
+  return {
+    clipStatus: 'pending',
+    clipProgress: null,
+    clipError: null,
+  }
+}
+
+/**
  * GET /api/admin/campaigns/setup-status?campaignId=xxx
- * Returns the real-time setup/download status for a campaign.
+ * Returns the real-time setup/download AND clip generation status for campaigns.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -38,14 +100,14 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const campaignId = searchParams.get('campaignId')
 
-    // If no campaignId, return all active setups + all campaign statuses
+    // If no campaignId, return all campaign statuses
     if (!campaignId) {
       const campaigns = await prisma.campaign.findMany({
         select: { id: true, name: true, config: true },
         orderBy: { createdAt: 'desc' },
       })
 
-      const statuses = campaigns.map((c) => {
+      const statuses = await Promise.all(campaigns.map(async (c) => {
         const cfg = (c.config || {}) as Record<string, any>
         const sourceUrls = cfg.sourceVideoUrls || cfg.driveYoutubeUrls || ''
         const hasSourceUrls = !!sourceUrls.trim()
@@ -55,31 +117,36 @@ export async function GET(req: NextRequest) {
         const sourceCount = fs.existsSync(sourcesDir)
           ? fs.readdirSync(sourcesDir).filter(f => !f.startsWith('.')).length
           : 0
+        const clipCount = countEditedClips(c.id)
 
-        let status: string
+        let sourceStatus: string
         if (active && active.status === 'downloading') {
-          status = 'downloading'
+          sourceStatus = 'downloading'
         } else if (active && active.status === 'error') {
-          status = 'error'
+          sourceStatus = 'error'
         } else if (setupDone) {
-          status = 'ready'
+          sourceStatus = 'ready'
         } else if (!hasSourceUrls && sourceCount === 0) {
-          status = 'no_sources'
+          sourceStatus = 'no_sources'
         } else {
-          status = 'pending'
+          sourceStatus = 'pending'
         }
+
+        const clipInfo = await getClipStatus(c.id, clipCount)
 
         return {
           campaignId: c.id,
           name: c.name,
-          status,
+          sourceStatus,
           sourceCount,
+          clipCount,
           setupComplete: setupDone,
           progress: active?.progress || null,
           error: active?.error || null,
           startedAt: active?.startedAt || null,
+          ...clipInfo,
         }
-      })
+      }))
 
       return NextResponse.json({ statuses })
     }
@@ -101,45 +168,41 @@ export async function GET(req: NextRequest) {
     const active = activeSetups.get(campaignId)
 
     const sourcesDir = getSourcesDir(campaignId)
-    const assetsDir = getAssetsDir(campaignId)
     const clipsDir = getClipsDir(campaignId)
 
     const sourceFiles = fs.existsSync(sourcesDir)
       ? fs.readdirSync(sourcesDir).filter(f => !f.startsWith('.'))
       : []
-    const assetFiles = fs.existsSync(assetsDir)
-      ? fs.readdirSync(assetsDir).filter(f => !f.startsWith('.'))
-      : []
-    const clipFiles = fs.existsSync(clipsDir)
-      ? fs.readdirSync(clipsDir).filter(f => f.endsWith('.mp4') && f.startsWith('final_'))
-      : []
+    const clipCount = countEditedClips(campaignId)
 
-    let status: string
+    let sourceStatus: string
     if (active && active.status === 'downloading') {
-      status = 'downloading'
+      sourceStatus = 'downloading'
     } else if (active && active.status === 'error') {
-      status = 'error'
+      sourceStatus = 'error'
     } else if (setupDone) {
-      status = 'ready'
+      sourceStatus = 'ready'
     } else if (!hasSourceUrls && sourceFiles.length === 0) {
-      status = 'no_sources'
+      sourceStatus = 'no_sources'
     } else {
-      status = 'pending'
+      sourceStatus = 'pending'
     }
+
+    const clipInfo = await getClipStatus(campaignId, clipCount)
 
     return NextResponse.json({
       campaignId,
       name: campaign.name,
-      status,
+      sourceStatus,
       setupComplete: setupDone,
       sourceFiles: sourceFiles.slice(0, 50),
       sourceCount: sourceFiles.length,
-      assetCount: assetFiles.length,
-      clipCount: clipFiles.length,
+      clipCount,
       progress: active?.progress || null,
       error: active?.error || null,
       startedAt: active?.startedAt || null,
       elapsedMs: active?.startedAt ? Date.now() - active.startedAt : null,
+      ...clipInfo,
     })
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Failed to get setup status' }, { status: 500 })

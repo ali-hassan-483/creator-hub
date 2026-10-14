@@ -215,12 +215,16 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
   const [aiMessage, setAiMessage] = useState('')
   const [error, setError] = useState('')
 
-  // Setup/Download Status Tracking
+  // Setup/Download and Clip Generation Status Tracking
   const [setupStatuses, setSetupStatuses] = useState<Record<string, {
-    status: string
+    sourceStatus: string
     progress: string | null
     sourceCount: number
+    clipCount: number
     error: string | null
+    clipStatus: 'generating' | 'queued' | 'ready' | 'error' | 'pending'
+    clipProgress: string | null
+    clipError: string | null
   }>>({})
 
   // Poll setup statuses every 5 seconds
@@ -235,10 +239,14 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
           const map: Record<string, any> = {}
           for (const s of data.statuses || []) {
             map[s.campaignId] = {
-              status: s.status,
+              sourceStatus: s.sourceStatus || s.status || 'pending',
               progress: s.progress,
-              sourceCount: s.sourceCount,
+              sourceCount: s.sourceCount ?? 0,
+              clipCount: s.clipCount ?? 0,
               error: s.error,
+              clipStatus: s.clipStatus || 'pending',
+              clipProgress: s.clipProgress,
+              clipError: s.clipError,
             }
           }
           setSetupStatuses(map)
@@ -266,7 +274,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
         ...prev,
         [campaignId]: {
           ...prev[campaignId],
-          status: 'downloading',
+          sourceStatus: 'downloading',
           progress: '📥 Starting campaign setup...',
           error: null,
         },
@@ -848,7 +856,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                 <th className="text-left px-5 py-3.5 font-medium">Campaign Identity</th>
                 <th className="text-left px-5 py-3.5 font-medium">Niche & Submissions</th>
                 <th className="text-left px-5 py-3.5 font-medium">Clipping Strategy</th>
-                <th className="text-left px-5 py-3.5 font-medium">Source Setup</th>
+                <th className="text-left px-5 py-3.5 font-medium">Source & Clips</th>
                 <th className="text-left px-5 py-3.5 font-medium">User Access</th>
                 <th className="text-left px-5 py-3.5 font-medium">Status</th>
                 <th className="text-right px-5 py-3.5 font-medium">Actions</th>
@@ -915,84 +923,128 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                           </span>
                         </div>
                       </td>
-                      {/* Source Setup Status */}
+                      {/* Source & Clip Setup Status */}
                       <td className="px-5 py-4 text-xs">
                         {(() => {
                           const ss = setupStatuses[c.id]
-                          if (!ss) return <span className="text-muted-foreground">Loading...</span>
+                          if (!ss) return <span className="text-muted-foreground text-[11px]">Loading...</span>
 
-                          if (ss.status === 'downloading') {
-                            return (
-                              <div className="space-y-1">
-                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 animate-pulse">
-                                  <Loader2 size={11} className="animate-spin" />
-                                  <span>Downloading...</span>
-                                </span>
-                                <p className="text-[10px] text-muted-foreground truncate max-w-[160px]" title={ss.progress || ''}>
-                                  {ss.progress}
-                                </p>
-                              </div>
-                            )
-                          }
-
-                          if (ss.status === 'ready' || ss.status === 'completed') {
-                            return (
-                              <div className="space-y-0.5">
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                                  <CheckCircle2 size={11} />
-                                  <span>Ready</span>
-                                </span>
-                                <span className="block text-[11px] text-muted-foreground">
-                                  {ss.sourceCount} source(s) · {c.availableClips ?? 0} clips
-                                </span>
-                              </div>
-                            )
-                          }
-
-                          if (ss.status === 'error') {
-                            return (
-                              <div className="space-y-1">
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-destructive/10 text-destructive border border-destructive/20">
-                                  <CircleAlert size={11} />
-                                  <span>Error</span>
-                                </span>
-                                <p className="text-[10px] text-destructive truncate max-w-[160px]" title={ss.error || ''}>
-                                  {ss.error}
-                                </p>
-                                <button
-                                  type="button"
-                                  onClick={() => handleRetriggerSetup(c.id)}
-                                  className="text-[10px] text-primary font-semibold hover:underline"
-                                >
-                                  ↻ Retry Setup
-                                </button>
-                              </div>
-                            )
-                          }
-
-                          if (ss.status === 'no_sources') {
-                            return (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-muted text-muted-foreground border border-border">
-                                <HardDriveDownload size={11} />
-                                <span>No URLs</span>
-                              </span>
-                            )
-                          }
-
-                          // pending
                           return (
-                            <div className="space-y-1">
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                                <Clock size={11} />
-                                <span>Pending</span>
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleRetriggerSetup(c.id)}
-                                className="block text-[10px] text-primary font-semibold hover:underline"
-                              >
-                                ▶ Start Download
-                              </button>
+                            <div className="space-y-2 min-w-[150px]">
+                              {/* Row 1: Source Download Status */}
+                              <div>
+                                <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-0.5">
+                                  <span className="font-semibold uppercase tracking-wider text-[9px]">Sources</span>
+                                  {ss.sourceCount > 0 && <span className="font-mono text-[10px]">{ss.sourceCount} files</span>}
+                                </div>
+                                {ss.sourceStatus === 'downloading' && (
+                                  <div className="space-y-0.5">
+                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 animate-pulse">
+                                      <Loader2 size={10} className="animate-spin" />
+                                      <span>Downloading...</span>
+                                    </span>
+                                    {ss.progress && (
+                                      <p className="text-[10px] text-muted-foreground truncate max-w-[170px]" title={ss.progress}>
+                                        {ss.progress}
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+                                {(ss.sourceStatus === 'ready' || ss.sourceStatus === 'completed') && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                    <CheckCircle2 size={10} />
+                                    <span>Ready ({ss.sourceCount})</span>
+                                  </span>
+                                )}
+                                {ss.sourceStatus === 'error' && (
+                                  <div className="space-y-0.5">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-destructive/10 text-destructive border border-destructive/20" title={ss.error || ''}>
+                                      <CircleAlert size={10} />
+                                      <span>Error</span>
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRetriggerSetup(c.id)}
+                                      className="text-[10px] text-primary font-semibold hover:underline block"
+                                    >
+                                      ↻ Retry
+                                    </button>
+                                  </div>
+                                )}
+                                {ss.sourceStatus === 'no_sources' && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-muted text-muted-foreground border border-border">
+                                    <HardDriveDownload size={10} />
+                                    <span>No URLs</span>
+                                  </span>
+                                )}
+                                {ss.sourceStatus === 'pending' && (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                                      <Clock size={10} />
+                                      <span>Pending</span>
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRetriggerSetup(c.id)}
+                                      className="text-[10px] text-primary font-semibold hover:underline"
+                                    >
+                                      ▶ Start
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Row 2: Clip Generation Status */}
+                              <div className="pt-1.5 border-t border-border/50">
+                                <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-0.5">
+                                  <span className="font-semibold uppercase tracking-wider text-[9px]">Clips</span>
+                                  <span className="font-mono text-[10px]">{ss.clipCount ?? c.availableClips ?? 0} ready</span>
+                                </div>
+                                {ss.clipStatus === 'generating' && (
+                                  <div className="space-y-0.5">
+                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 animate-pulse">
+                                      <Loader2 size={10} className="animate-spin" />
+                                      <span>Generating...</span>
+                                    </span>
+                                    {ss.clipProgress && (
+                                      <p className="text-[10px] text-muted-foreground truncate max-w-[170px]" title={ss.clipProgress}>
+                                        {ss.clipProgress}
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+                                {ss.clipStatus === 'queued' && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                                    <Clock size={10} />
+                                    <span>Queued</span>
+                                  </span>
+                                )}
+                                {ss.clipStatus === 'ready' && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                    <CheckCircle2 size={10} />
+                                    <span>Ready ({ss.clipCount ?? c.availableClips ?? 0})</span>
+                                  </span>
+                                )}
+                                {ss.clipStatus === 'error' && (
+                                  <div className="space-y-0.5">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-destructive/10 text-destructive border border-destructive/20" title={ss.clipError || ''}>
+                                      <CircleAlert size={10} />
+                                      <span>Error</span>
+                                    </span>
+                                    {ss.clipError && (
+                                      <p className="text-[10px] text-destructive truncate max-w-[170px]" title={ss.clipError}>
+                                        {ss.clipError}
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+                                {ss.clipStatus === 'pending' && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-muted text-muted-foreground border border-border">
+                                    <Clock size={10} />
+                                    <span>Pending</span>
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           )
                         })()}
