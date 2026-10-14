@@ -159,7 +159,7 @@ export async function downloadDriveFile(options: DriveDownloadOptions): Promise<
       : `https://drive.google.com/file/d/${fileId}/view`
 
     const outTemplate = path.join(outputDir, `${baseName}.%(ext)s`)
-    const cmd = `"${ytDlp}" "${driveUrl}" -o "${outTemplate}" --no-playlist`
+    const cmd = `"${ytDlp}" "${driveUrl}" -o "${outTemplate}" --no-playlist --no-part --no-update`
     console.log(`[Drive-Downloader] Attempting yt-dlp download: ${cmd}`)
 
     await execAsync(cmd, { timeout: 600000, maxBuffer: 10 * 1024 * 1024 })
