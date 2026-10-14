@@ -185,14 +185,80 @@ export async function DELETE(
     await requireAdmin()
     const { id } = params
 
-    // Free up any assigned IP before deleting user
-    await prisma.ipAddress.updateMany({
-      where: { assignedTo: id },
-      data: { assignedTo: null, assignedAt: null, isAvailable: true },
-    })
+    // Use a transaction to clean up all related records before deleting user
+    await prisma.$transaction(async (tx) => {
+      // 1. Free up any assigned IP
+      await tx.ipAddress.updateMany({
+        where: { assignedTo: id },
+        data: { assignedTo: null, assignedAt: null, isAvailable: true },
+      })
 
-    await prisma.user.delete({
-      where: { id },
+      // 2. Delete task status histories for tasks of this user
+      const userTasks = await tx.pendingTask.findMany({
+        where: { userId: id },
+        select: { id: true },
+      })
+      const taskIds = userTasks.map((t) => t.id)
+      if (taskIds.length > 0) {
+        await tx.taskStatusHistory.deleteMany({
+          where: { taskId: { in: taskIds } },
+        })
+        await tx.earning.deleteMany({
+          where: { taskId: { in: taskIds } },
+        })
+        await tx.pendingTask.deleteMany({
+          where: { id: { in: taskIds } },
+        })
+      }
+
+      // 3. Delete automation relations
+      const automations = await tx.automation.findMany({
+        where: { userId: id },
+        select: { id: true },
+      })
+      const autoIds = automations.map((a) => a.id)
+      if (autoIds.length > 0) {
+        await tx.automationChannel.deleteMany({
+          where: { automationId: { in: autoIds } },
+        })
+        await tx.automationCredential.deleteMany({
+          where: { automationId: { in: autoIds } },
+        })
+        await tx.automation.deleteMany({
+          where: { id: { in: autoIds } },
+        })
+      }
+
+      // 4. Delete channels and related video analytics
+      const channels = await tx.channel.findMany({
+        where: { userId: id },
+        select: { id: true },
+      })
+      const channelIds = channels.map((c) => c.id)
+      if (channelIds.length > 0) {
+        await tx.videoAnalytic.deleteMany({
+          where: { channelId: { in: channelIds } },
+        })
+        await tx.analyticsSnapshot.deleteMany({
+          where: { channelId: { in: channelIds } },
+        })
+        await tx.channel.deleteMany({
+          where: { id: { in: channelIds } },
+        })
+      }
+
+      // 5. Delete other configs & credentials
+      await tx.geminiConfig.deleteMany({ where: { userId: id } })
+      await tx.discordConfig.deleteMany({ where: { userId: id } })
+      await tx.credential.deleteMany({ where: { userId: id } })
+      await tx.campaignUserAccess.deleteMany({ where: { userId: id } })
+      await tx.earning.deleteMany({ where: { userId: id } })
+      await tx.activityLog.deleteMany({ where: { userId: id } })
+
+      // 6. Finally delete the user
+      await tx.user.delete({
+        where: { id },
+      })
     })
 
     return NextResponse.json({ success: true, message: 'User deleted successfully.' })

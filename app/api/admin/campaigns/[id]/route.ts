@@ -107,11 +107,53 @@ export async function DELETE(
     await requireAdmin()
     const { id } = params
 
-    // Delete user access first
-    await prisma.campaignUserAccess.deleteMany({ where: { campaignId: id } })
+    await prisma.$transaction(async (tx) => {
+      // 1. Delete tasks under this campaign
+      const tasks = await tx.pendingTask.findMany({
+        where: { campaignId: id },
+        select: { id: true },
+      })
+      const taskIds = tasks.map((t) => t.id)
+      if (taskIds.length > 0) {
+        await tx.taskStatusHistory.deleteMany({
+          where: { taskId: { in: taskIds } },
+        })
+        await tx.earning.deleteMany({
+          where: { taskId: { in: taskIds } },
+        })
+        await tx.pendingTask.deleteMany({
+          where: { id: { in: taskIds } },
+        })
+      }
 
-    await prisma.campaign.delete({
-      where: { id },
+      // 2. Delete automations under this campaign
+      const autos = await tx.automation.findMany({
+        where: { campaignId: id },
+        select: { id: true },
+      })
+      const autoIds = autos.map((a) => a.id)
+      if (autoIds.length > 0) {
+        await tx.automationChannel.deleteMany({
+          where: { automationId: { in: autoIds } },
+        })
+        await tx.automationCredential.deleteMany({
+          where: { automationId: { in: autoIds } },
+        })
+        await tx.automation.deleteMany({
+          where: { id: { in: autoIds } },
+        })
+      }
+
+      // 3. Delete scheduled automations
+      await tx.scheduledAutomation.deleteMany({ where: { campaignId: id } })
+
+      // 4. Delete user access
+      await tx.campaignUserAccess.deleteMany({ where: { campaignId: id } })
+
+      // 5. Delete campaign
+      await tx.campaign.delete({
+        where: { id },
+      })
     })
 
     return NextResponse.json({ success: true, message: 'Campaign deleted successfully.' })
