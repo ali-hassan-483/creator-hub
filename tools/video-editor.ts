@@ -153,7 +153,7 @@ function buildBackgroundFilter(
         `[0:v]scale=${lowW}:${lowH}:force_original_aspect_ratio=increase,crop=${lowW}:${lowH},split=2[bg_top][bg_bot]`,
         `[bg_top]vflip,scale=${lowW}:${lowH / 2}[bg_top_flip]`,
         `[bg_bot]scale=${lowW}:${lowH / 2}[bg_bot_s]`,
-        `[bg_top_flip][bg_bot_s]vstack=inputs=2,boxblur=8:3,scale=${canvasW}:${canvasH}:flags=bicubic[bg]`,
+        `[bg_top_flip][bg_bot_s]vstack=inputs=2,boxblur=20:4,scale=${canvasW}:${canvasH}:flags=bicubic[bg]`,
       ].join(';')
     }
 
@@ -163,7 +163,7 @@ function buildBackgroundFilter(
       return [
         `[0:v]scale=${lowW}:${lowH}:force_original_aspect_ratio=increase,crop=${lowW}:${lowH},split=2[bg_a][bg_b]`,
         `[bg_a]vflip[bg_flip]`,
-        `[bg_flip][bg_b]blend=all_mode=overlay,eq=saturation=2.0:brightness=0.05,boxblur=8:3,scale=${canvasW}:${canvasH}:flags=bicubic[bg]`,
+        `[bg_flip][bg_b]blend=all_mode=overlay,eq=saturation=2.0:brightness=0.05,boxblur=20:4,scale=${canvasW}:${canvasH}:flags=bicubic[bg]`,
       ].join(';')
     }
 
@@ -194,7 +194,7 @@ function buildBackgroundFilter(
         `[0:v]scale=${lowW}:${lowH}:force_original_aspect_ratio=increase,crop=${lowW}:${lowH},split=2[bg_top][bg_bot]`,
         `[bg_top]vflip,scale=${lowW}:${lowH / 2}[bg_top_flip]`,
         `[bg_bot]scale=${lowW}:${lowH / 2}[bg_bot_s]`,
-        `[bg_top_flip][bg_bot_s]vstack=inputs=2,boxblur=8:3,scale=${canvasW}:${canvasH}:flags=bicubic[bg]`,
+        `[bg_top_flip][bg_bot_s]vstack=inputs=2,boxblur=20:4,scale=${canvasW}:${canvasH}:flags=bicubic[bg]`,
       ].join(';')
     }
   }
@@ -347,9 +347,8 @@ export async function editVideoClip(options: VideoEditOptions): Promise<{ succes
   filterParts.push(`[${mainIdx}:v]setpts=PTS-STARTPTS[fg_raw]`)
   filterParts.push(buildForegroundScaleFilter(canvasWidth, canvasHeight, selectedCorner))
 
-  // 3. Overlay foreground on background
-  const yCenter = Math.round((canvasHeight - Math.round(canvasWidth * 0.92 * (16 / 9))) / 2)
-  filterParts.push(`[bg][fg]overlay=x=(W-w)/2:y=${yCenter}[composed]`)
+  // 3. Overlay foreground on background (perfectly centered both horizontally and vertically)
+  filterParts.push(`[bg][fg]overlay=x=(W-w)/2:y=(H-h)/2[composed]`)
 
   // 4. Logo overlay
   let lastStream = 'composed'
