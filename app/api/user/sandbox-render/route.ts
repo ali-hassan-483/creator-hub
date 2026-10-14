@@ -31,68 +31,44 @@ import {
 
 export const dynamic = 'force-dynamic'
 
-/**
- * GET /api/user/sandbox-render
- * Stream or download rendered sandbox video clip
- */
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url)
-  const clipId = searchParams.get('clipId')
-  const campaignId = searchParams.get('campaignId')
-
-  if (!clipId || !campaignId) {
-    return NextResponse.json({ error: 'clipId and campaignId required' }, { status: 400 })
-  }
-
-  const clipsDir = getClipsDir(campaignId)
-  const filePath = path.join(clipsDir, `${clipId}.mp4`)
-
-  if (!fs.existsSync(filePath)) {
-    return NextResponse.json({ error: 'Video file not found' }, { status: 404 })
-  }
-
-  const stat = fs.statSync(filePath)
-  const fileStream = fs.createReadStream(filePath)
-
-  return new NextResponse(fileStream as any, {
-    headers: {
-      'Content-Type': 'video/mp4',
-      'Content-Length': stat.size.toString(),
-      'Content-Disposition': `attachment; filename="${clipId}.mp4"`,
-    },
-  })
+interface SandboxJob {
+  id: string
+  campaignId: string
+  status: 'queued' | 'rendering' | 'completed' | 'error'
+  progress: string
+  result?: any
+  error?: string
+  startedAt: number
 }
 
-/**
- * POST /api/user/sandbox-render
- * Generates ONE test compiled clip for a selected campaign locally/VPS
- */
-export async function POST(req: NextRequest) {
-  try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized. Please log in to test sandbox clips.' }, { status: 401 })
-    }
-    const userId = session.user.id
-    const { campaignId } = await req.json()
-    if (!campaignId) {
-      return NextResponse.json({ error: 'Please select a campaign' }, { status: 400 })
-    }
+// Global in-memory job tracker for sandbox renders
+const activeSandboxJobs = new Map<string, SandboxJob>()
 
+async function executeSandboxRender(jobId: string, campaignId: string) {
+  const update = (status: SandboxJob['status'], progress: string, error?: string, result?: any) => {
+    const job = activeSandboxJobs.get(jobId)
+    if (job) {
+      job.status = status
+      job.progress = progress
+      if (error) job.error = error
+      if (result) job.result = result
+    }
+  }
+
+  try {
+    update('rendering', 'Loading campaign configuration...')
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
     })
-
-    if (!campaign) {
-      return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
-    }
+    if (!campaign) throw new Error('Campaign not found')
 
     const cfg = (campaign.config || {}) as Record<string, any>
     const clipsDir = getClipsDir(campaignId)
     fs.mkdirSync(clipsDir, { recursive: true })
 
-    // 1. One-time setup if not completed
+    // 1. One-time setup if needed
     if (!isSetupComplete(campaignId)) {
+      update('rendering', 'Setting up source videos and transcripts...')
       await runCampaignSetup(campaignId, {
         ...cfg,
         campaignName: campaign.name,
@@ -102,12 +78,11 @@ export async function POST(req: NextRequest) {
 
     const sourceVideos = getExistingSourceVideos(campaignId)
     if (sourceVideos.length === 0) {
-      return NextResponse.json({
-        error: 'No source video files found for this campaign. Please ensure Drive/YouTube source URLs are provided or upload clips in Admin.',
-      }, { status: 400 })
+      throw new Error('No source video files found for this campaign. Please ensure source URLs are downloaded or clips are uploaded.')
     }
 
     const sourceVideo = sourceVideos[0]
+    update('rendering', 'Inspecting video dimensions & duration...')
     const videoInfo = await getVideoInfo(sourceVideo)
     const transcript = loadTranscript(sourceVideo, campaignId)
 
@@ -163,7 +138,7 @@ export async function POST(req: NextRequest) {
       campaignName: campaign.name,
     }
 
-    // Determine Slice
+    // Determine slice range
     let startTime = startOffset
     let endTime = Math.min(videoInfo.duration, startOffset + shortDuration)
 
@@ -180,6 +155,7 @@ export async function POST(req: NextRequest) {
         endTime = continuous[0].endTime
       }
     } else if (clippingStrategies.includes('smart_ai') && transcript.length > 0) {
+      update('rendering', 'Finding viral timestamp with AI...')
       const suggestions = await findViralClips(transcript, {
         minDuration: shortDuration * 0.8,
         maxDuration: shortDuration * 1.2,
@@ -193,18 +169,27 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Generate Metadata (AI or Guidelines)
+    // Generate Metadata
+    update('rendering', 'Generating viral title & on-screen text with AI...')
     let metadata: ShortMetadata
-    if (clippingStrategies.includes('smart_ai')) {
-      const clipWords = getClipTranscriptText(transcript, startTime, endTime)
-      metadata = await generateFullMetadata(clipWords, metaConfig)
-    } else {
-      // 50-batch guidelines call
-      const batch = await generateBatchMetadataFromGuidelines(1, metaConfig)
-      metadata = batch[0] || {
-        title: `${campaign.name} - Viral Clip`,
-        description: cfg.predefinedDescription || 'Check this out! #shorts #viral',
-        onScreenText: 'Watch till the end!',
+    try {
+      if (clippingStrategies.includes('smart_ai')) {
+        const clipWords = getClipTranscriptText(transcript, startTime, endTime)
+        metadata = await generateFullMetadata(clipWords, metaConfig)
+      } else {
+        const batch = await generateBatchMetadataFromGuidelines(1, metaConfig)
+        metadata = batch[0] || {
+          title: `${campaign.name} - Viral Clip`,
+          description: cfg.predefinedDescription || 'Check this out! #shorts #viral',
+          onScreenText: 'Watch till the end!',
+          hashtags: ['shorts', 'viral'],
+        }
+      }
+    } catch {
+      metadata = {
+        title: `${campaign.name} - Sample Clip`,
+        description: cfg.predefinedDescription || '#shorts #viral',
+        onScreenText: 'Watch this!',
         hashtags: ['shorts', 'viral'],
       }
     }
@@ -214,11 +199,13 @@ export async function POST(req: NextRequest) {
     const rawClipPath = path.join(clipsDir, `${clipId}_raw.mp4`)
     const finalClipPath = path.join(clipsDir, `${clipId}.mp4`)
 
+    update('rendering', 'Rendering 9:16 vertical video with FFMPEG (background, banners, logo)...')
     const editRes = await editVideoClip({
       inputPath: sourceVideo,
       outputPath: rawClipPath,
       startTime,
       endTime,
+      preset: 'ultrafast', // High-speed preview render for Sandbox!
       backgroundStyle: backgroundStyles,
       cornerStyles,
       volumeMultiplier,
@@ -233,6 +220,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (subtitleEnabled) {
+      update('rendering', 'Generating and burning karaoke subtitles...')
       const subWorkDir = path.join(clipsDir, 'tmp_sub', clipId)
       const subOk = await addSubtitlesToVideo(rawClipPath, finalClipPath, subtitleConfig, subWorkDir)
       if (!subOk) {
@@ -244,8 +232,7 @@ export async function POST(req: NextRequest) {
       fs.renameSync(rawClipPath, finalClipPath)
     }
 
-    return NextResponse.json({
-      success: true,
+    const finalResult = {
       clipId,
       campaignId,
       title: metadata.title,
@@ -254,6 +241,117 @@ export async function POST(req: NextRequest) {
       hashtags: metadata.hashtags,
       videoUrl: `/api/user/sandbox-render?clipId=${clipId}&campaignId=${campaignId}`,
       duration: Math.round(endTime - startTime),
+    }
+
+    update('completed', '✅ Sandbox clip rendered successfully!', undefined, finalResult)
+  } catch (err: any) {
+    console.error(`[Sandbox Render Job ${jobId} Error]:`, err)
+    update('error', '❌ Render failed', err.message || 'Render failed')
+  }
+}
+
+/**
+ * GET /api/user/sandbox-render
+ * 1. Stream or download rendered video: ?clipId=xxx&campaignId=yyy
+ * 2. Check job status: ?jobId=xxx
+ */
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url)
+    const jobId = searchParams.get('jobId')
+
+    // 1. Check Job Status
+    if (jobId) {
+      const job = activeSandboxJobs.get(jobId)
+      if (!job) {
+        return NextResponse.json({ error: 'Job not found' }, { status: 404 })
+      }
+      return NextResponse.json({
+        jobId: job.id,
+        status: job.status,
+        progress: job.progress,
+        result: job.result || null,
+        error: job.error || null,
+        elapsedSeconds: Math.round((Date.now() - job.startedAt) / 1000),
+      })
+    }
+
+    // 2. Stream/Download Video File
+    const clipId = searchParams.get('clipId')
+    const campaignId = searchParams.get('campaignId')
+
+    if (!clipId || !campaignId) {
+      return NextResponse.json({ error: 'clipId and campaignId (or jobId) required' }, { status: 400 })
+    }
+
+    const clipsDir = getClipsDir(campaignId)
+    const filePath = path.join(clipsDir, `${clipId}.mp4`)
+
+    if (!fs.existsSync(filePath)) {
+      return NextResponse.json({ error: 'Video file not found' }, { status: 404 })
+    }
+
+    const stat = fs.statSync(filePath)
+    const fileStream = fs.createReadStream(filePath)
+
+    return new NextResponse(fileStream as any, {
+      headers: {
+        'Content-Type': 'video/mp4',
+        'Content-Length': stat.size.toString(),
+        'Content-Disposition': `attachment; filename="${clipId}.mp4"`,
+      },
+    })
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Request failed' }, { status: 500 })
+  }
+}
+
+/**
+ * POST /api/user/sandbox-render
+ * Starts an asynchronous sandbox render job and returns immediately with jobId.
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const session = await auth()
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized. Please log in to test sandbox clips.' }, { status: 401 })
+    }
+
+    const { campaignId } = await req.json()
+    if (!campaignId) {
+      return NextResponse.json({ error: 'Please select a campaign' }, { status: 400 })
+    }
+
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { id: true, name: true },
+    })
+
+    if (!campaign) {
+      return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+    }
+
+    // Generate unique job ID
+    const jobId = `sandbox_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
+
+    // Register job
+    activeSandboxJobs.set(jobId, {
+      id: jobId,
+      campaignId,
+      status: 'rendering',
+      progress: '🚀 Initializing render job...',
+      startedAt: Date.now(),
+    })
+
+    // Execute in background without blocking HTTP request
+    executeSandboxRender(jobId, campaignId)
+
+    // Respond immediately in < 50ms so Nginx NEVER times out
+    return NextResponse.json({
+      success: true,
+      jobId,
+      status: 'rendering',
+      progress: '🚀 Initializing render job...',
     })
 
   } catch (error: any) {

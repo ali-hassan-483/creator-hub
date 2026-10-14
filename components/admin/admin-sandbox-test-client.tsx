@@ -46,6 +46,7 @@ export function AdminSandboxTestClient({ initialCampaigns = [] }: AdminSandboxTe
 
   // Rendering state
   const [rendering, setRendering] = useState(false)
+  const [renderProgress, setRenderProgress] = useState('')
   const [result, setResult] = useState<SandboxResult | null>(null)
   const [error, setError] = useState('')
   const [copiedField, setCopiedField] = useState<string | null>(null)
@@ -83,6 +84,7 @@ export function AdminSandboxTestClient({ initialCampaigns = [] }: AdminSandboxTe
     setRendering(true)
     setError('')
     setResult(null)
+    setRenderProgress('🚀 Starting sandbox render job...')
 
     try {
       const res = await fetch('/api/user/sandbox-render', {
@@ -102,10 +104,42 @@ export function AdminSandboxTestClient({ initialCampaigns = [] }: AdminSandboxTe
 
       if (!res.ok) throw new Error(data.error || 'Failed to render sandbox clip.')
 
-      setResult(data)
+      const jobId = data.jobId
+      if (!jobId) {
+        if (data.videoUrl) {
+          setResult(data)
+        }
+        setRendering(false)
+        return
+      }
+
+      setRenderProgress(data.progress || '🎬 Rendering video clip...')
+
+      // Poll job status every 2 seconds
+      const pollInterval = setInterval(async () => {
+        try {
+          const pollRes = await fetch(`/api/user/sandbox-render?jobId=${jobId}`)
+          if (!pollRes.ok) return
+
+          const pollData = await pollRes.json()
+          if (pollData.progress) {
+            setRenderProgress(pollData.progress)
+          }
+
+          if (pollData.status === 'completed' && pollData.result) {
+            clearInterval(pollInterval)
+            setResult(pollData.result)
+            setRendering(false)
+          } else if (pollData.status === 'error') {
+            clearInterval(pollInterval)
+            setError(pollData.error || 'Sandbox rendering failed.')
+            setRendering(false)
+          }
+        } catch {}
+      }, 2000)
+
     } catch (err: any) {
       setError(err.message)
-    } finally {
       setRendering(false)
     }
   }
@@ -214,7 +248,7 @@ export function AdminSandboxTestClient({ initialCampaigns = [] }: AdminSandboxTe
             {rendering ? (
               <>
                 <RefreshCw size={15} className="animate-spin" />
-                <span>Compiling clip with FFmpeg & Generating AI Metadata... (Please wait)</span>
+                <span>{renderProgress || 'Compiling clip with FFmpeg & Generating AI Metadata...'}</span>
               </>
             ) : (
               <>

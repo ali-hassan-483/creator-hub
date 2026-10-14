@@ -56,6 +56,7 @@ export interface VideoEditOptions {
   
   // Volume
   volumeMultiplier: number    // 1.0 = normal
+  preset?: string             // e.g. 'ultrafast' for instant sandbox preview
   
   // Logo overlay
   logoPath?: string           // local path to logo image
@@ -365,7 +366,7 @@ export async function editVideoClip(options: VideoEditOptions): Promise<{ succes
     `-filter_complex "${filterComplex.replace(/"/g, '\\"')}"`,
     `-map "[${lastStream}]"`,
     `-map "[audio_out]"`,
-    `-c:v libx264 -preset fast -crf 23`,
+    `-c:v libx264 -preset ${options.preset || 'fast'} -crf 23`,
     `-c:a aac -b:a 192k`,
     `-r 30 -pix_fmt yuv420p`,
     `-movflags +faststart`,
