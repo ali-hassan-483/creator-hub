@@ -28,10 +28,64 @@ export async function POST(req: NextRequest) {
     // Verify channel exists
     const channel = await prisma.channel.findUnique({
       where: { id: channelId },
+      include: { user: true },
     })
 
     if (!channel) {
       return NextResponse.json({ error: 'Channel not found' }, { status: 404 })
+    }
+
+    const whopEmail = channel.whopEmail || channel.channelEmail || ''
+    const now = new Date()
+
+    // Find the latest active or recent automation run for this channel & campaign
+    const recentAutomation = await prisma.automation.findFirst({
+      where: {
+        userId: channel.userId,
+        ...(campaignId ? { campaignId } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    if (recentAutomation) {
+      const opts = (recentAutomation.options as any) || {}
+      const videoUploads = opts.mockVideoUploads || []
+      const whopSubmissions = opts.mockWhopSubmissions || []
+
+      const uploadItem = {
+        id: `upl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        channelId: channel.id,
+        channelName: channel.channelName || channel.channelHandle || 'YouTube Channel',
+        campaign: campaignId || 'Active Campaign',
+        stage: 'Video Uploaded',
+        videoTitle: title || 'Uploaded Short',
+        youtubeLink,
+        uploadedAt: now.toISOString(),
+      }
+
+      const whopItem = {
+        id: `whop_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        videoTitle: title || 'Uploaded Short',
+        youtubeLink,
+        queuedAt: now.toISOString(),
+        timeTaken: null,
+        status: 'pending',
+        whopEmail,
+      }
+
+      // Append and save back to automation options
+      await prisma.automation.update({
+        where: { id: recentAutomation.id },
+        data: {
+          options: {
+            ...opts,
+            mockVideoUploads: [uploadItem, ...videoUploads],
+            mockWhopSubmissions: [whopItem, ...whopSubmissions],
+          },
+          status: 'completed',
+          completedAt: now,
+        },
+      })
     }
 
     // Register into VideoAnalytic table so Views Monitor tracks it
