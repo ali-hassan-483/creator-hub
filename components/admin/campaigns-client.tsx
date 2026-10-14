@@ -894,6 +894,8 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                   const strategies = Array.isArray(cfg.clippingStrategies)
                     ? cfg.clippingStrategies
                     : ['multi_cut']
+                  const ss = setupStatuses[c.id]
+                  const liveClipCount = ss?.clipCount ?? c.availableClips ?? 0
 
                   return (
                     <tr key={c.id} className="hover:bg-muted/20 transition-colors">
@@ -1128,7 +1130,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                             title="Total edited clips ready for submission"
                           >
                             <Film size={12} />
-                            <span>{ss.clipCount ?? c.availableClips ?? 0} Clips</span>
+                            <span>{liveClipCount} Clips</span>
                           </span>
 
                           <button

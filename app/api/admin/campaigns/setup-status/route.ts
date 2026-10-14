@@ -12,7 +12,7 @@ import {
   runCampaignSetup,
   countEditedClips,
 } from '@/tools/campaign-processor'
-import { maintainCampaignClipPool } from '@/tools/continuous-edit-engine'
+import { maintainCampaignClipPool, TARGET_EDITED_CLIPS } from '@/tools/continuous-edit-engine'
 
 export const dynamic = 'force-dynamic'
 
@@ -90,8 +90,15 @@ export function triggerClipGeneration(campaignId: string, cfg: Record<string, an
 
 /**
  * Derive clip generation status from active generator or DB automations for a campaign.
+ * Automatically starts or resumes clip generation if campaign is active and pool has < 300 clips.
  */
-async function getClipStatus(campaignId: string, clipCount: number) {
+async function getClipStatus(
+  campaignId: string,
+  clipCount: number,
+  campaignCfg?: Record<string, any>,
+  campaignName?: string,
+  isActive = false
+) {
   // Check active in-memory clip generation first
   const activeGen = activeClipGenerations.get(campaignId)
   if (activeGen && activeGen.status === 'generating') {
@@ -99,6 +106,25 @@ async function getClipStatus(campaignId: string, clipCount: number) {
       clipStatus: 'generating' as const,
       clipProgress: activeGen.progress || `⚙️ Generating clips... (${clipCount} ready so far)`,
       clipError: null,
+    }
+  }
+
+  // 🚀 AUTO-RESUME: If campaign is active, sources are ready, and clips < 300:
+  // Automatically trigger clip generation!
+  if (isActive && campaignCfg && clipCount < TARGET_EDITED_CLIPS) {
+    const sourcesDir = getSourcesDir(campaignId)
+    const hasSources = fs.existsSync(sourcesDir) && fs.readdirSync(sourcesDir).some(f => !f.startsWith('.'))
+    if (hasSources && (!activeGen || activeGen.status !== 'error')) {
+      triggerClipGeneration(campaignId, {
+        ...campaignCfg,
+        campaignName: campaignName || 'Campaign',
+        niche: campaignCfg.niche || 'general',
+      })
+      return {
+        clipStatus: 'generating' as const,
+        clipProgress: `⚙️ Generating clips... (${clipCount}/${TARGET_EDITED_CLIPS} ready)`,
+        clipError: null,
+      }
     }
   }
 
@@ -182,7 +208,7 @@ export async function GET(req: NextRequest) {
     // If no campaignId, return all campaign statuses
     if (!campaignId) {
       const campaigns = await prisma.campaign.findMany({
-        select: { id: true, name: true, config: true },
+        select: { id: true, name: true, config: true, status: true },
         orderBy: { createdAt: 'desc' },
       })
 
@@ -211,7 +237,7 @@ export async function GET(req: NextRequest) {
           sourceStatus = 'pending'
         }
 
-        const clipInfo = await getClipStatus(c.id, clipCount)
+        const clipInfo = await getClipStatus(c.id, clipCount, cfg, c.name, c.status === 'active')
 
         return {
           campaignId: c.id,
@@ -233,7 +259,7 @@ export async function GET(req: NextRequest) {
     // Single campaign status
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
-      select: { id: true, name: true, config: true },
+      select: { id: true, name: true, config: true, status: true },
     })
 
     if (!campaign) {
@@ -267,7 +293,7 @@ export async function GET(req: NextRequest) {
       sourceStatus = 'pending'
     }
 
-    const clipInfo = await getClipStatus(campaignId, clipCount)
+    const clipInfo = await getClipStatus(campaignId, clipCount, cfg, campaign.name, campaign.status === 'active')
 
     return NextResponse.json({
       campaignId,
