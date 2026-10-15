@@ -184,3 +184,90 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: err.message || 'Internal server error.' }, { status: 500 })
   }
 }
+
+// Bulk Delete channels
+export async function DELETE(req: NextRequest) {
+  try {
+    const session = await requireUser()
+    const userId = session.user.id
+    const body = await req.json()
+
+    const { channelIds } = body
+    if (!channelIds || !Array.isArray(channelIds) || channelIds.length === 0) {
+      return NextResponse.json({ error: 'channelIds array is required.' }, { status: 400 })
+    }
+
+    // Soft delete: set removedAt + inactive for all matching channels
+    const result = await prisma.channel.updateMany({
+      where: {
+        id: { in: channelIds },
+        userId,
+        removedAt: null,
+      },
+      data: {
+        removedAt: new Date(),
+        status: 'inactive',
+      },
+    })
+
+    return NextResponse.json({
+      success: true,
+      count: result.count,
+      message: `Successfully removed ${result.count} channel(s).`,
+    })
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Internal server error.' }, { status: 500 })
+  }
+}
+
+// Bulk Edit channels (status, niche, channelEmail, whopEmail)
+export async function PATCH(req: NextRequest) {
+  try {
+    const session = await requireUser()
+    const userId = session.user.id
+    const body = await req.json()
+
+    const { channelIds, updates } = body
+    if (!channelIds || !Array.isArray(channelIds) || channelIds.length === 0) {
+      return NextResponse.json({ error: 'channelIds array is required.' }, { status: 400 })
+    }
+    if (!updates || typeof updates !== 'object') {
+      return NextResponse.json({ error: 'updates object is required.' }, { status: 400 })
+    }
+
+    const updateData: Record<string, any> = {}
+    if (updates.status && ['active', 'inactive'].includes(updates.status)) {
+      updateData.status = updates.status
+    }
+    if (updates.niche && updates.niche.trim()) {
+      updateData.niche = updates.niche.trim()
+    }
+    if (updates.channelEmail && updates.channelEmail.trim()) {
+      updateData.channelEmail = updates.channelEmail.trim().toLowerCase()
+    }
+    if (updates.whopEmail && updates.whopEmail.trim()) {
+      updateData.whopEmail = updates.whopEmail.trim().toLowerCase()
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: 'No valid fields to update.' }, { status: 400 })
+    }
+
+    const result = await prisma.channel.updateMany({
+      where: {
+        id: { in: channelIds },
+        userId,
+        removedAt: null,
+      },
+      data: updateData,
+    })
+
+    return NextResponse.json({
+      success: true,
+      count: result.count,
+      message: `Successfully updated ${result.count} channel(s).`,
+    })
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Internal server error.' }, { status: 500 })
+  }
+}

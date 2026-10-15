@@ -108,6 +108,93 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
   const [showEditSecret, setShowEditSecret] = useState(false)
   const [showEditToken, setShowEditToken] = useState(false)
 
+  // Multi-select state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
+  // Bulk Edit Modal
+  const [isBulkEditOpen, setIsBulkEditOpen] = useState(false)
+  const [bulkEditForm, setBulkEditForm] = useState({
+    status: '',
+    niche: '',
+    channelEmail: '',
+    whopEmail: '',
+  })
+  const [bulkEditLoading, setBulkEditLoading] = useState(false)
+  const [bulkEditError, setBulkEditError] = useState('')
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === filteredChannels.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filteredChannels.map((c) => c.id)))
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (selectedIds.size === 0) return
+    if (!confirm(`Are you sure you want to delete ${selectedIds.size} selected channel(s)?`)) return
+    try {
+      const res = await fetch('/api/user/channels', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channelIds: Array.from(selectedIds) }),
+      })
+      if (res.ok) {
+        setSelectedIds(new Set())
+        await refreshChannels()
+      }
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  async function handleBulkEditSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (selectedIds.size === 0) return
+    setBulkEditLoading(true)
+    setBulkEditError('')
+
+    const updates: Record<string, string> = {}
+    if (bulkEditForm.status) updates.status = bulkEditForm.status
+    if (bulkEditForm.niche.trim()) updates.niche = bulkEditForm.niche.trim()
+    if (bulkEditForm.channelEmail.trim()) updates.channelEmail = bulkEditForm.channelEmail.trim()
+    if (bulkEditForm.whopEmail.trim()) updates.whopEmail = bulkEditForm.whopEmail.trim()
+
+    if (Object.keys(updates).length === 0) {
+      setBulkEditError('Please fill at least one field to update.')
+      setBulkEditLoading(false)
+      return
+    }
+
+    try {
+      const res = await fetch('/api/user/channels', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channelIds: Array.from(selectedIds), updates }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Bulk edit failed')
+
+      setSelectedIds(new Set())
+      setIsBulkEditOpen(false)
+      setBulkEditForm({ status: '', niche: '', channelEmail: '', whopEmail: '' })
+      await refreshChannels()
+    } catch (err: any) {
+      setBulkEditError(err.message || 'Bulk edit failed')
+    } finally {
+      setBulkEditLoading(false)
+    }
+  }
+
   function openEditModal(ch: ChannelItem) {
     setEditingChannel(ch)
     setEditForm({
@@ -572,12 +659,53 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
       </div>
 
       {/* Main Channels Table / Grid */}
+      {/* Bulk Action Bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/5 border border-primary/20 rounded-xl animate-in fade-in slide-in-from-top-2 duration-200">
+          <span className="text-sm font-semibold text-primary">{selectedIds.size} selected</span>
+          <div className="flex items-center gap-2 ml-auto">
+            <button
+              onClick={() => {
+                setBulkEditForm({ status: '', niche: '', channelEmail: '', whopEmail: '' })
+                setBulkEditError('')
+                setIsBulkEditOpen(true)
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-background hover:bg-muted text-foreground transition-colors"
+            >
+              <Edit3 size={13} />
+              Bulk Edit
+            </button>
+            <button
+              onClick={handleBulkDelete}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 transition-colors"
+            >
+              <Trash2 size={13} />
+              Delete Selected
+            </button>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="text-xs text-muted-foreground hover:text-foreground px-2 py-1.5 transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
       {viewMode === 'table' ? (
         <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/40 text-muted-foreground">
+                  <th className="w-10 px-3 py-3.5">
+                    <input
+                      type="checkbox"
+                      checked={filteredChannels.length > 0 && selectedIds.size === filteredChannels.length}
+                      onChange={toggleSelectAll}
+                      className="w-4 h-4 rounded border-border text-primary focus:ring-primary/30 cursor-pointer"
+                    />
+                  </th>
                   <th className="text-left px-5 py-3.5 font-medium">Channel Name</th>
                   <th className="text-left px-5 py-3.5 font-medium">Channel Handler</th>
                   <th className="text-left px-5 py-3.5 font-medium">Niche</th>
@@ -591,13 +719,22 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
               <tbody className="divide-y divide-border">
                 {filteredChannels.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-5 py-12 text-center text-muted-foreground">
+                    <td colSpan={9} className="px-5 py-12 text-center text-muted-foreground">
                       No channels found. Click "+ Add Channel" to register a YouTube channel.
                     </td>
                   </tr>
                 ) : (
                   filteredChannels.map((ch) => (
-                    <tr key={ch.id} className="hover:bg-muted/20 transition-colors">
+                    <tr key={ch.id} className={`hover:bg-muted/20 transition-colors ${selectedIds.has(ch.id) ? 'bg-primary/5' : ''}`}>
+                      {/* Checkbox */}
+                      <td className="w-10 px-3 py-4">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(ch.id)}
+                          onChange={() => toggleSelect(ch.id)}
+                          className="w-4 h-4 rounded border-border text-primary focus:ring-primary/30 cursor-pointer"
+                        />
+                      </td>
                       {/* Name */}
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
@@ -724,9 +861,15 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
             </div>
           ) : (
             filteredChannels.map((ch) => (
-              <div key={ch.id} className="bg-card border border-border rounded-xl p-5 space-y-3 shadow-xs">
+              <div key={ch.id} className={`bg-card border rounded-xl p-5 space-y-3 shadow-xs ${selectedIds.has(ch.id) ? 'border-primary/40 bg-primary/5' : 'border-border'}`}>
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(ch.id)}
+                      onChange={() => toggleSelect(ch.id)}
+                      className="w-4 h-4 rounded border-border text-primary focus:ring-primary/30 cursor-pointer mt-1"
+                    />
                     <div className="w-9 h-9 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 flex items-center justify-center font-bold">
                       <Tv size={18} />
                     </div>
@@ -1378,6 +1521,99 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
                   className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2"
                 >
                   {editLoading ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Edit Modal */}
+      {isBulkEditOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-xl shadow-xl max-w-md w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <div>
+                <h3 className="text-lg font-bold text-foreground">Bulk Edit Channels</h3>
+                <p className="text-xs text-muted-foreground">
+                  Update {selectedIds.size} selected channel(s). Only filled fields will be updated.
+                </p>
+              </div>
+              <button
+                onClick={() => setIsBulkEditOpen(false)}
+                className="text-muted-foreground hover:text-foreground text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            {bulkEditError && (
+              <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-sm">
+                {bulkEditError}
+              </div>
+            )}
+
+            <form onSubmit={handleBulkEditSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Status</label>
+                <select
+                  value={bulkEditForm.status}
+                  onChange={(e) => setBulkEditForm({ ...bulkEditForm, status: e.target.value })}
+                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                >
+                  <option value="">— No Change —</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Not Active</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Niche</label>
+                <input
+                  type="text"
+                  value={bulkEditForm.niche}
+                  onChange={(e) => setBulkEditForm({ ...bulkEditForm, niche: e.target.value })}
+                  placeholder="Leave empty to keep current"
+                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Email</label>
+                <input
+                  type="email"
+                  value={bulkEditForm.channelEmail}
+                  onChange={(e) => setBulkEditForm({ ...bulkEditForm, channelEmail: e.target.value })}
+                  placeholder="Leave empty to keep current"
+                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Whop Email</label>
+                <input
+                  type="email"
+                  value={bulkEditForm.whopEmail}
+                  onChange={(e) => setBulkEditForm({ ...bulkEditForm, whopEmail: e.target.value })}
+                  placeholder="Leave empty to keep current"
+                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setIsBulkEditOpen(false)}
+                  className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={bulkEditLoading}
+                  className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {bulkEditLoading ? 'Updating...' : `Update ${selectedIds.size} Channel(s)`}
                 </button>
               </div>
             </form>
