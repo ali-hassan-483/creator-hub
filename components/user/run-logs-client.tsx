@@ -251,6 +251,12 @@ function DetailsModal({
             </p>
           </div>
           <div className="flex items-center gap-3">
+            {(row.status === 'running' || row.status === 'queued') && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-500 border border-blue-500/20">
+                <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
+                Live Updating
+              </span>
+            )}
             <StatusBadge status={row.status} />
             <button
               onClick={onClose}
@@ -824,8 +830,8 @@ export default function RunLogsClient() {
     setTimeout(() => setToast(null), 3500)
   }
 
-  const fetchLogs = useCallback(async (p = 1) => {
-    setLoading(true)
+  const fetchLogs = useCallback(async (p = 1, silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const res = await fetch(`/api/user/run-logs?page=${p}&limit=20`)
       const data = await res.json()
@@ -833,16 +839,60 @@ export default function RunLogsClient() {
       setTotal(data.total || 0)
       setTotalPages(data.totalPages || 1)
       setPage(p)
+
+      // Keep selectedRow in sync with updated data if details modal is open
+      setSelectedRow((current) => {
+        if (!current) return null
+        const matching = (data.rows || []).find((r: RunLogRow) => r.id === current.id)
+        return matching || current
+      })
     } catch {
-      showToast('Failed to load run logs', 'error')
+      if (!silent) showToast('Failed to load run logs', 'error')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [])
 
   useEffect(() => {
     fetchLogs(1)
   }, [fetchLogs])
+
+  // ── Auto-poll live updates when Details Modal is open for a running/queued run ──
+  useEffect(() => {
+    if (!selectedRow) return
+    const isOngoing = selectedRow.status === 'running' || selectedRow.status === 'queued'
+    if (!isOngoing) return
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/user/run-logs?id=${selectedRow.id}`)
+        if (res.ok) {
+          const data = await res.json()
+          if (data.row) {
+            setSelectedRow(data.row)
+            // Also sync in the parent rows list so background table reflects progress
+            setRows((prev) => prev.map((r) => (r.id === data.row.id ? data.row : r)))
+          }
+        }
+      } catch (err) {
+        console.warn('Live modal polling error:', err)
+      }
+    }, 2500)
+
+    return () => clearInterval(interval)
+  }, [selectedRow?.id, selectedRow?.status])
+
+  // ── Auto-poll run logs table when any row is running or queued ──
+  useEffect(() => {
+    const hasOngoing = rows.some((r) => r.status === 'running' || r.status === 'queued')
+    if (!hasOngoing) return
+
+    const interval = setInterval(() => {
+      fetchLogs(page, true)
+    }, 4000)
+
+    return () => clearInterval(interval)
+  }, [rows, page, fetchLogs])
 
   const handleSeedData = async () => {
     setSeeding(true)

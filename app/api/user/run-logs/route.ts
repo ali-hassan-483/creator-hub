@@ -217,17 +217,132 @@ async function seedTestData(userId: string) {
   return { message: 'Test data seeded successfully', count: runs.length }
 }
 
+function formatAutomationRow(auto: any) {
+  const opts = (auto.options as any) || {}
+  const mockUploads: any[] = opts.mockVideoUploads || []
+  const mockWhop: any[] = opts.mockWhopSubmissions || []
+
+  // Build channelId -> whopEmail map from the automation's linked channels
+  const channelWhopMap: Record<string, string> = {}
+  for (const ac of auto.channels || []) {
+    if (ac.channel?.id) {
+      channelWhopMap[ac.channel.id] = ac.channel.whopEmail || ''
+    }
+  }
+
+  // Build videoTitle / youtubeLink -> channelId lookup from mockUploads
+  const uploadMap: Record<string, string> = {}
+  for (const u of mockUploads) {
+    const cWhop = u.channelId ? (channelWhopMap[u.channelId] || '') : ''
+    if (u.videoTitle && cWhop) uploadMap[u.videoTitle] = cWhop
+    if (u.youtubeLink && cWhop) uploadMap[u.youtubeLink] = cWhop
+  }
+
+  // Derive display status
+  let displayStatus: 'success' | 'partial' | 'cancelled' | 'running' | 'queued' | 'failed' | 'paused' =
+    'queued'
+  if (auto.status === 'cancelled' || opts.runStatus === 'cancelled') {
+    displayStatus = 'cancelled'
+  } else if (auto.status === 'paused' || opts.runStatus === 'paused') {
+    displayStatus = 'paused'
+  } else if (auto.status === 'failed' || opts.runStatus === 'failed') {
+    displayStatus = 'failed'
+  } else if (auto.status === 'running' || opts.runStatus === 'running') {
+    displayStatus = 'running'
+  } else if (auto.status === 'completed') {
+    const hasFailedUpload = mockUploads.some((u) => !u.youtubeLink)
+    displayStatus = opts.runStatus === 'partial' || hasFailedUpload ? 'partial' : 'success'
+  }
+
+  // Inject whopEmail into each whop submission
+  const enrichedWhopSubmissions = mockWhop.map((sub: any) => {
+    let email = sub.whopEmail || ''
+    if (!email && sub.channelId) {
+      email = channelWhopMap[sub.channelId] || ''
+    }
+    if (!email && sub.videoTitle) {
+      email = uploadMap[sub.videoTitle] || ''
+    }
+    if (!email && sub.youtubeLink) {
+      email = uploadMap[sub.youtubeLink] || ''
+    }
+    if (!email && auto.channels?.length > 0) {
+      email = auto.channels[0]?.channel?.whopEmail || ''
+    }
+    return {
+      ...sub,
+      whopEmail: email,
+    }
+  })
+
+  return {
+    id: auto.id,
+    triggeredAt: auto.createdAt,
+    startedAt: auto.startedAt,
+    completedAt: auto.completedAt,
+    name: auto.name,
+    runType: auto.runType,
+    status: displayStatus,
+    rawStatus: auto.status,
+    campaign: auto.campaign ? { id: auto.campaign.id, name: auto.campaign.name } : null,
+    channels: (auto.channels || []).map((ac: any) => ({
+      id: ac.channel?.id,
+      name: ac.channel?.channelName || 'YouTube Channel',
+      handle: ac.channel?.channelHandle || '',
+      email: ac.channel?.channelEmail || '',
+      whopEmail: ac.channel?.whopEmail || '',
+    })),
+    activeSlots: auto.channels?.length || 0,
+    videoUploads: mockUploads,
+    whopSubmissions: enrichedWhopSubmissions,
+    cancelReason: opts.cancelReason || null,
+    errorMessage: auto.errorMessage,
+  }
+}
+
 // ─── GET /api/user/run-logs ────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
   const session = await requireAuth()
   const userId = session.user.id
 
   const { searchParams } = new URL(req.url)
-  const page = parseInt(searchParams.get('page') || '1', 10)
-  const limit = parseInt(searchParams.get('limit') || '20', 10)
-  const skip = (page - 1) * limit
+  const singleId = searchParams.get('id')
 
   try {
+    // 1. Single automation fetch for real-time live modal polling
+    if (singleId) {
+      const auto = await prisma.automation.findFirst({
+        where: { id: singleId, userId },
+        include: {
+          campaign: { select: { id: true, name: true } },
+          channels: {
+            include: {
+              channel: {
+                select: {
+                  id: true,
+                  channelName: true,
+                  channelHandle: true,
+                  channelEmail: true,
+                  whopEmail: true,
+                },
+              },
+            },
+          },
+        },
+      })
+
+      if (!auto) {
+        return NextResponse.json({ error: 'Automation run not found' }, { status: 404 })
+      }
+
+      return NextResponse.json({ success: true, row: formatAutomationRow(auto) })
+    }
+
+    // 2. Paginated list fetch
+    const page = parseInt(searchParams.get('page') || '1', 10)
+    const limit = parseInt(searchParams.get('limit') || '20', 10)
+    const skip = (page - 1) * limit
+
     const [automations, total] = await Promise.all([
       prisma.automation.findMany({
         where: { userId },
@@ -254,86 +369,7 @@ export async function GET(req: NextRequest) {
       prisma.automation.count({ where: { userId } }),
     ])
 
-    const rows = automations.map((auto) => {
-      const opts = (auto.options as any) || {}
-      const mockUploads: any[] = opts.mockVideoUploads || []
-      const mockWhop: any[] = opts.mockWhopSubmissions || []
-
-      // Build channelId -> whopEmail map from the automation's linked channels
-      const channelWhopMap: Record<string, string> = {}
-      for (const ac of auto.channels) {
-        channelWhopMap[ac.channel.id] = ac.channel.whopEmail || ''
-      }
-
-      // Build videoTitle / youtubeLink -> channelId lookup from mockUploads
-      const uploadMap: Record<string, string> = {}
-      for (const u of mockUploads) {
-        const cWhop = u.channelId ? (channelWhopMap[u.channelId] || '') : ''
-        if (u.videoTitle && cWhop) uploadMap[u.videoTitle] = cWhop
-        if (u.youtubeLink && cWhop) uploadMap[u.youtubeLink] = cWhop
-      }
-
-      // Derive display status
-      let displayStatus: 'success' | 'partial' | 'cancelled' | 'running' | 'queued' | 'failed' | 'paused' =
-        'queued'
-      if (auto.status === 'cancelled' || opts.runStatus === 'cancelled') {
-        displayStatus = 'cancelled'
-      } else if (auto.status === 'paused' || opts.runStatus === 'paused') {
-        displayStatus = 'paused'
-      } else if (auto.status === 'failed' || opts.runStatus === 'failed') {
-        displayStatus = 'failed'
-      } else if (auto.status === 'running' || opts.runStatus === 'running') {
-        displayStatus = 'running'
-      } else if (auto.status === 'completed') {
-        const hasFailedUpload = mockUploads.some((u) => !u.youtubeLink)
-        displayStatus = opts.runStatus === 'partial' || hasFailedUpload ? 'partial' : 'success'
-      }
-
-      // Inject whopEmail into each whop submission
-      const enrichedWhopSubmissions = mockWhop.map((sub: any) => {
-        let email = sub.whopEmail || ''
-        if (!email && sub.channelId) {
-          email = channelWhopMap[sub.channelId] || ''
-        }
-        if (!email && sub.videoTitle) {
-          email = uploadMap[sub.videoTitle] || ''
-        }
-        if (!email && sub.youtubeLink) {
-          email = uploadMap[sub.youtubeLink] || ''
-        }
-        if (!email && auto.channels.length > 0) {
-          email = auto.channels[0]?.channel?.whopEmail || ''
-        }
-        return {
-          ...sub,
-          whopEmail: email,
-        }
-      })
-
-      return {
-        id: auto.id,
-        triggeredAt: auto.createdAt,
-        startedAt: auto.startedAt,
-        completedAt: auto.completedAt,
-        name: auto.name,
-        runType: auto.runType,
-        status: displayStatus,
-        rawStatus: auto.status,
-        campaign: auto.campaign ? { id: auto.campaign.id, name: auto.campaign.name } : null,
-        channels: auto.channels.map((ac) => ({
-          id: ac.channel.id,
-          name: ac.channel.channelName || 'YouTube Channel',
-          handle: ac.channel.channelHandle || '',
-          email: ac.channel.channelEmail || '',
-          whopEmail: ac.channel.whopEmail || '',
-        })),
-        activeSlots: auto.channels.length,
-        videoUploads: mockUploads,
-        whopSubmissions: enrichedWhopSubmissions,
-        cancelReason: opts.cancelReason || null,
-        errorMessage: auto.errorMessage,
-      }
-    })
+    const rows = automations.map(formatAutomationRow)
 
     return NextResponse.json({ rows, total, page, limit, totalPages: Math.ceil(total / limit) })
   } catch (error: any) {
