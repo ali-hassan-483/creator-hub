@@ -46,7 +46,7 @@ services:
     env_file:
       - .env
     volumes:
-      - storage_data:/app/storage
+      - ./storage:/app/storage
     ports:
       - '3000:3000'
     environment:
@@ -92,6 +92,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    volumes:
+      - ./storage:/app/storage
     command: npm run worker:automation
     environment:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@postgres:5432/content_platform
@@ -133,6 +135,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    volumes:
+      - ./storage:/app/storage
     command: npm run worker:editor
     environment:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@postgres:5432/content_platform
@@ -150,4 +154,3 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  storage_data:
