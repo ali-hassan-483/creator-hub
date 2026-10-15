@@ -25,7 +25,8 @@ import {
   PlaySquare,
   FileText,
   ShoppingBag,
-  Server
+  Server,
+  AlertOctagon
 } from 'lucide-react'
 
 interface NavItem {
@@ -46,10 +47,11 @@ const adminNav: NavItem[] = [
 ]
 
 // Matching user's screenshot sidebar exactly:
-// Dashboard, Channels, Campaigns, Credentials, Run Automation, Sandbox Test, Run Logs, Pending Tasks, Analytics, Proxy Settings
+// Dashboard, Channels, Dead Channels, Campaigns, Credentials, Run Automation, Sandbox Test, Run Logs, Pending Tasks, Analytics, Proxy Settings
 const userNav: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={17} className="text-amber-500" /> },
   { href: '/channels', label: 'Channels', icon: <Tv size={17} className="text-sky-500" /> },
+  { href: '/dead-channels', label: 'Dead Channels', icon: <AlertOctagon size={17} className="text-rose-500" /> },
   { href: '/campaigns', label: 'Campaigns', icon: <Megaphone size={17} className="text-rose-500" /> },
   { href: '/credentials', label: 'Credentials', icon: <Key size={17} className="text-purple-500" /> },
   { href: '/run-automation', label: 'Run Automation', icon: <Zap size={17} className="text-pink-500" /> },

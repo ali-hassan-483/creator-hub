@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db'
 import { validateVpsApiKey } from '@/lib/vps-service'
 import { decryptIfPresent } from '@/lib/encryption'
 import { getClipsDir } from '@/tools/campaign-processor'
+import { getPakistanTodayStart } from '@/lib/date-utils'
 import * as fs from 'fs'
 import * as path from 'path'
 
@@ -197,8 +198,8 @@ export async function GET(req: NextRequest) {
         const whopEmail = (channel.whopEmail || '').trim().toLowerCase()
 
         if (whopEmail && dailyWhopLimit > 0) {
-          const todayStart = new Date()
-          todayStart.setHours(0, 0, 0, 0)
+          // Reset daily at 12:00 AM Pakistan Time (PKT, UTC+5)
+          const todayStart = getPakistanTodayStart()
 
           const whopChannels = await prisma.channel.findMany({
             where: {
