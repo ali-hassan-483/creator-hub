@@ -52,7 +52,6 @@ const userNav: NavItem[] = [
   { href: '/campaigns', label: 'Campaigns', icon: <Megaphone size={17} className="text-rose-500" /> },
   { href: '/credentials', label: 'Credentials', icon: <Key size={17} className="text-purple-500" /> },
   { href: '/run-automation', label: 'Run Automation', icon: <Zap size={17} className="text-pink-500" /> },
-  { href: '/sandbox-test', label: 'Sandbox Test', icon: <PlaySquare size={17} className="text-emerald-500" /> },
   { href: '/scheduled', label: 'Run Logs', icon: <FileText size={17} className="text-cyan-500" /> },
   { href: '/pending-tasks', label: 'Pending Tasks', icon: <ClipboardList size={17} className="text-amber-500" /> },
   { href: '/analytics', label: 'Analytics', icon: <BarChart2 size={17} className="text-blue-500" /> },
