@@ -149,7 +149,19 @@ async function uploadToYouTube(accessToken, videoPath, fileSize, metadata) {
 
   if (!initRes.ok) {
     const errText = await initRes.text()
-    throw new Error(`Failed to initialize YouTube upload session (${initRes.status}): ${errText}`)
+    let isLimitExceeded = false
+    try {
+      const parsed = JSON.parse(errText)
+      const reason = parsed?.error?.errors?.[0]?.reason
+      if (reason === 'uploadLimitExceeded') {
+        isLimitExceeded = true
+      }
+    } catch {}
+
+    const err = new Error(`Failed to initialize YouTube upload session (${initRes.status}): ${errText}`)
+    err.isLimitExceeded = isLimitExceeded
+    err.rawResponse = errText
+    throw err
   }
 
   const uploadLocation = initRes.headers.get('location')
@@ -195,6 +207,7 @@ async function reportUploadComplete(job, videoId, youtubeLink) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       apiKey: API_KEY,
+      automationId: job.automationId,
       channelId: job.channel.id,
       campaignId: job.campaign.id,
       youtubeVideoId: videoId,
@@ -209,6 +222,28 @@ async function reportUploadComplete(job, videoId, youtubeLink) {
     console.warn(`⚠️ [Worker] Warning recording upload completion (${res.status}): ${errText}`)
   } else {
     console.log(`✅ [Worker] Upload successfully recorded in Creator Hub database.`)
+  }
+}
+
+/**
+ * Reports upload failure (e.g. YouTube limit exceeded) to Creator Hub.
+ */
+async function reportUploadFailure(job, reason, errorMessage) {
+  try {
+    await fetch(`${SERVER_URL}/api/worker/upload-failed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        apiKey: API_KEY,
+        channelId: job.channel.id,
+        campaignId: job.campaign.id,
+        reason,
+        errorMessage,
+        clipFilename: job.clip.filename,
+      }),
+    })
+  } catch (err) {
+    console.warn(`⚠️ [Worker] Could not report upload failure:`, err.message)
   }
 }
 
@@ -267,6 +302,16 @@ async function pollAndProcess() {
       console.log(`✨ [Worker] Job finished successfully! Checking for more jobs...\n`)
       return true // Found and processed a job, check again immediately!
 
+    } catch (uploadErr) {
+      if (uploadErr.isLimitExceeded || uploadErr.message?.includes('uploadLimitExceeded')) {
+        console.warn(`\n⏳ [Worker] YouTube daily upload limit reached for channel @${job.channel.channelHandle || job.channel.channelName}!`)
+        console.warn(`   Channel is now placed on a 24-hour cooldown. Stopping upload attempts for this channel.\n`)
+        await reportUploadFailure(job, 'uploadLimitExceeded', uploadErr.message)
+      } else {
+        console.error(`❌ [Worker] Error processing upload job:`, uploadErr.message)
+        await reportUploadFailure(job, 'uploadError', uploadErr.message)
+      }
+      return false
     } finally {
       // Always cleanup local temporary video file
       if (fs.existsSync(tempFilePath)) {
@@ -276,7 +321,7 @@ async function pollAndProcess() {
       }
     }
   } catch (err) {
-    console.error(`❌ [Worker] Error processing upload job:`, err.message)
+    console.error(`❌ [Worker] Poll loop error:`, err.message)
     return false
   }
 }

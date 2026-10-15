@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic'
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { apiKey, channelId, campaignId, youtubeVideoId, youtubeLink, title, clipFilename } = body
+    const { apiKey, channelId, campaignId, youtubeVideoId, youtubeLink, title, clipFilename, automationId } = body
 
     if (!apiKey) {
       return NextResponse.json({ error: 'Missing apiKey' }, { status: 401 })
@@ -42,17 +42,28 @@ export async function POST(req: NextRequest) {
     const whopEmail = channel.whopEmail || channel.channelEmail || ''
     const now = new Date()
 
-    // Find recent automation run
-    const recentAutomation = await prisma.automation.findFirst({
-      where: {
-        userId: channel.userId,
-        ...(campaignId ? { campaignId } : {}),
-      },
-      orderBy: { createdAt: 'desc' },
-    })
+    // Find target automation run
+    let targetAutomation = automationId
+      ? await prisma.automation.findUnique({
+          where: { id: automationId },
+          include: { channels: true },
+        })
+      : null
 
-    if (recentAutomation) {
-      const opts = (recentAutomation.options as any) || {}
+    if (!targetAutomation) {
+      targetAutomation = await prisma.automation.findFirst({
+        where: {
+          userId: channel.userId,
+          status: { in: ['queued', 'running'] },
+          ...(campaignId ? { campaignId } : {}),
+        },
+        include: { channels: true },
+        orderBy: { createdAt: 'desc' },
+      })
+    }
+
+    if (targetAutomation) {
+      const opts = (targetAutomation.options as any) || {}
       const videoUploads = opts.mockVideoUploads || []
       const whopSubmissions = opts.mockWhopSubmissions || []
 
@@ -78,16 +89,20 @@ export async function POST(req: NextRequest) {
         whopEmail,
       }
 
+      const updatedUploads = [uploadItem, ...videoUploads]
+      const totalChannels = targetAutomation.channels?.length || 1
+      const isAllDone = updatedUploads.length >= totalChannels
+
       await prisma.automation.update({
-        where: { id: recentAutomation.id },
+        where: { id: targetAutomation.id },
         data: {
           options: {
             ...opts,
-            mockVideoUploads: [uploadItem, ...videoUploads],
+            mockVideoUploads: updatedUploads,
             mockWhopSubmissions: [whopItem, ...whopSubmissions],
           },
-          status: 'completed',
-          completedAt: now,
+          status: isAllDone ? 'completed' : 'running',
+          completedAt: isAllDone ? now : null,
         },
       })
     }

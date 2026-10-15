@@ -10,8 +10,11 @@ export const dynamic = 'force-dynamic'
 
 /**
  * GET /api/worker/poll-upload?apiKey=xxx
- * External or local Worker VPS polls this endpoint to check for upload jobs
- * strictly isolated to the users assigned to that VPS.
+ * External or local Worker VPS polls this endpoint.
+ *
+ * STRICT RULE:
+ * 1 Automation Trigger = Exactly 1 Video Clip Per Selected Channel!
+ * If there is no queued/running automation for the assigned users, worker stays idle.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -36,46 +39,103 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    // Find active channels for assigned users with YouTube credentials
-    const channels = await prisma.channel.findMany({
+    // ── 1. Find Pending (queued or running) Automation Runs for Assigned Users ────
+    const pendingAutomations = await prisma.automation.findMany({
       where: {
         userId: { in: assignedUserIds },
-        status: 'active',
-        removedAt: null,
-        clientId: { not: null },
-        refreshTokenEnc: { not: null },
+        status: { in: ['queued', 'running'] },
       },
       include: {
-        user: { select: { id: true, name: true, email: true } },
+        channels: {
+          include: {
+            channel: true,
+          },
+        },
+        campaign: true,
       },
+      orderBy: { createdAt: 'asc' },
     })
 
-    if (channels.length === 0) {
+    if (pendingAutomations.length === 0) {
       return NextResponse.json({
         success: true,
         hasJob: false,
-        message: 'No active channels with YouTube credentials found for assigned users.',
+        message: 'No queued automation runs. Worker is idle.',
       })
     }
-
-    // Find active campaigns
-    const campaigns = await prisma.campaign.findMany({
-      where: { status: 'active' },
-    })
 
     // Determine host origin for downloadUrl
     const hostHeader = req.headers.get('x-forwarded-host') || req.headers.get('host') || 'localhost:3000'
     const protocol = req.headers.get('x-forwarded-proto') || 'https'
     const baseUrl = `${protocol}://${hostHeader}`
 
-    for (const channel of channels) {
-      const clientId = channel.clientId || ''
-      const clientSecret = decryptIfPresent(channel.clientSecretEnc) || ''
-      const refreshToken = decryptIfPresent(channel.refreshTokenEnc) || ''
+    for (const automation of pendingAutomations) {
+      const campaign = automation.campaign
+      if (!campaign || campaign.status !== 'active') {
+        // If campaign is inactive or deleted, mark automation cancelled
+        await prisma.automation.update({
+          where: { id: automation.id },
+          data: { status: 'cancelled' },
+        })
+        continue
+      }
 
-      if (!refreshToken || !clientId || !clientSecret) continue
+      const opts = (automation.options as Record<string, any>) || {}
+      const mockVideoUploads: any[] = opts.mockVideoUploads || []
 
-      for (const campaign of campaigns) {
+      // Find channels in this automation that have NOT yet had their 1 video uploaded
+      const channelsNeedingUpload = automation.channels.filter((ac) => {
+        const ch = ac.channel
+        if (!ch || ch.status !== 'active' || ch.removedAt) return false
+
+        // Check if this channel already got its video in this automation run
+        const alreadyUploaded = mockVideoUploads.some(
+          (u) => u.channelId === ch.id && u.youtubeLink
+        )
+        return !alreadyUploaded
+      })
+
+      // If all channels in this automation run already have their video uploaded, mark completed!
+      if (channelsNeedingUpload.length === 0) {
+        await prisma.automation.update({
+          where: { id: automation.id },
+          data: {
+            status: 'completed',
+            completedAt: new Date(),
+          },
+        })
+        continue
+      }
+
+      // Mark automation as running if it was queued
+      if (automation.status === 'queued') {
+        await prisma.automation.update({
+          where: { id: automation.id },
+          data: { status: 'running', startedAt: new Date() },
+        })
+      }
+
+      // Pick the first channel in this automation that needs a video
+      for (const ac of channelsNeedingUpload) {
+        const channel = ac.channel
+        const extra = (channel.extraData as Record<string, any>) || {}
+
+        // Check YouTube 24h upload cooldown
+        if (extra.uploadCooldownUntil && new Date(extra.uploadCooldownUntil) > new Date()) {
+          console.log(`[Worker Poll] Channel @${channel.channelHandle} is on cooldown until ${extra.uploadCooldownUntil}`)
+          continue
+        }
+
+        const clientId = channel.clientId || ''
+        const clientSecret = decryptIfPresent(channel.clientSecretEnc) || ''
+        const refreshToken = decryptIfPresent(channel.refreshTokenEnc) || ''
+
+        if (!refreshToken || !clientId || !clientSecret) {
+          console.warn(`[Worker Poll] Channel @${channel.channelHandle} is missing Google credentials.`)
+          continue
+        }
+
+        // Find available unposted clips in campaign directory
         const clipsDir = getClipsDir(campaign.id)
         if (!fs.existsSync(clipsDir)) continue
 
@@ -88,14 +148,16 @@ export async function GET(req: NextRequest) {
           .readdirSync(clipsDir)
           .filter((f) => f.endsWith('.mp4') && !postedFiles.has(f))
 
-        if (allClips.length === 0) continue
+        if (allClips.length === 0) {
+          console.warn(`[Worker Poll] No unposted clips left in campaign ${campaign.name}`)
+          continue
+        }
 
-        // Pick the first available unposted clip
+        // Pick exactly 1 available clip
         const clipFileName = allClips[0]
-        const clipFullPath = path.join(clipsDir, clipFileName)
-        const cfg = (campaign.config as any) || {}
+        const cfg = (campaign.config as Record<string, any>) || {}
 
-        // Check for .meta.json file
+        // Look for corresponding .meta.json file
         const metaFileName = clipFileName.replace(/\.mp4$/, '.meta.json')
         const metaFullPath = path.join(clipsDir, metaFileName)
 
@@ -121,6 +183,7 @@ export async function GET(req: NextRequest) {
           hasJob: true,
           job: {
             jobId: `job_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+            automationId: automation.id,
             channel: {
               id: channel.id,
               channelName: channel.channelName || channel.channelHandle || 'YouTube Channel',
@@ -150,7 +213,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       hasJob: false,
-      message: 'No pending ready clips available at this moment.',
+      message: 'All queued automations are processed or channels are on cooldown.',
     })
   } catch (err: any) {
     console.error('[Worker Poll Upload] Error:', err)
