@@ -663,15 +663,18 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
 
                       {/* Actions */}
                       <td className="px-5 py-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
+                        <div className="flex items-center justify-end gap-1.5">
                           <button
+                            type="button"
                             onClick={() => openEditModal(ch)}
-                            className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-md border border-border bg-background hover:bg-muted text-foreground transition-colors shadow-2xs"
                             title="Edit Channel"
                           >
-                            <Edit3 size={15} />
+                            <Edit3 size={13} className="text-primary" />
+                            <span>Edit</span>
                           </button>
                           <button
+                            type="button"
                             onClick={() => handleRemoveChannel(ch.id)}
                             className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
                             title="Remove Channel"
@@ -711,15 +714,18 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1.5">
                     <button
+                      type="button"
                       onClick={() => openEditModal(ch)}
-                      className="text-muted-foreground hover:text-foreground p-1 rounded hover:bg-muted transition-colors"
+                      className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md border border-border bg-background hover:bg-muted text-foreground transition-colors shadow-2xs"
                       title="Edit Channel"
                     >
-                      <Edit3 size={15} />
+                      <Edit3 size={12} className="text-primary" />
+                      <span>Edit</span>
                     </button>
                     <button
+                      type="button"
                       onClick={() => handleRemoveChannel(ch.id)}
                       className="text-muted-foreground hover:text-destructive p-1 rounded hover:bg-destructive/10 transition-colors"
                       title="Remove Channel"
