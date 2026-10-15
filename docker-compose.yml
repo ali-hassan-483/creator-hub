@@ -151,6 +151,23 @@ services:
       redis:
         condition: service_healthy
 
+  # Dedicated Upload Worker for Main VPS (Auto-uploads for users assigned to Main Server)
+  worker-uploader:
+    container_name: cap_worker_uploader
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    volumes:
+      - ./storage:/app/storage
+    command: node scripts/upload-worker.js
+    environment:
+      CREATOR_HUB_URL: http://web:3000
+      VPS_API_KEY: ${MAIN_VPS_API_KEY:-vps_main_e2f7e25c2569b7f415265baed51d3e8c}
+      POLL_INTERVAL_SEC: 30
+    depends_on:
+      - web
+
 volumes:
   postgres_data:
   redis_data:
