@@ -90,6 +90,86 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
   })
   const [copiedId, setCopiedId] = useState<string | null>(null)
 
+  // Edit Modal State
+  const [editingChannel, setEditingChannel] = useState<ChannelItem | null>(null)
+  const [editForm, setEditForm] = useState({
+    channelName: '',
+    channelHandle: '',
+    channelEmail: '',
+    whopEmail: '',
+    niche: '',
+    clientId: '',
+    clientSecret: '',
+    refreshToken: '',
+    status: 'active' as 'active' | 'inactive',
+  })
+  const [editLoading, setEditLoading] = useState(false)
+  const [editError, setEditError] = useState('')
+  const [showEditSecret, setShowEditSecret] = useState(false)
+  const [showEditToken, setShowEditToken] = useState(false)
+
+  function openEditModal(ch: ChannelItem) {
+    setEditingChannel(ch)
+    setEditForm({
+      channelName: ch.channelName || '',
+      channelHandle: ch.channelHandle || '',
+      channelEmail: ch.channelEmail || '',
+      whopEmail: ch.whopEmail || '',
+      niche: ch.niche || '',
+      clientId: ch.clientId || '',
+      clientSecret: '',
+      refreshToken: '',
+      status: (ch.status === 'active' ? 'active' : 'inactive') as 'active' | 'inactive',
+    })
+    setEditError('')
+    setShowEditSecret(false)
+    setShowEditToken(false)
+  }
+
+  async function handleEditSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editingChannel) return
+    setEditLoading(true)
+    setEditError('')
+
+    try {
+      const payload: any = {
+        channelName: editForm.channelName.trim(),
+        channelHandle: editForm.channelHandle.trim(),
+        channelEmail: editForm.channelEmail.trim().toLowerCase(),
+        whopEmail: editForm.whopEmail.trim().toLowerCase(),
+        niche: editForm.niche.trim(),
+        clientId: editForm.clientId.trim(),
+        status: editForm.status,
+      }
+
+      if (editForm.clientSecret.trim()) {
+        payload.clientSecret = editForm.clientSecret.trim()
+      }
+      if (editForm.refreshToken.trim()) {
+        payload.refreshToken = editForm.refreshToken.trim()
+      }
+
+      const res = await fetch(`/api/user/channels/${editingChannel.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to update channel')
+      }
+
+      await refreshChannels()
+      setEditingChannel(null)
+    } catch (err: any) {
+      setEditError(err.message || 'Failed to update channel')
+    } finally {
+      setEditLoading(false)
+    }
+  }
+
   function handleCopy(text: string, id: string) {
     navigator.clipboard.writeText(text)
     setCopiedId(id)
@@ -583,13 +663,22 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
 
                       {/* Actions */}
                       <td className="px-5 py-4 text-right">
-                        <button
-                          onClick={() => handleRemoveChannel(ch.id)}
-                          className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
-                          title="Remove Channel"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => openEditModal(ch)}
+                            className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
+                            title="Edit Channel"
+                          >
+                            <Edit3 size={15} />
+                          </button>
+                          <button
+                            onClick={() => handleRemoveChannel(ch.id)}
+                            className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
+                            title="Remove Channel"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -622,13 +711,22 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
                       </p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => handleRemoveChannel(ch.id)}
-                    className="text-muted-foreground hover:text-destructive p-1 rounded hover:bg-destructive/10"
-                    title="Remove Channel"
-                  >
-                    <Trash2 size={15} />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => openEditModal(ch)}
+                      className="text-muted-foreground hover:text-foreground p-1 rounded hover:bg-muted transition-colors"
+                      title="Edit Channel"
+                    >
+                      <Edit3 size={15} />
+                    </button>
+                    <button
+                      onClick={() => handleRemoveChannel(ch.id)}
+                      className="text-muted-foreground hover:text-destructive p-1 rounded hover:bg-destructive/10 transition-colors"
+                      title="Remove Channel"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2 pt-2 border-t border-border text-xs justify-between">
@@ -1026,6 +1124,201 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Edit Channel Modal */}
+      {editingChannel && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-xl shadow-xl max-w-xl w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <div>
+                <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+                  <Edit3 size={18} className="text-primary" /> Edit YouTube Channel
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Update channel metadata or enter new Google OAuth credentials to re-verify.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingChannel(null)}
+                className="text-muted-foreground hover:text-foreground text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Error Banner */}
+            {editError && (
+              <div className="p-3 text-xs bg-destructive/10 text-destructive rounded-lg border border-destructive/20 flex items-start gap-2">
+                <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                <span>{editError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleEditSubmit} className="space-y-3.5">
+              {/* Channel Name & Handler */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">Channel Name *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Daily Gaming Clips"
+                    value={editForm.channelName}
+                    onChange={(e) => setEditForm({ ...editForm, channelName: e.target.value })}
+                    className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">Channels Handler *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="@ChannelHandle"
+                    value={editForm.channelHandle}
+                    onChange={(e) => setEditForm({ ...editForm, channelHandle: e.target.value })}
+                    className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+              </div>
+
+              {/* YouTube Email & Whop Email */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">Channel / YouTube Email *</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="creator@gmail.com"
+                    value={editForm.channelEmail}
+                    onChange={(e) => setEditForm({ ...editForm, channelEmail: e.target.value })}
+                    className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">Whop Account Email *</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="whop_creator@gmail.com"
+                    value={editForm.whopEmail}
+                    onChange={(e) => setEditForm({ ...editForm, whopEmail: e.target.value })}
+                    className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+              </div>
+
+              {/* Niche & Status */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">Niche *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Gaming, Tech, Fitness..."
+                    value={editForm.niche}
+                    onChange={(e) => setEditForm({ ...editForm, niche: e.target.value })}
+                    className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">Status</label>
+                  <select
+                    value={editForm.status}
+                    onChange={(e) => setEditForm({ ...editForm, status: e.target.value as 'active' | 'inactive' })}
+                    className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Not Active</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Client ID */}
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">Google OAuth Client ID</label>
+                <input
+                  type="text"
+                  placeholder="xxxx.apps.googleusercontent.com"
+                  value={editForm.clientId}
+                  onChange={(e) => setEditForm({ ...editForm, clientId: e.target.value })}
+                  className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+
+              {/* Client Secret & Refresh Token (Optional for update) */}
+              <div className="bg-muted/30 p-3 rounded-lg border border-border space-y-3">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                  <Key size={14} className="text-primary" />
+                  <span>Update OAuth Credentials (Optional)</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Leave Client Secret & Refresh Token empty if you wish to keep the existing credentials. If provided, they will be verified against Google OAuth.
+                </p>
+
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">New Client Secret</label>
+                  <div className="relative">
+                    <input
+                      type={showEditSecret ? 'text' : 'password'}
+                      placeholder="Leave blank to keep existing secret"
+                      value={editForm.clientSecret}
+                      onChange={(e) => setEditForm({ ...editForm, clientSecret: e.target.value })}
+                      className="w-full px-3 py-2 pr-10 bg-background border border-input rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowEditSecret(!showEditSecret)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {showEditSecret ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">New Refresh Token</label>
+                  <div className="relative">
+                    <input
+                      type={showEditToken ? 'text' : 'password'}
+                      placeholder="Leave blank to keep existing token"
+                      value={editForm.refreshToken}
+                      onChange={(e) => setEditForm({ ...editForm, refreshToken: e.target.value })}
+                      className="w-full px-3 py-2 pr-10 bg-background border border-input rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowEditToken(!showEditToken)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {showEditToken ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Actions */}
+              <div className="flex gap-2 justify-end pt-3 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setEditingChannel(null)}
+                  className="px-4 py-2 border border-border rounded-lg text-sm font-medium hover:bg-muted"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editLoading}
+                  className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {editLoading ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
