@@ -362,23 +362,25 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
     }
 
     // Expecting CSV format in lines:
-    // Name, Handler, Niche, Client_ID, Client_Secret, Refresh_Token, Status
+    // Name, Handler, Channel Email, Whop Email, Niche, Client_ID, Client_Secret, Refresh_Token, Status
     const parsedChannels = []
     for (const line of lines) {
       const p = line.split(',').map((x) => x.trim())
-      if (p.length < 6) {
-        setError(`Line "${line.slice(0, 30)}..." does not have all required fields (Name, Handler, Niche, Client_ID, Client_Secret, Refresh_Token).`)
+      if (p.length < 8) {
+        setError(`Line "${line.slice(0, 30)}..." does not have all required fields (Name, Handler, Channel Email, Whop Email, Niche, Client_ID, Client_Secret, Refresh_Token).`)
         setLoading(false)
         return
       }
       parsedChannels.push({
         channelName: p[0],
         channelHandle: p[1],
-        niche: p[2],
-        clientId: p[3],
-        clientSecret: p[4],
-        refreshToken: p[5],
-        status: (p[6]?.toLowerCase() === 'inactive' ? 'inactive' : 'active') as 'active' | 'inactive',
+        channelEmail: p[2],
+        whopEmail: p[3],
+        niche: p[4],
+        clientId: p[5],
+        clientSecret: p[6],
+        refreshToken: p[7],
+        status: (p[8]?.toLowerCase() === 'inactive' ? 'inactive' : 'active') as 'active' | 'inactive',
       })
     }
 
@@ -420,20 +422,50 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
       }
 
       // Check header
-      const startIndex = lines[0].toLowerCase().includes('channel') || lines[0].toLowerCase().includes('client') ? 1 : 0
+      const headerLine = lines[0].toLowerCase()
+      const isHeader = headerLine.includes('channel') || headerLine.includes('client') || headerLine.includes('email')
+      const startIndex = isHeader ? 1 : 0
+
+      let nameIdx = 0
+      let handleIdx = 1
+      let channelEmailIdx = 2
+      let whopEmailIdx = 3
+      let nicheIdx = 4
+      let clientIdIdx = 5
+      let clientSecretIdx = 6
+      let refreshTokenIdx = 7
+      let statusIdx = 8
+
+      if (isHeader) {
+        const headers = lines[0].split(',').map((h) => h.trim().toLowerCase().replace(/^"|"$/g, ''))
+        headers.forEach((h, idx) => {
+          if (h.includes('whop')) whopEmailIdx = idx
+          else if (h.includes('channel email') || h.includes('youtube email') || (h.includes('email') && !h.includes('whop'))) channelEmailIdx = idx
+          else if (h.includes('handle') || h.includes('handler')) handleIdx = idx
+          else if (h.includes('channel name') || h === 'name' || h === 'channel') nameIdx = idx
+          else if (h.includes('niche')) nicheIdx = idx
+          else if (h.includes('client_id') || h.includes('client id')) clientIdIdx = idx
+          else if (h.includes('client secret') || h.includes('client_secret')) clientSecretIdx = idx
+          else if (h.includes('refresh') || h.includes('token')) refreshTokenIdx = idx
+          else if (h.includes('status')) statusIdx = idx
+        })
+      }
+
       const parsed: Array<any> = []
 
       for (let i = startIndex; i < lines.length; i++) {
         const parts = lines[i].split(',').map((p) => p.trim().replace(/^"|"$/g, ''))
-        if (parts.length >= 6) {
+        if (parts.length >= 8) {
           parsed.push({
-            channelName: parts[0],
-            channelHandle: parts[1],
-            niche: parts[2],
-            clientId: parts[3],
-            clientSecret: parts[4],
-            refreshToken: parts[5],
-            status: parts[6]?.toLowerCase() === 'inactive' ? 'inactive' : 'active',
+            channelName: parts[nameIdx] || parts[0],
+            channelHandle: parts[handleIdx] || parts[1],
+            channelEmail: parts[channelEmailIdx] || parts[2],
+            whopEmail: parts[whopEmailIdx] || parts[3],
+            niche: parts[nicheIdx] || parts[4],
+            clientId: parts[clientIdIdx] || parts[5],
+            clientSecret: parts[clientSecretIdx] || parts[6],
+            refreshToken: parts[refreshTokenIdx] || parts[7],
+            status: (parts[statusIdx] || parts[8])?.toLowerCase() === 'inactive' ? 'inactive' : 'active',
           })
         }
       }
@@ -445,7 +477,7 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
   async function handleCsvSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (csvParsed.length === 0) {
-      setError('No valid channels found in CSV file. Ensure all 6 required credential fields are included.')
+      setError('No valid channels found in CSV file. Ensure all 8 required fields (Name, Handler, Channel Email, Whop Email, Niche, Client_ID, Client_Secret, Refresh_Token) are included.')
       return
     }
     setLoading(true)
@@ -473,7 +505,7 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
 
   function downloadCsvTemplate() {
     const csvContent =
-      'data:text/csv;charset=utf-8,Channel Name,Channels Handler,Niche,Client_ID,Client Secret,Refresh Token,Status\nDaily Gaming Clips,@DailyGamingClips,Gaming,1234567890-abc.apps.googleusercontent.com,GOCSPX-secret123,1//04xyzRefreshToken...,Active\nTech Daily,@TechDaily,Technology,1234567890-abc.apps.googleusercontent.com,GOCSPX-secret123,1//04abcRefreshToken...,Active\n'
+      'data:text/csv;charset=utf-8,Channel Name,Channel Handler,Channel Email,Whop Email,Niche,Client_ID,Client Secret,Refresh Token,Status\nDaily Gaming Clips,@DailyGamingClips,clips@gmail.com,whopowner@gmail.com,Gaming,1234567890-abc.apps.googleusercontent.com,GOCSPX-secret123,1//04xyzRefreshToken...,Active\nTech Daily,@TechDaily,tech@gmail.com,whopowner@gmail.com,Technology,1234567890-abc.apps.googleusercontent.com,GOCSPX-secret123,1//04abcRefreshToken...,Active\n'
     const encodedUri = encodeURI(csvContent)
     const link = document.createElement('a')
     link.setAttribute('href', encodedUri)
@@ -1172,13 +1204,13 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
                   <textarea
                     rows={7}
                     required
-                    placeholder={`Daily Clips, @DailyClips, Gaming, Client_ID_1, Client_Secret_1, Refresh_Token_1, Active\nTech Hub, @TechHub, Tech, Client_ID_2, Client_Secret_2, Refresh_Token_2, Active`}
+                    placeholder={`Daily Clips, @DailyClips, clips@gmail.com, whop@gmail.com, Gaming, Client_ID_1, Client_Secret_1, Refresh_Token_1, Active\nTech Hub, @TechHub, tech@gmail.com, whop@gmail.com, Tech, Client_ID_2, Client_Secret_2, Refresh_Token_2, Active`}
                     value={bulkText}
                     onChange={(e) => setBulkText(e.target.value)}
                     className="w-full p-3 bg-background border border-input rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-ring leading-relaxed"
                   />
                   <p className="text-[11px] text-muted-foreground mt-1">
-                    Format: <code className="font-mono">Name, Handler, Niche, Client_ID, Client_Secret, Refresh_Token, Status</code>
+                    Format: <code className="font-mono">Name, Handler, Channel Email, Whop Email, Niche, Client_ID, Client_Secret, Refresh_Token, Status</code>
                   </p>
                 </div>
 
@@ -1207,7 +1239,7 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
                 <div className="flex items-center justify-between bg-muted/30 p-3 rounded-lg border border-border">
                   <div>
                     <p className="text-xs font-semibold text-foreground">Download CSV Template</p>
-                    <p className="text-[11px] text-muted-foreground">Template includes all 7 fields with sample data.</p>
+                    <p className="text-[11px] text-muted-foreground">Template includes all 9 fields (including Channel Email & Whop Email) with sample data.</p>
                   </div>
                   <button
                     type="button"
@@ -1244,6 +1276,8 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
                           <tr>
                             <th className="p-2">Name</th>
                             <th className="p-2">Handler</th>
+                            <th className="p-2">Channel Email</th>
+                            <th className="p-2">Whop Email</th>
                             <th className="p-2">Niche</th>
                             <th className="p-2">Status</th>
                           </tr>
@@ -1253,6 +1287,8 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
                             <tr key={i}>
                               <td className="p-2 font-medium">{row.channelName}</td>
                               <td className="p-2 font-mono text-primary">{row.channelHandle}</td>
+                              <td className="p-2 text-muted-foreground">{row.channelEmail}</td>
+                              <td className="p-2 text-muted-foreground">{row.whopEmail}</td>
                               <td className="p-2">{row.niche}</td>
                               <td className="p-2 capitalize">{row.status}</td>
                             </tr>
