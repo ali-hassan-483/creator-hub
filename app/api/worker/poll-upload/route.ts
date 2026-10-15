@@ -69,6 +69,8 @@ export async function GET(req: NextRequest) {
     const protocol = req.headers.get('x-forwarded-proto') || 'https'
     const baseUrl = `${protocol}://${hostHeader}`
 
+    let minWaitSeconds: number | null = null
+
     for (const automation of pendingAutomations) {
       const campaign = automation.campaign
       if (!campaign || campaign.status !== 'active') {
@@ -114,6 +116,32 @@ export async function GET(req: NextRequest) {
           },
         })
         continue
+      }
+
+      // ── Enforce 45-Second Wait Between Channel Uploads in Same Automation ──
+      if (mockVideoUploads.length > 0) {
+        let latestUploadTime = 0
+        for (const u of mockVideoUploads) {
+          if (u.uploadedAt) {
+            const t = new Date(u.uploadedAt).getTime()
+            if (t > latestUploadTime) latestUploadTime = t
+          }
+        }
+
+        if (latestUploadTime > 0) {
+          const elapsedMs = Date.now() - latestUploadTime
+          const waitRequiredMs = 45 * 1000 // 45 seconds cooldown
+          if (elapsedMs < waitRequiredMs) {
+            const remainingSec = Math.ceil((waitRequiredMs - elapsedMs) / 1000)
+            console.log(
+              `[Worker Poll] Automation ${automation.id}: waiting ${remainingSec}s before uploading next channel (45s inter-channel cooldown).`
+            )
+            if (minWaitSeconds === null || remainingSec < minWaitSeconds) {
+              minWaitSeconds = remainingSec
+            }
+            continue
+          }
+        }
       }
 
       // Mark automation as running if it was queued
@@ -347,6 +375,15 @@ export async function GET(req: NextRequest) {
           },
         })
       }
+    }
+
+    if (minWaitSeconds !== null && minWaitSeconds > 0) {
+      return NextResponse.json({
+        success: true,
+        hasJob: false,
+        cooldownSeconds: minWaitSeconds,
+        message: `Waiting 45 seconds between channel uploads (${minWaitSeconds}s remaining).`,
+      })
     }
 
     return NextResponse.json({

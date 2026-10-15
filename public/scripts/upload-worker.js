@@ -266,7 +266,10 @@ async function pollAndProcess() {
 
     const data = await res.json()
     if (!data.hasJob || !data.job) {
-      // No jobs pending
+      if (data.cooldownSeconds) {
+        console.log(`⏱️ [Worker] ${data.message || `Waiting ${data.cooldownSeconds}s before next channel upload...`}`)
+        await new Promise((r) => setTimeout(r, Math.min(data.cooldownSeconds * 1000, 45000)))
+      }
       return false
     }
 
@@ -300,8 +303,10 @@ async function pollAndProcess() {
       // 4. Report back to Creator Hub
       await reportUploadComplete(job, videoId, youtubeLink)
 
-      console.log(`✨ [Worker] Job finished successfully! Checking for more jobs...\n`)
-      return true // Found and processed a job, check again immediately!
+      console.log(`✨ [Worker] Upload complete on @${job.channel.channelHandle || job.channel.channelName}: ${youtubeLink}`)
+      console.log(`⏱️ [Worker] Waiting 45 seconds before uploading to next channel...`)
+      await new Promise((r) => setTimeout(r, 45000))
+      return true
 
     } catch (uploadErr) {
       if (uploadErr.isLimitExceeded || uploadErr.message?.includes('uploadLimitExceeded')) {
@@ -312,6 +317,8 @@ async function pollAndProcess() {
         console.error(`❌ [Worker] Error processing upload job:`, uploadErr.message)
         await reportUploadFailure(job, 'uploadError', uploadErr.message)
       }
+      console.log(`⏱️ [Worker] Waiting 45 seconds before attempting next channel...`)
+      await new Promise((r) => setTimeout(r, 45000))
       return false
     } finally {
       // Always cleanup local temporary video file
