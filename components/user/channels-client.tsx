@@ -579,18 +579,19 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
               <thead>
                 <tr className="border-b border-border bg-muted/40 text-muted-foreground">
                   <th className="text-left px-5 py-3.5 font-medium">Channel Name</th>
-                  <th className="text-left px-5 py-3.5 font-medium">Handler</th>
+                  <th className="text-left px-5 py-3.5 font-medium">Channel Handler</th>
                   <th className="text-left px-5 py-3.5 font-medium">Niche</th>
-                  <th className="text-left px-5 py-3.5 font-medium">Client ID</th>
+                  <th className="text-left px-5 py-3.5 font-medium">Email</th>
+                  <th className="text-left px-5 py-3.5 font-medium">Whop Email</th>
                   <th className="text-left px-5 py-3.5 font-medium">Status</th>
-                  <th className="text-left px-5 py-3.5 font-medium">Added Date</th>
+                  <th className="text-left px-5 py-3.5 font-medium">Limit</th>
                   <th className="text-right px-5 py-3.5 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {filteredChannels.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-5 py-12 text-center text-muted-foreground">
+                    <td colSpan={8} className="px-5 py-12 text-center text-muted-foreground">
                       No channels found. Click "+ Add Channel" to register a YouTube channel.
                     </td>
                   </tr>
@@ -633,10 +634,17 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
                         </span>
                       </td>
 
-                      {/* Client ID */}
+                      {/* Email */}
                       <td className="px-5 py-4">
-                        <span className="font-mono text-xs text-muted-foreground truncate max-w-[140px] block" title={ch.clientId || ''}>
-                          {ch.clientId ? `${ch.clientId.slice(0, 14)}...` : '—'}
+                        <span className="text-xs text-muted-foreground truncate max-w-[160px] block" title={ch.channelEmail || ''}>
+                          {ch.channelEmail || '—'}
+                        </span>
+                      </td>
+
+                      {/* Whop Email */}
+                      <td className="px-5 py-4">
+                        <span className="text-xs text-muted-foreground truncate max-w-[160px] block" title={ch.whopEmail || ''}>
+                          {ch.whopEmail || '—'}
                         </span>
                       </td>
 
@@ -656,9 +664,26 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
                         </select>
                       </td>
 
-                      {/* Added Date */}
-                      <td className="px-5 py-4 text-xs text-muted-foreground">
-                        {new Date(ch.addedAt).toLocaleDateString()}
+                      {/* Limit */}
+                      <td className="px-5 py-4">
+                        {(() => {
+                          const cooldownUntil = ch.extraData?.uploadCooldownUntil
+                          if (cooldownUntil && new Date(cooldownUntil) > new Date()) {
+                            const remaining = Math.ceil((new Date(cooldownUntil).getTime() - Date.now()) / (1000 * 60 * 60))
+                            return (
+                              <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                                <Clock size={11} />
+                                {remaining}h left
+                              </span>
+                            )
+                          }
+                          return (
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                              <CheckCircle2 size={11} />
+                              Available
+                            </span>
+                          )
+                        })()}
                       </td>
 
                       {/* Actions */}
@@ -735,22 +760,53 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 pt-2 border-t border-border text-xs justify-between">
-                  <span className="px-2 py-0.5 rounded bg-muted text-muted-foreground font-medium">
-                    {ch.niche || 'General'}
-                  </span>
-                  <select
-                    value={ch.status === 'active' ? 'active' : 'inactive'}
-                    onChange={(e) => handleStatusChange(ch.id, e.target.value)}
-                    className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border cursor-pointer ${
-                      ch.status === 'active'
-                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
-                        : 'bg-muted text-muted-foreground border-border'
-                    }`}
-                  >
-                    <option value="active">Active</option>
-                    <option value="inactive">Not Active</option>
-                  </select>
+                <div className="space-y-2 pt-2 border-t border-border text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="px-2 py-0.5 rounded bg-muted text-muted-foreground font-medium">
+                      {ch.niche || 'General'}
+                    </span>
+                    <select
+                      value={ch.status === 'active' ? 'active' : 'inactive'}
+                      onChange={(e) => handleStatusChange(ch.id, e.target.value)}
+                      className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border cursor-pointer ${
+                        ch.status === 'active'
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                          : 'bg-muted text-muted-foreground border-border'
+                      }`}
+                    >
+                      <option value="active">Active</option>
+                      <option value="inactive">Not Active</option>
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1 text-muted-foreground">
+                    <div className="truncate" title={ch.channelEmail || ''}>
+                      <span className="font-medium text-foreground/70">Email:</span> {ch.channelEmail || '—'}
+                    </div>
+                    <div className="truncate" title={ch.whopEmail || ''}>
+                      <span className="font-medium text-foreground/70">Whop:</span> {ch.whopEmail || '—'}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="font-medium text-foreground/70">Limit:</span>
+                    {(() => {
+                      const cooldownUntil = ch.extraData?.uploadCooldownUntil
+                      if (cooldownUntil && new Date(cooldownUntil) > new Date()) {
+                        const remaining = Math.ceil((new Date(cooldownUntil).getTime() - Date.now()) / (1000 * 60 * 60))
+                        return (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                            <Clock size={10} />
+                            {remaining}h left
+                          </span>
+                        )
+                      }
+                      return (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                          <CheckCircle2 size={10} />
+                          Available
+                        </span>
+                      )
+                    })()}
+                  </div>
                 </div>
               </div>
             ))
