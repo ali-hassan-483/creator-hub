@@ -116,6 +116,7 @@ const defaultFormState = {
   // Rules & Source Material (Screenshot 2)
   fixYoutubeMentions: 'no' as 'no' | 'yes',
   whopChannelName: '',
+  cpm: '',
   enablePendingTasks: 'disabled' as 'disabled' | 'enabled',
   dailyPostLimit: 45,
   sourceVideoUrls: '',
@@ -412,6 +413,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
         subcampaignGid: p.subcampaignGid || prev.subcampaignGid,
         submissionLink: p.submissionLink || prev.submissionLink,
         whopChannelName: p.whopChannelName || prev.whopChannelName,
+        cpm: p.cpm || prev.cpm,
         fixYoutubeMentions: p.fixYoutubeMentions || prev.fixYoutubeMentions,
         enablePendingTasks: p.enablePendingTasks || prev.enablePendingTasks,
         dailyPostLimit: p.dailyPostLimit !== undefined ? p.dailyPostLimit : prev.dailyPostLimit,
@@ -515,6 +517,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
       submissionLink: formData.submissionLink.trim(),
       fixYoutubeMentions: formData.fixYoutubeMentions,
       whopChannelName: formData.whopChannelName.trim(),
+      cpm: formData.cpm.trim(),
       enablePendingTasks: formData.enablePendingTasks,
       dailyPostLimit: Number(formData.dailyPostLimit) || 45,
       sourceVideoUrls: formData.sourceVideoUrls.trim(),
@@ -638,6 +641,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
       readyToPost: (cfg.readyToPost as 'no' | 'yes') || 'no',
       submissionLink: cfg.submissionLink || '',
       whopChannelName: cfg.whopChannelName || '',
+      cpm: cfg.cpm || '',
       subcampaignGid: cfg.subcampaignGid || '',
       niche: cfg.niche || 'Gaming',
       fixYoutubeMentions: (cfg.fixYoutubeMentions as 'no' | 'yes') || 'no',
@@ -924,6 +928,11 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                             <p className="text-xs text-muted-foreground font-mono">
                               {cfg.whopChannelName}
                             </p>
+                          )}
+                          {cfg.cpm && (
+                            <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                              CPM: {cfg.cpm.startsWith('$') ? cfg.cpm : `$${cfg.cpm}`}
+                            </span>
                           )}
                         </div>
                       </td>
@@ -1342,6 +1351,17 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                       value={formData.whopChannelName}
                       onChange={(e) => setFormData({ ...formData, whopChannelName: e.target.value })}
                       className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Campaign CPM ($ / 1,000 Views)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 2.50 or $3.00"
+                      value={formData.cpm}
+                      onChange={(e) => setFormData({ ...formData, cpm: e.target.value })}
+                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     />
                   </div>
 

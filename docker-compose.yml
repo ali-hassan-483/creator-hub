@@ -45,6 +45,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    volumes:
+      - storage_data:/app/storage
     ports:
       - '3000:3000'
     environment:
@@ -148,3 +150,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  storage_data:

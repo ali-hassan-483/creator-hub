@@ -4,7 +4,8 @@ import { useState } from 'react'
 import Link from 'next/link'
 import {
   Megaphone, Eye, Zap, Search, CheckCircle2,
-  AlertCircle, ArrowRight, FileText, Sparkles, Clock, ExternalLink, Film
+  AlertCircle, ArrowRight, FileText, Sparkles, Clock, ExternalLink, Film,
+  Radio, DollarSign
 } from 'lucide-react'
 
 interface UserCampaignItem {
@@ -13,6 +14,7 @@ interface UserCampaignItem {
   description: string | null
   status: 'active' | 'paused' | 'ended' | 'draft'
   minViews: number | null
+  availableClips?: number
   config: any
   createdAt: string
 }
@@ -96,7 +98,7 @@ export function CampaignsCatalogClient({ initialCampaigns }: CampaignsCatalogCli
                   {/* Available Clips Badge */}
                   <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-semibold border border-blue-500/20">
                     <Film size={13} />
-                    <span>{(c as any).availableClips ?? 0} Clips Ready</span>
+                    <span>{c.availableClips ?? 0} Clips Ready</span>
                   </div>
 
                   {/* Min Views Requirement Badge */}
@@ -106,21 +108,23 @@ export function CampaignsCatalogClient({ initialCampaigns }: CampaignsCatalogCli
                       <span>Goal: {c.minViews.toLocaleString()} Views</span>
                     </div>
                   )}
-                </div>
 
-                {/* Custom parameters preview */}
-                {c.config && Object.keys(c.config).length > 0 && (
-                  <div className="flex gap-1.5 flex-wrap mt-3 pt-3 border-t border-border/60">
-                    {Object.entries(c.config).slice(0, 3).map(([k, v]: any) => (
-                      <span
-                        key={k}
-                        className="text-[10px] bg-muted/60 px-2 py-0.5 rounded font-mono text-foreground"
-                      >
-                        {k}: {String(v)}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                  {/* Whop Channel Name Badge */}
+                  {c.config?.whopChannelName && (
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-semibold border border-emerald-500/20">
+                      <Radio size={13} />
+                      <span>Channel: {c.config.whopChannelName}</span>
+                    </div>
+                  )}
+
+                  {/* CPM Badge */}
+                  {c.config?.cpm && (
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs font-semibold border border-amber-500/20">
+                      <DollarSign size={13} />
+                      <span>CPM: {c.config.cpm.startsWith('$') ? c.config.cpm : `$${c.config.cpm}`}</span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Action Buttons */}
@@ -178,18 +182,38 @@ export function CampaignsCatalogClient({ initialCampaigns }: CampaignsCatalogCli
               </p>
             </div>
 
-            {/* Threshold info */}
-            {selectedCampaign.minViews && (
-              <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-lg text-xs flex items-center gap-2 text-purple-700 dark:text-purple-300">
-                <Eye size={16} />
-                <div>
-                  <span className="font-bold">Pending Task Threshold: {selectedCampaign.minViews.toLocaleString()} views.</span>
-                  <p className="text-[11px] opacity-80">
-                    When your uploaded video hits this view count, a pending task will be automatically created in your dashboard for review & submission.
-                  </p>
+            {/* Metrics & Requirements */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {selectedCampaign.minViews && (
+                <div className="p-2.5 bg-purple-500/10 border border-purple-500/20 rounded-lg text-xs flex items-center gap-2 text-purple-700 dark:text-purple-300">
+                  <Eye size={16} />
+                  <div>
+                    <span className="font-bold">Goal: {selectedCampaign.minViews.toLocaleString()} views</span>
+                    <p className="text-[10px] opacity-80">Threshold for submission</p>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+
+              {selectedCampaign.config?.cpm && (
+                <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs flex items-center gap-2 text-amber-700 dark:text-amber-300">
+                  <DollarSign size={16} />
+                  <div>
+                    <span className="font-bold">CPM: {selectedCampaign.config.cpm.startsWith('$') ? selectedCampaign.config.cpm : `$${selectedCampaign.config.cpm}`}</span>
+                    <p className="text-[10px] opacity-80">Per 1,000 verified views</p>
+                  </div>
+                </div>
+              )}
+
+              {selectedCampaign.config?.whopChannelName && (
+                <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-xs flex items-center gap-2 text-emerald-700 dark:text-emerald-300 col-span-full">
+                  <Radio size={16} />
+                  <div>
+                    <span className="font-bold">Whop Channel: {selectedCampaign.config.whopChannelName}</span>
+                    <p className="text-[10px] opacity-80">Official Discord / Whop channel</p>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Custom Rules */}
             {selectedCampaign.config && Object.keys(selectedCampaign.config).length > 0 && (

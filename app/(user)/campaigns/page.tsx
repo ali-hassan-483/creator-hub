@@ -1,6 +1,7 @@
 import { requireUser } from '@/lib/auth-helpers'
 import { prisma } from '@/lib/db'
 import { CampaignsCatalogClient } from '@/components/user/campaigns-catalog-client'
+import { countEditedClips } from '@/tools/campaign-processor'
 import { Megaphone } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -36,6 +37,7 @@ export default async function UserCampaignsPage() {
     status: c.status,
     minViews: c.minViews,
     config: c.config,
+    availableClips: countEditedClips(c.id),
     createdAt: c.createdAt.toISOString(),
   }))
 
