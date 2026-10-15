@@ -18,11 +18,16 @@ export async function GET() {
       where: { userId },
     })
 
-    // Look for user assigned IP
-    const assignedIp = await prisma.ipAddress.findFirst({
-      where: { assignedTo: userId },
-      select: { ipAddress: true, port: true, label: true },
+    // Look for user assigned VPS
+    const currentUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        vps: {
+          select: { ipAddress: true, port: true, label: true, isMainVps: true },
+        },
+      },
     })
+    const assignedIp = currentUser?.vps
 
     // Fetch user channels to get all registered YouTube channelEmails and whopEmails
     const userChannels = await prisma.channel.findMany({

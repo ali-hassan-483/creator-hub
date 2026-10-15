@@ -20,7 +20,7 @@ export default async function AdminUserDetailPage({
   const user = await prisma.user.findUnique({
     where: { id },
     include: {
-      assignedIp: true,
+      vps: true,
       channels: {
         orderBy: { addedAt: 'desc' },
       },
@@ -44,17 +44,26 @@ export default async function AdminUserDetailPage({
     notFound()
   }
 
-  // Fetch available IPs for assignment
-  const availableIps = await prisma.ipAddress.findMany({
-    where: {
-      OR: [{ assignedTo: null }, { assignedTo: id }],
-    },
+  // Fetch available VPS nodes for assignment
+  const allNodes = await prisma.ipAddress.findMany({
     select: {
       id: true,
       ipAddress: true,
       label: true,
+      maxUsers: true,
+      isMainVps: true,
+      users: { select: { id: true } },
     },
+    orderBy: [{ isMainVps: 'desc' }, { createdAt: 'desc' }],
   })
+
+  const availableIps = allNodes
+    .filter((node) => node.users.some((u) => u.id === id) || node.users.length < (node.maxUsers || 2))
+    .map((node) => ({
+      id: node.id,
+      ipAddress: node.ipAddress,
+      label: `${node.label || 'VPS'} (${node.users.length}/${node.maxUsers || 2}${node.isMainVps ? ' - Main' : ''})`,
+    }))
 
   const activeChannels = user.channels.filter((c) => c.removedAt === null)
   const addedToday = user.channels.filter(
@@ -88,20 +97,20 @@ export default async function AdminUserDetailPage({
       pendingEarnings,
       totalAutomations: user.automations.length,
     },
-    assignedIp: user.assignedIp
+    assignedIp: user.vps
       ? {
-          id: user.assignedIp.id,
-          ipAddress: user.assignedIp.ipAddress,
-          port: user.assignedIp.port,
-          username: user.assignedIp.username,
-          password: user.assignedIp.passwordEnc
-            ? decryptIfPresent(user.assignedIp.passwordEnc)
+          id: user.vps.id,
+          ipAddress: user.vps.ipAddress,
+          port: user.vps.port,
+          username: user.vps.username,
+          password: user.vps.passwordEnc
+            ? decryptIfPresent(user.vps.passwordEnc)
             : null,
-          label: user.assignedIp.label,
-          notes: user.assignedIp.notes,
-          assignedAt: user.assignedIp.assignedAt
-            ? user.assignedIp.assignedAt.toISOString()
-            : null,
+          label: user.vps.label,
+          notes: user.vps.notes,
+          isMainVps: user.vps.isMainVps,
+          status: user.vps.status,
+          assignedAt: user.vps.createdAt.toISOString(),
         }
       : null,
     channels: user.channels.map((c) => ({

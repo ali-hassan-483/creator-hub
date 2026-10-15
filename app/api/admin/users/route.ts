@@ -41,15 +41,11 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    // If an IP address was selected during user creation, assign it
+    // If a VPS was selected during user creation, assign it
     if (data.ipAddressId) {
-      await prisma.ipAddress.update({
-        where: { id: data.ipAddressId },
-        data: {
-          assignedTo: user.id,
-          assignedAt: new Date(),
-          isAvailable: false,
-        },
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { vpsId: data.ipAddressId },
       })
     }
 
@@ -77,12 +73,14 @@ export async function GET() {
         isActive: true,
         createdAt: true,
         lastLoginAt: true,
-        assignedIp: {
+        vps: {
           select: {
             id: true,
             ipAddress: true,
             port: true,
             label: true,
+            isMainVps: true,
+            status: true,
           },
         },
         channels: {
@@ -129,7 +127,8 @@ export async function GET() {
         isActive: u.isActive,
         createdAt: u.createdAt,
         lastLoginAt: u.lastLoginAt,
-        assignedIp: u.assignedIp,
+        vps: u.vps,
+        assignedIp: u.vps,
         totalChannels: activeChannels.length,
         channelsAddedToday: addedToday,
         channelsRemovedToday: removedToday,

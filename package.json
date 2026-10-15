@@ -15,6 +15,7 @@
     "worker:automation": "tsx workers/automation.worker.ts",
     "worker:scheduler": "tsx workers/scheduler.worker.ts",
     "worker:editor": "tsx workers/continuous-editor.worker.ts",
+    "worker:uploader": "node scripts/upload-worker.js",
     "local-edit": "tsx tools/local-editor-runner.ts",
     "workers": "concurrently \"npm run worker:analytics\" \"npm run worker:automation\" \"npm run worker:scheduler\" \"npm run worker:editor\""
   },

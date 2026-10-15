@@ -28,7 +28,7 @@ export async function GET(
     const user = await prisma.user.findUnique({
       where: { id },
       include: {
-        assignedIp: true,
+        vps: true,
         channels: {
           orderBy: { addedAt: 'desc' },
         },
@@ -88,18 +88,34 @@ export async function GET(
         pendingEarnings,
         totalAutomations: user.automations.length,
       },
-      assignedIp: user.assignedIp
+      assignedIp: user.vps
         ? {
-            id: user.assignedIp.id,
-            ipAddress: user.assignedIp.ipAddress,
-            port: user.assignedIp.port,
-            username: user.assignedIp.username,
-            password: user.assignedIp.passwordEnc
-              ? decryptIfPresent(user.assignedIp.passwordEnc)
+            id: user.vps.id,
+            ipAddress: user.vps.ipAddress,
+            port: user.vps.port,
+            username: user.vps.username,
+            password: user.vps.passwordEnc
+              ? decryptIfPresent(user.vps.passwordEnc)
               : null,
-            label: user.assignedIp.label,
-            notes: user.assignedIp.notes,
-            assignedAt: user.assignedIp.assignedAt,
+            label: user.vps.label,
+            notes: user.vps.notes,
+            isMainVps: user.vps.isMainVps,
+            status: user.vps.status,
+          }
+        : null,
+      vps: user.vps
+        ? {
+            id: user.vps.id,
+            ipAddress: user.vps.ipAddress,
+            port: user.vps.port,
+            username: user.vps.username,
+            password: user.vps.passwordEnc
+              ? decryptIfPresent(user.vps.passwordEnc)
+              : null,
+            label: user.vps.label,
+            notes: user.vps.notes,
+            isMainVps: user.vps.isMainVps,
+            status: user.vps.status,
           }
         : null,
       channels: user.channels,
@@ -131,30 +147,26 @@ export async function PATCH(
       updatePayload.passwordHash = await bcrypt.hash(data.password, 12)
     }
 
-    // IP assignment/unassignment logic
+    // VPS assignment/unassignment logic
     if (data.assignedIpId !== undefined) {
       if (data.assignedIpId === null) {
-        // Unassign current IP
-        await prisma.ipAddress.updateMany({
-          where: { assignedTo: id },
-          data: { assignedTo: null, assignedAt: null, isAvailable: true },
-        })
+        updatePayload.vpsId = null
       } else {
-        // Unassign user's previous IP if different
-        await prisma.ipAddress.updateMany({
-          where: { assignedTo: id, id: { not: data.assignedIpId } },
-          data: { assignedTo: null, assignedAt: null, isAvailable: true },
-        })
-
-        // Assign the new IP to this user
-        await prisma.ipAddress.update({
+        const targetVps = await prisma.ipAddress.findUnique({
           where: { id: data.assignedIpId },
-          data: {
-            assignedTo: id,
-            assignedAt: new Date(),
-            isAvailable: false,
-          },
+          include: { users: true },
         })
+        if (!targetVps) {
+          return NextResponse.json({ error: 'Target VPS not found' }, { status: 404 })
+        }
+        const currentCount = targetVps.users.filter((u) => u.id !== id).length
+        if (currentCount >= targetVps.maxUsers) {
+          return NextResponse.json(
+            { error: `This VPS node is full (max ${targetVps.maxUsers} users allowed).` },
+            { status: 400 }
+          )
+        }
+        updatePayload.vpsId = data.assignedIpId
       }
     }
 
@@ -187,10 +199,10 @@ export async function DELETE(
 
     // Use a transaction to clean up all related records before deleting user
     await prisma.$transaction(async (tx) => {
-      // 1. Free up any assigned IP
-      await tx.ipAddress.updateMany({
-        where: { assignedTo: id },
-        data: { assignedTo: null, assignedAt: null, isAvailable: true },
+      // 1. Unassign user from VPS
+      await tx.user.update({
+        where: { id },
+        data: { vpsId: null },
       })
 
       // 2. Delete task status histories for tasks of this user

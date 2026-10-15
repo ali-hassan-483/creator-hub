@@ -87,7 +87,8 @@ model User {
   lastLoginAt   DateTime? @map("last_login_at")
 
   // Relations
-  assignedIp         IpAddress?              @relation("UserIp")
+  vpsId              String?                 @map("vps_id")
+  vps                IpAddress?              @relation("UserVps", fields: [vpsId], references: [id], onDelete: SetNull)
   channels           Channel[]
   campaignAccess     CampaignUserAccess[]
   credentials        Credential[]
@@ -126,12 +127,16 @@ model IpAddress {
   label       String?
   notes       String?
   isAvailable Boolean   @default(true) @map("is_available")
-  assignedTo  String?   @unique @map("assigned_to")
-  assignedAt  DateTime? @map("assigned_at")
+  maxUsers    Int       @default(2) @map("max_users")
+  isMainVps   Boolean   @default(false) @map("is_main_vps")
+  apiKey      String?   @unique @map("api_key")
+  lastPing    DateTime? @map("last_ping")
+  status      String    @default("offline")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
-  user User? @relation("UserIp", fields: [assignedTo], references: [id])
+  // Assigned users (up to maxUsers, e.g. 2 users per VPS)
+  users       User[]    @relation("UserVps")
 
   @@map("ip_addresses")
 }

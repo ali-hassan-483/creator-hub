@@ -24,7 +24,8 @@ import {
   ShieldCheck,
   PlaySquare,
   FileText,
-  ShoppingBag
+  ShoppingBag,
+  Server
 } from 'lucide-react'
 
 interface NavItem {
@@ -37,7 +38,7 @@ const adminNav: NavItem[] = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: <LayoutDashboard size={17} /> },
   { href: '/admin/users', label: 'Users', icon: <Users size={17} /> },
   { href: '/admin/whop-accounts', label: 'Whop Accounts', icon: <ShoppingBag size={17} /> },
-  { href: '/admin/ip-management', label: 'IP Management', icon: <Globe size={17} /> },
+  { href: '/admin/ip-management', label: 'VPS Nodes', icon: <Server size={17} /> },
   { href: '/admin/campaigns', label: 'Campaigns', icon: <Megaphone size={17} /> },
   { href: '/admin/sandbox-test', label: 'Sandbox Test', icon: <PlaySquare size={17} className="text-emerald-500" /> },
   { href: '/admin/earnings', label: 'Earnings', icon: <DollarSign size={17} /> },

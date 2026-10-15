@@ -22,12 +22,13 @@ export default async function AdminUsersPage() {
       isActive: true,
       createdAt: true,
       lastLoginAt: true,
-      assignedIp: {
+      vps: {
         select: {
           id: true,
           ipAddress: true,
           port: true,
           label: true,
+          isMainVps: true,
         },
       },
       channels: {
@@ -52,16 +53,26 @@ export default async function AdminUsersPage() {
     },
   })
 
-  // Fetch available (unassigned) IP addresses for the create modal
-  const availableIps = await prisma.ipAddress.findMany({
-    where: { assignedTo: null, isAvailable: true },
+  // Fetch available VPS nodes (those with < maxUsers assigned)
+  const allNodes = await prisma.ipAddress.findMany({
     select: {
       id: true,
       ipAddress: true,
       label: true,
+      maxUsers: true,
+      isMainVps: true,
+      users: { select: { id: true } },
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ isMainVps: 'desc' }, { createdAt: 'desc' }],
   })
+
+  const availableIps = allNodes
+    .filter((node) => node.users.length < (node.maxUsers || 2))
+    .map((node) => ({
+      id: node.id,
+      ipAddress: node.ipAddress,
+      label: `${node.label || 'VPS'} (${node.users.length}/${node.maxUsers || 2})`,
+    }))
 
   // Format users with daily counters
   const formattedUsers = users.map((u) => {
@@ -86,7 +97,7 @@ export default async function AdminUsersPage() {
       isActive: u.isActive,
       createdAt: u.createdAt.toISOString(),
       lastLoginAt: u.lastLoginAt ? u.lastLoginAt.toISOString() : null,
-      assignedIp: u.assignedIp,
+      assignedIp: u.vps,
       totalChannels: activeChannels.length,
       channelsAddedToday: addedToday,
       channelsRemovedToday: removedToday,

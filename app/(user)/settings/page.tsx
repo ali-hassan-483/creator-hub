@@ -12,9 +12,11 @@ export default async function UserSettingsPage() {
   const session = await requireUser()
   const userId = session.user!.id
 
-  const ip = await prisma.ipAddress.findFirst({
-    where: { assignedTo: userId },
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { vps: true },
   })
+  const ip = user?.vps
 
   let passwordDisplay = '—'
   if (ip?.passwordEnc) {

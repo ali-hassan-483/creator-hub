@@ -2,63 +2,72 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth-helpers'
 import { prisma } from '@/lib/db'
 import { encryptIfPresent, decryptIfPresent } from '@/lib/encryption'
+import { getAllVpsNodes, ensureMainVpsExists } from '@/lib/vps-service'
+import crypto from 'crypto'
 import { z } from 'zod'
 
-const addIpSchema = z.object({
+const addVpsSchema = z.object({
   ipAddress: z.string().min(1, 'IP Address is required'),
   port: z.number().optional().nullable(),
   username: z.string().optional().nullable(),
   password: z.string().optional().nullable(),
   label: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
-  assignedTo: z.string().optional().nullable(),
+  maxUsers: z.number().min(1).max(10).optional().default(2),
+  userIds: z.array(z.string()).optional().default([]),
 })
 
 export async function POST(req: NextRequest) {
   try {
     await requireAdmin()
     const body = await req.json()
-    const data = addIpSchema.parse(body)
+    const data = addVpsSchema.parse(body)
 
-    // Check if assignedTo user already has an IP
-    if (data.assignedTo) {
-      const existingAssignment = await prisma.ipAddress.findFirst({
-        where: { assignedTo: data.assignedTo },
-      })
-      if (existingAssignment) {
-        return NextResponse.json(
-          { error: 'Selected user already has an assigned IP. Please unassign their current IP first.' },
-          { status: 400 }
-        )
-      }
+    if (data.userIds && data.userIds.length > (data.maxUsers || 2)) {
+      return NextResponse.json(
+        { error: `Cannot assign more than ${data.maxUsers || 2} users to this VPS node.` },
+        { status: 400 }
+      )
     }
 
-    const ip = await prisma.ipAddress.create({
+    const apiKey = 'vps_live_' + crypto.randomBytes(16).toString('hex')
+
+    const vps = await prisma.ipAddress.create({
       data: {
         ipAddress: data.ipAddress.trim(),
-        port: data.port || null,
-        username: data.username?.trim() || null,
+        port: data.port || 22,
+        username: data.username?.trim() || 'root',
         passwordEnc: encryptIfPresent(data.password),
-        label: data.label?.trim() || null,
+        label: data.label?.trim() || 'Worker VPS',
         notes: data.notes?.trim() || null,
-        assignedTo: data.assignedTo || null,
-        assignedAt: data.assignedTo ? new Date() : null,
-        isAvailable: !data.assignedTo,
-      },
-      include: {
-        user: { select: { id: true, name: true, email: true } },
+        maxUsers: data.maxUsers || 2,
+        apiKey,
+        isMainVps: false,
+        status: 'offline',
+        isAvailable: data.userIds.length < (data.maxUsers || 2),
       },
     })
 
-    return NextResponse.json(
-      {
-        ...ip,
-        password: data.password || null,
+    // Assign users if provided
+    if (data.userIds && data.userIds.length > 0) {
+      await prisma.user.updateMany({
+        where: { id: { in: data.userIds } },
+        data: { vpsId: vps.id },
+      })
+    }
+
+    const created = await prisma.ipAddress.findUnique({
+      where: { id: vps.id },
+      include: {
+        users: { select: { id: true, name: true, email: true } },
       },
-      { status: 201 }
-    )
+    })
+
+    return NextResponse.json(created, { status: 201 })
   } catch (err: any) {
-    if (err.name === 'ZodError') return NextResponse.json({ error: err.errors[0]?.message || 'Validation error' }, { status: 400 })
+    if (err.name === 'ZodError') {
+      return NextResponse.json({ error: err.errors[0]?.message || 'Validation error' }, { status: 400 })
+    }
     return NextResponse.json({ error: err.message || 'Internal server error.' }, { status: 500 })
   }
 }
@@ -66,31 +75,9 @@ export async function POST(req: NextRequest) {
 export async function GET() {
   try {
     await requireAdmin()
-    const ips = await prisma.ipAddress.findMany({
-      orderBy: { createdAt: 'desc' },
-      include: {
-        user: { select: { id: true, name: true, email: true } },
-      },
-    })
-
-    // Decrypt passwords safely for admin view
-    const formatted = ips.map((ip) => ({
-      id: ip.id,
-      ipAddress: ip.ipAddress,
-      port: ip.port,
-      username: ip.username,
-      password: ip.passwordEnc ? decryptIfPresent(ip.passwordEnc) : null,
-      label: ip.label,
-      notes: ip.notes,
-      isAvailable: ip.isAvailable,
-      assignedTo: ip.assignedTo,
-      assignedAt: ip.assignedAt,
-      createdAt: ip.createdAt,
-      user: ip.user,
-    }))
-
-    return NextResponse.json(formatted)
-  } catch {
-    return NextResponse.json({ error: 'Internal server error.' }, { status: 500 })
+    const nodes = await getAllVpsNodes()
+    return NextResponse.json(nodes)
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Internal server error.' }, { status: 500 })
   }
 }
