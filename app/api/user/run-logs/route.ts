@@ -527,6 +527,73 @@ export async function POST(req: NextRequest) {
         },
       })
 
+      // Also mark whopSubmitted on the VideoAnalytic record and check if threshold already met
+      const targetItem = whopList.find((i) => i.id === whopSubmissionId)
+      if (targetItem?.youtubeLink) {
+        const vidMatch = targetItem.youtubeLink.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|(?:embed|v|shorts)\/))([\w-]{11})/)
+        const targetVideoIdExt = vidMatch ? vidMatch[1] : null
+
+        if (targetVideoIdExt) {
+          const videoRecord = await prisma.videoAnalytic.findFirst({
+            where: { videoIdExt: targetVideoIdExt },
+          })
+
+          if (videoRecord) {
+            const vExtra = (videoRecord.extraData as any) || {}
+            await prisma.videoAnalytic.update({
+              where: { id: videoRecord.id },
+              data: {
+                extraData: {
+                  ...vExtra,
+                  whopSubmitted: true,
+                  whopSubmittedAt: new Date().toISOString(),
+                },
+              },
+            })
+
+            // Check if views already crossed threshold
+            if (automation.campaignId) {
+              const camp = await prisma.campaign.findUnique({
+                where: { id: automation.campaignId },
+              })
+              const threshold = camp?.minViews || 10000
+              const currentViews = Number(videoRecord.viewCount || 0)
+
+              if (currentViews >= threshold) {
+                const existingTask = await prisma.pendingTask.findFirst({
+                  where: {
+                    userId,
+                    channelId: videoRecord.channelId,
+                    videoIdExt: targetVideoIdExt,
+                  },
+                })
+
+                if (!existingTask) {
+                  await prisma.pendingTask.create({
+                    data: {
+                      userId,
+                      campaignId: automation.campaignId,
+                      channelId: videoRecord.channelId,
+                      videoId: videoRecord.id,
+                      videoIdExt: targetVideoIdExt,
+                      viewCountAtTrigger: videoRecord.viewCount,
+                      status: 'pending',
+                      notes: `Auto-promoted on Whop submission: ${currentViews.toLocaleString()} views crossed threshold (${threshold.toLocaleString()}).`,
+                      requirementsData: {
+                        thresholdMet: threshold,
+                        actualViews: currentViews,
+                        whopSubmitted: true,
+                        promotedAt: new Date().toISOString(),
+                      },
+                    },
+                  })
+                }
+              }
+            }
+          }
+        }
+      }
+
       return NextResponse.json({ success: true, message: 'Whop submission marked as submitted!', automation: updated })
     }
 

@@ -1,8 +1,203 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-helpers'
 import { prisma } from '@/lib/db'
+import { decryptIfPresent } from '@/lib/encryption'
+import { fetchChannelLatestVideos } from '@/lib/youtube-analytics'
 
 export const dynamic = 'force-dynamic'
+
+function extractVidId(url: string | null | undefined): string | null {
+  if (!url) return null
+  const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|(?:embed|v|shorts)\/))([\w-]{11})/)
+  return m ? m[1] : null
+}
+
+/**
+ * Reusable function to sync live YouTube video statistics (views, likes, comments)
+ * and check the 2 STRICT conditions for promoting videos to Pending Tasks:
+ *   Condition 1: views >= campaign.minViews
+ *   Condition 2: Video is marked as submitted to Whop (status: 'submitted')
+ */
+async function syncUserYouTubeAnalytics(userId: string) {
+  // 1. Fetch user active channels
+  const channels = await prisma.channel.findMany({
+    where: { userId, removedAt: null, status: 'active' },
+  })
+
+  let totalUpdatedVideos = 0
+  let channelSuccessCount = 0
+
+  for (const ch of channels) {
+    const clientId = ch.clientId || ''
+    const clientSecret = decryptIfPresent(ch.clientSecretEnc) || ''
+    const refreshToken = decryptIfPresent(ch.refreshTokenEnc) || ''
+
+    if (!clientId || !clientSecret || !refreshToken) {
+      continue
+    }
+
+    const res = await fetchChannelLatestVideos(clientId, clientSecret, refreshToken, ch.channelIdExt)
+    if (!res.success || res.videos.length === 0) {
+      continue
+    }
+
+    channelSuccessCount++
+
+    for (const v of res.videos) {
+      const existing = await prisma.videoAnalytic.findUnique({
+        where: {
+          channelId_videoIdExt: {
+            channelId: ch.id,
+            videoIdExt: v.videoIdExt,
+          },
+        },
+      })
+
+      const existingExtra = (existing?.extraData as Record<string, any>) || {}
+      const updatedExtra = {
+        ...existingExtra,
+        likes: v.likeCount,
+        comments: v.commentCount,
+        thumbnail: v.thumbnail,
+      }
+
+      await prisma.videoAnalytic.upsert({
+        where: {
+          channelId_videoIdExt: {
+            channelId: ch.id,
+            videoIdExt: v.videoIdExt,
+          },
+        },
+        create: {
+          channelId: ch.id,
+          videoIdExt: v.videoIdExt,
+          title: v.title,
+          publishedAt: new Date(v.publishedAt),
+          viewCount: BigInt(v.viewCount),
+          lastFetchedAt: new Date(),
+          extraData: updatedExtra,
+        },
+        update: {
+          title: v.title,
+          publishedAt: new Date(v.publishedAt),
+          viewCount: BigInt(v.viewCount),
+          lastFetchedAt: new Date(),
+          extraData: updatedExtra,
+        },
+      })
+      totalUpdatedVideos++
+    }
+  }
+
+  // 2. Map submitted Whop videos and linked campaigns across user automations
+  const userAutomations = await prisma.automation.findMany({
+    where: { userId },
+    select: { id: true, campaignId: true, options: true },
+  })
+
+  const submittedVideoIds = new Set<string>()
+  const videoCampaignMap = new Map<string, string>()
+
+  for (const auto of userAutomations) {
+    const opts = (auto.options as any) || {}
+    const whopList = (opts.mockWhopSubmissions || []) as any[]
+    for (const item of whopList) {
+      const vidId = extractVidId(item.youtubeLink)
+      if (vidId) {
+        if (item.status === 'submitted') {
+          submittedVideoIds.add(vidId)
+        }
+        if (auto.campaignId) {
+          videoCampaignMap.set(vidId, auto.campaignId)
+        }
+      }
+    }
+    const videoUploads = (opts.mockVideoUploads || []) as any[]
+    for (const up of videoUploads) {
+      const vidId = extractVidId(up.youtubeLink)
+      if (vidId && auto.campaignId) {
+        videoCampaignMap.set(vidId, auto.campaignId)
+      }
+    }
+  }
+
+  // 3. Check for Pending Tasks Promotion with the 2 STRICT CONDITIONS
+  const campaigns = await prisma.campaign.findMany({
+    where: {
+      OR: [
+        { userAccess: { some: { userId } } },
+        { automations: { some: { userId } } },
+      ],
+    },
+  })
+  const campaignMap = new Map(campaigns.map((c) => [c.id, c]))
+  const defaultCampaign = campaigns[0]
+
+  const allUserVideos = await prisma.videoAnalytic.findMany({
+    where: {
+      channel: { userId, removedAt: null },
+    },
+    include: { channel: true },
+  })
+
+  let promotedCount = 0
+
+  for (const vid of allUserVideos) {
+    const views = Number(vid.viewCount || 0)
+    const extra = (vid.extraData as any) || {}
+
+    const campaignId = extra.campaignId || videoCampaignMap.get(vid.videoIdExt) || defaultCampaign?.id
+    if (!campaignId) continue
+
+    const campaign = campaignMap.get(campaignId) || defaultCampaign
+    const threshold = campaign?.minViews || 10000
+
+    // CONDITION 1: Minimum views crossed
+    const isThresholdCrossed = views >= threshold
+
+    // CONDITION 2: Whop submission verified
+    const isWhopSubmitted = extra.whopSubmitted === true || submittedVideoIds.has(vid.videoIdExt)
+
+    if (isThresholdCrossed && isWhopSubmitted) {
+      const existingTask = await prisma.pendingTask.findFirst({
+        where: {
+          userId,
+          channelId: vid.channelId,
+          videoIdExt: vid.videoIdExt,
+        },
+      })
+
+      if (!existingTask) {
+        await prisma.pendingTask.create({
+          data: {
+            userId,
+            campaignId,
+            channelId: vid.channelId,
+            videoId: vid.id,
+            videoIdExt: vid.videoIdExt,
+            viewCountAtTrigger: vid.viewCount,
+            status: 'pending',
+            notes: `Auto-promoted by Analytics: ${views.toLocaleString()} views crossed ${threshold.toLocaleString()} min views & Whop submission verified.`,
+            requirementsData: {
+              thresholdMet: threshold,
+              actualViews: views,
+              actualLikes: Number(extra.likes || 0),
+              whopSubmitted: true,
+              promotedAt: new Date().toISOString(),
+            },
+          },
+        })
+        promotedCount++
+      }
+    }
+  }
+
+  return {
+    channelSuccessCount,
+    totalUpdatedVideos,
+    promotedCount,
+  }
+}
 
 /**
  * GET /api/user/analytics
@@ -18,13 +213,12 @@ export async function GET(req: NextRequest) {
   const minViews = parseInt(searchParams.get('minViews') || '0', 10)
 
   try {
-    // 1. Fetch channels of the user
     const whereChannel: any = { userId, removedAt: null }
     if (niche !== 'all') {
       whereChannel.niche = niche
     }
 
-    const channels = await prisma.channel.findMany({
+    let channels = await prisma.channel.findMany({
       where: whereChannel,
       orderBy: { addedAt: 'desc' },
       include: {
@@ -34,6 +228,22 @@ export async function GET(req: NextRequest) {
         },
       },
     })
+
+    // If channels exist but no videoAnalytics recorded yet, auto-sync initial batch
+    const totalExistingVideos = channels.reduce((acc, c) => acc + c.videoAnalytics.length, 0)
+    if (channels.length > 0 && totalExistingVideos === 0) {
+      await syncUserYouTubeAnalytics(userId)
+      channels = await prisma.channel.findMany({
+        where: whereChannel,
+        orderBy: { addedAt: 'desc' },
+        include: {
+          videoAnalytics: {
+            orderBy: { publishedAt: 'desc' },
+            take: 10,
+          },
+        },
+      })
+    }
 
     // Get active user campaigns with minViews thresholds
     const campaigns = await prisma.campaign.findMany({
@@ -52,7 +262,7 @@ export async function GET(req: NextRequest) {
         const videos = ch.videoAnalytics.map((v) => {
           const views = Number(v.viewCount || 0)
           const extra = (v.extraData as any) || {}
-          const likes = Number(extra.likes || Math.round(views * 0.05))
+          const likes = Number(extra.likes ?? Math.round(views * 0.05))
 
           return {
             id: v.id,
@@ -62,6 +272,7 @@ export async function GET(req: NextRequest) {
             likes,
             publishedAt: v.publishedAt,
             hasCrossedThreshold: views >= defaultThreshold,
+            thumbnail: extra.thumbnail || null,
           }
         })
 
@@ -111,8 +322,8 @@ export async function GET(req: NextRequest) {
 
 /**
  * POST /api/user/analytics
- * Refresh video analytics (simulate 6-hour cron or on-demand fetch)
- * Automatically triggers videos that crossed minimum views into Pending Tasks (status: 'pending')
+ * Refresh video analytics (calls YouTube Data API directly for live views & likes)
+ * Automatically triggers videos that crossed minimum views AND are submitted to Whop into Pending Tasks
  */
 export async function POST(req: NextRequest) {
   const session = await requireAuth()
@@ -133,64 +344,12 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'refresh_all' || action === 'cron_6h') {
-      // Find campaigns
-      const campaigns = await prisma.campaign.findMany({
-        where: { userAccess: { some: { userId } } },
-      })
-      const defaultCampaign = campaigns[0]
-
-      if (!defaultCampaign) {
-        return NextResponse.json({ success: true, message: 'Refreshed' })
-      }
-
-      const threshold = defaultCampaign.minViews || 10000
-
-      // Find all user video analytics that crossed threshold
-      const qualifyingVideos = await prisma.videoAnalytic.findMany({
-        where: {
-          channel: { userId, removedAt: null },
-          viewCount: { gte: BigInt(threshold) },
-        },
-        include: { channel: true },
-      })
-
-      let promotedCount = 0
-
-      for (const vid of qualifyingVideos) {
-        const existingTask = await prisma.pendingTask.findFirst({
-          where: {
-            userId,
-            channelId: vid.channelId,
-            videoId: vid.id,
-          },
-        })
-
-        if (!existingTask) {
-          await prisma.pendingTask.create({
-            data: {
-              userId,
-              campaignId: defaultCampaign.id,
-              channelId: vid.channelId,
-              videoId: vid.id,
-              videoIdExt: vid.videoIdExt,
-              viewCountAtTrigger: vid.viewCount,
-              status: 'pending', // Eligible for review
-              notes: `Auto-promoted by 6-hour Analytics cycle (${Number(vid.viewCount).toLocaleString()} views crossed ${threshold.toLocaleString()} min views).`,
-              requirementsData: {
-                thresholdMet: threshold,
-                actualViews: Number(vid.viewCount),
-                promotedAt: new Date().toISOString(),
-              },
-            },
-          })
-          promotedCount++
-        }
-      }
+      const result = await syncUserYouTubeAnalytics(userId)
 
       return NextResponse.json({
         success: true,
-        message: `Analytics refreshed. ${promotedCount} qualifying video(s) promoted to Pending Tasks!`,
-        promotedCount,
+        message: `Synced ${result.channelSuccessCount} channel(s) and ${result.totalUpdatedVideos} video(s) from YouTube. ${result.promotedCount} qualifying video(s) promoted to Pending Tasks!`,
+        ...result,
       })
     }
 
