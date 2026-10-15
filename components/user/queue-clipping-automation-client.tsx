@@ -362,10 +362,7 @@ export default function QueueClippingAutomationClient() {
                       <span className="font-bold text-[#2b3345] dark:text-[#f1f5f9]">
                         {ch.handle || ch.name}
                       </span>{' '}
-                      (Niche: {ch.niche}, Email: {ch.email}, Whop Email: {ch.whopEmail}){' '}
-                      <span className="px-1.5 py-0.5 rounded-full text-[9px] font-sans font-bold bg-purple-500/15 text-purple-600 dark:text-purple-400">
-                        {ch.usedCount}/1 used
-                      </span>
+                      (Niche: {ch.niche}, Email: {ch.email}, Whop Email: {ch.whopEmail})
                     </div>
                   </label>
                 )

@@ -144,9 +144,9 @@ export async function GET(req: NextRequest) {
             uploadedAt: new Date().toISOString(),
             vpsNode: vps.label,
           }
-          const updatedUploads = [failureItem, ...mockVideoUploads]
-          const isAllDone = updatedUploads.length >= automation.channels.length
-          const hasAnySuccess = updatedUploads.some((u: any) => !!u.youtubeLink)
+          mockVideoUploads.unshift(failureItem)
+          const isAllDone = mockVideoUploads.length >= automation.channels.length
+          const hasAnySuccess = mockVideoUploads.some((u: any) => !!u.youtubeLink)
 
           await prisma.automation.update({
             where: { id: automation.id },
@@ -155,12 +155,86 @@ export async function GET(req: NextRequest) {
               completedAt: isAllDone ? new Date() : null,
               options: {
                 ...opts,
-                mockVideoUploads: updatedUploads,
+                mockVideoUploads,
                 runStatus: isAllDone ? (hasAnySuccess ? 'partial' : 'failed') : 'running',
               },
             },
           })
           continue
+        }
+
+        // ── Check Campaign Whop Daily Post Limit ──
+        const campaignCfg = (campaign.config as Record<string, any>) || {}
+        const dailyWhopLimit = Number(campaignCfg.dailyPostLimit) || 30
+        const whopEmail = (channel.whopEmail || '').trim().toLowerCase()
+
+        if (whopEmail && dailyWhopLimit > 0) {
+          const todayStart = new Date()
+          todayStart.setHours(0, 0, 0, 0)
+
+          const whopChannels = await prisma.channel.findMany({
+            where: {
+              userId: automation.userId,
+              whopEmail: channel.whopEmail,
+              removedAt: null,
+            },
+            select: { id: true },
+          })
+          const whopChannelIdSet = new Set(whopChannels.map((c) => c.id))
+
+          const todayAutomations = await prisma.automation.findMany({
+            where: {
+              userId: automation.userId,
+              campaignId: campaign.id,
+              createdAt: { gte: todayStart },
+            },
+            select: { id: true, options: true },
+          })
+
+          let totalWhopUploadsToday = 0
+          for (const auto of todayAutomations) {
+            const autoUploads = ((auto.options as Record<string, any>)?.mockVideoUploads || []) as any[]
+            for (const u of autoUploads) {
+              if (u.youtubeLink && u.channelId && whopChannelIdSet.has(u.channelId)) {
+                totalWhopUploadsToday++
+              }
+            }
+          }
+
+          if (totalWhopUploadsToday >= dailyWhopLimit) {
+            console.log(
+              `[Worker Poll] Channel @${channel.channelHandle} skipped: Whop email "${whopEmail}" reached daily limit (${totalWhopUploadsToday}/${dailyWhopLimit})`
+            )
+            const skipItem = {
+              id: `skip_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+              channelId: channel.id,
+              channelName: channel.channelName || channel.channelHandle || 'YouTube Channel',
+              campaign: campaign.name,
+              stage: 'Limit Exceeded',
+              videoTitle: 'Whop daily limit reached',
+              youtubeLink: null,
+              error: `Whop account daily limit (${dailyWhopLimit}) reached for ${whopEmail}`,
+              uploadedAt: new Date().toISOString(),
+              vpsNode: vps.label,
+            }
+            mockVideoUploads.unshift(skipItem)
+            const isAllDone = mockVideoUploads.length >= automation.channels.length
+            const hasAnySuccess = mockVideoUploads.some((u: any) => !!u.youtubeLink)
+
+            await prisma.automation.update({
+              where: { id: automation.id },
+              data: {
+                status: isAllDone ? (hasAnySuccess ? 'completed' : 'failed') : 'running',
+                completedAt: isAllDone ? new Date() : null,
+                options: {
+                  ...opts,
+                  mockVideoUploads,
+                  runStatus: isAllDone ? (hasAnySuccess ? 'partial' : 'failed') : 'running',
+                },
+              },
+            })
+            continue
+          }
         }
 
         const clientId = channel.clientId || ''
@@ -181,9 +255,9 @@ export async function GET(req: NextRequest) {
             uploadedAt: new Date().toISOString(),
             vpsNode: vps.label,
           }
-          const updatedUploads = [failureItem, ...mockVideoUploads]
-          const isAllDone = updatedUploads.length >= automation.channels.length
-          const hasAnySuccess = updatedUploads.some((u: any) => !!u.youtubeLink)
+          mockVideoUploads.unshift(failureItem)
+          const isAllDone = mockVideoUploads.length >= automation.channels.length
+          const hasAnySuccess = mockVideoUploads.some((u: any) => !!u.youtubeLink)
 
           await prisma.automation.update({
             where: { id: automation.id },
@@ -192,7 +266,7 @@ export async function GET(req: NextRequest) {
               completedAt: isAllDone ? new Date() : null,
               options: {
                 ...opts,
-                mockVideoUploads: updatedUploads,
+                mockVideoUploads,
                 runStatus: isAllDone ? (hasAnySuccess ? 'partial' : 'failed') : 'running',
               },
             },

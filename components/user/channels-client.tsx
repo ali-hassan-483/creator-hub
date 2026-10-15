@@ -712,14 +712,13 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
                   <th className="text-left px-5 py-3.5 font-medium">Email</th>
                   <th className="text-left px-5 py-3.5 font-medium">Whop Email</th>
                   <th className="text-left px-5 py-3.5 font-medium">Status</th>
-                  <th className="text-left px-5 py-3.5 font-medium">Limit</th>
                   <th className="text-right px-5 py-3.5 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {filteredChannels.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-5 py-12 text-center text-muted-foreground">
+                    <td colSpan={8} className="px-5 py-12 text-center text-muted-foreground">
                       No channels found. Click "+ Add Channel" to register a YouTube channel.
                     </td>
                   </tr>
@@ -799,28 +798,6 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
                           <option value="active">Active</option>
                           <option value="inactive">Not Active</option>
                         </select>
-                      </td>
-
-                      {/* Limit */}
-                      <td className="px-5 py-4">
-                        {(() => {
-                          const cooldownUntil = ch.extraData?.uploadCooldownUntil
-                          if (cooldownUntil && new Date(cooldownUntil) > new Date()) {
-                            const remaining = Math.ceil((new Date(cooldownUntil).getTime() - Date.now()) / (1000 * 60 * 60))
-                            return (
-                              <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                                <Clock size={11} />
-                                {remaining}h left
-                              </span>
-                            )
-                          }
-                          return (
-                            <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                              <CheckCircle2 size={11} />
-                              Available
-                            </span>
-                          )
-                        })()}
                       </td>
 
                       {/* Actions */}
@@ -928,27 +905,6 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
                     <div className="truncate" title={ch.whopEmail || ''}>
                       <span className="font-medium text-foreground/70">Whop:</span> {ch.whopEmail || '—'}
                     </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="font-medium text-foreground/70">Limit:</span>
-                    {(() => {
-                      const cooldownUntil = ch.extraData?.uploadCooldownUntil
-                      if (cooldownUntil && new Date(cooldownUntil) > new Date()) {
-                        const remaining = Math.ceil((new Date(cooldownUntil).getTime() - Date.now()) / (1000 * 60 * 60))
-                        return (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                            <Clock size={10} />
-                            {remaining}h left
-                          </span>
-                        )
-                      }
-                      return (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                          <CheckCircle2 size={10} />
-                          Available
-                        </span>
-                      )
-                    })()}
                   </div>
                 </div>
               </div>
