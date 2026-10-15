@@ -11,7 +11,10 @@ import {
   RefreshCw,
   MoreVertical,
   AlertTriangle,
+  AlertCircle,
   Play,
+  Pause,
+  Trash2,
   XCircle,
   CheckCircle2,
   Loader2,
@@ -33,6 +36,7 @@ interface VideoUpload {
   videoTitle: string
   youtubeLink: string | null
   uploadedAt: string
+  error?: string | null
 }
 
 interface WhopSubmission {
@@ -60,7 +64,7 @@ interface RunLogRow {
   completedAt: string | null
   name: string
   runType: 'immediate' | 'scheduled'
-  status: 'success' | 'partial' | 'cancelled' | 'running' | 'queued' | 'failed'
+  status: 'success' | 'partial' | 'cancelled' | 'running' | 'queued' | 'failed' | 'paused'
   campaign: { id: string; name: string } | null
   channels: ChannelRef[]
   activeSlots: number
@@ -143,6 +147,7 @@ function StatusBadge({ status }: { status: RunLogRow['status'] }) {
     failed: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400',
     running: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400',
     queued: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400',
+    paused: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400',
   }
   const icons: Record<string, JSX.Element> = {
     success: <CheckCircle2 className="w-3 h-3" />,
@@ -151,6 +156,7 @@ function StatusBadge({ status }: { status: RunLogRow['status'] }) {
     failed: <XCircle className="w-3 h-3" />,
     running: <Loader2 className="w-3 h-3 animate-spin" />,
     queued: <Clock className="w-3 h-3" />,
+    paused: <Pause className="w-3 h-3" />,
   }
   const labels: Record<string, string> = {
     success: 'Success',
@@ -159,6 +165,7 @@ function StatusBadge({ status }: { status: RunLogRow['status'] }) {
     failed: 'Failed',
     running: 'Running',
     queued: 'Queued',
+    paused: 'Paused',
   }
   return (
     <span
@@ -312,64 +319,78 @@ function DetailsModal({
                     </tr>
                   </thead>
                   <tbody>
-                    {row.videoUploads.map((upload, i) => (
-                      <tr
-                        key={upload.id}
-                        className="border-b border-[var(--border)]/50 hover:bg-[var(--accent)]/5 transition-colors"
-                      >
-                        <td className="py-3 pr-4 text-[var(--text-muted)] font-mono text-xs">
-                          {i + 1}
-                        </td>
-                        <td className="py-3 pr-4">
-                          <span className="font-medium text-[var(--text-primary)]">
-                            {upload.channelName}
-                          </span>
-                        </td>
-                        <td className="py-3 pr-4 text-[var(--text-muted)] whitespace-nowrap">
-                          {upload.campaign}
-                        </td>
-                        <td className="py-3 pr-4">
-                          <span
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
-                              upload.stage === 'Video Uploaded'
-                                ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
-                                : upload.stage === 'Upload Failed'
-                                ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
-                                : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
-                            }`}
-                          >
-                            {upload.stage}
-                          </span>
-                        </td>
-                        <td className="py-3 pr-4 max-w-[220px]">
-                          <span
-                            className="text-[var(--text-primary)] line-clamp-2 text-xs leading-snug"
-                            title={upload.videoTitle}
-                          >
-                            {upload.videoTitle}
-                          </span>
-                        </td>
-                        <td className="py-3 pr-4">
-                          {upload.youtubeLink ? (
-                            <div className="flex items-center gap-1">
-                              <a
-                                href={upload.youtubeLink}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-xs text-[var(--accent)] hover:underline font-medium"
-                              >
-                                <Youtube className="w-3.5 h-3.5" />
-                                Watch
-                                <ExternalLink className="w-2.5 h-2.5" />
-                              </a>
-                              <CopyBtn text={upload.youtubeLink} />
+                    {row.videoUploads.map((upload, i) => {
+                      const isFailed = upload.stage === 'Upload Failed' || !upload.youtubeLink
+                      return (
+                        <tr
+                          key={upload.id}
+                          className="border-b border-[var(--border)]/50 hover:bg-[var(--accent)]/5 transition-colors"
+                        >
+                          <td className="py-3 pr-4 text-[var(--text-muted)] font-mono text-xs">
+                            {i + 1}
+                          </td>
+                          <td className="py-3 pr-4">
+                            <div className="flex items-center gap-1.5">
+                              {isFailed ? (
+                                <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                              ) : (
+                                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                              )}
+                              <span className="font-medium text-[var(--text-primary)]">
+                                {upload.channelName}
+                              </span>
                             </div>
-                          ) : (
-                            <span className="text-xs text-[var(--text-muted)]">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="py-3 pr-4 text-[var(--text-muted)] whitespace-nowrap">
+                            {upload.campaign}
+                          </td>
+                          <td className="py-3 pr-4">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                                upload.stage === 'Video Uploaded'
+                                  ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                                  : isFailed
+                                  ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400'
+                                  : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+                              }`}
+                            >
+                              {isFailed && <AlertCircle className="w-3 h-3" />}
+                              {upload.stage}
+                            </span>
+                          </td>
+                          <td className="py-3 pr-4 max-w-[220px]">
+                            <span
+                              className="text-[var(--text-primary)] line-clamp-2 text-xs leading-snug"
+                              title={upload.videoTitle}
+                            >
+                              {upload.videoTitle}
+                            </span>
+                          </td>
+                          <td className="py-3 pr-4">
+                            {upload.youtubeLink ? (
+                              <div className="flex items-center gap-1">
+                                <a
+                                  href={upload.youtubeLink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-xs text-[var(--accent)] hover:underline font-medium"
+                                >
+                                  <Youtube className="w-3.5 h-3.5" />
+                                  Watch
+                                  <ExternalLink className="w-2.5 h-2.5" />
+                                </a>
+                                <CopyBtn text={upload.youtubeLink} />
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5 text-xs text-rose-600 dark:text-rose-400 font-medium max-w-[260px]" title={upload.error || 'Failed'}>
+                                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                                <span className="truncate">{upload.error || 'Limit Reached / Upload Failed'}</span>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               )}
@@ -521,10 +542,18 @@ function ActionsMenu({
   row,
   onDetails,
   onRerun,
+  onPause,
+  onResume,
+  onCancel,
+  onDelete,
 }: {
   row: RunLogRow
   onDetails: () => void
   onRerun: () => void
+  onPause: () => void
+  onResume: () => void
+  onCancel: () => void
+  onDelete: () => void
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -547,31 +576,153 @@ function ActionsMenu({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-10 z-30 w-44 neu-flat rounded-2xl shadow-xl overflow-hidden">
-          <button
-            onClick={() => {
-              setOpen(false)
-              onDetails()
-            }}
-            className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[var(--text-primary)] hover:bg-[var(--accent)]/10 transition-colors"
-          >
-            <ExternalLink className="w-4 h-4 text-[var(--accent)]" /> Details
-          </button>
-          <button
-            onClick={() => {
-              setOpen(false)
-              onRerun()
-            }}
-            className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[var(--text-primary)] hover:bg-[var(--accent)]/10 transition-colors"
-          >
-            <Play className="w-4 h-4 text-emerald-500" /> Rerun
-          </button>
-          <button
-            onClick={() => setOpen(false)}
-            className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[var(--text-muted)] hover:bg-[var(--accent)]/10 transition-colors"
-          >
-            <AlertTriangle className="w-4 h-4 text-red-400" /> Error Screenshots
-          </button>
+        <div className="absolute right-0 top-10 z-30 w-44 neu-flat rounded-2xl shadow-xl overflow-hidden py-1 border border-[var(--border)]">
+          {/* Running: Pause, Cancel, Details */}
+          {row.status === 'running' && (
+            <>
+              <button
+                onClick={() => {
+                  setOpen(false)
+                  onPause()
+                }}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[var(--text-primary)] hover:bg-[var(--accent)]/10 transition-colors text-left"
+              >
+                <Pause className="w-4 h-4 text-amber-500" /> Pause
+              </button>
+              <button
+                onClick={() => {
+                  setOpen(false)
+                  onCancel()
+                }}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[var(--text-primary)] hover:bg-rose-500/10 transition-colors text-left"
+              >
+                <XCircle className="w-4 h-4 text-rose-500" /> Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setOpen(false)
+                  onDetails()
+                }}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[var(--text-primary)] hover:bg-[var(--accent)]/10 transition-colors text-left"
+              >
+                <ExternalLink className="w-4 h-4 text-[var(--accent)]" /> Details
+              </button>
+            </>
+          )}
+
+          {/* Paused: Resume, Cancel, Details */}
+          {row.status === 'paused' && (
+            <>
+              <button
+                onClick={() => {
+                  setOpen(false)
+                  onResume()
+                }}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[var(--text-primary)] hover:bg-emerald-500/10 transition-colors text-left"
+              >
+                <Play className="w-4 h-4 text-emerald-500" /> Resume
+              </button>
+              <button
+                onClick={() => {
+                  setOpen(false)
+                  onCancel()
+                }}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[var(--text-primary)] hover:bg-rose-500/10 transition-colors text-left"
+              >
+                <XCircle className="w-4 h-4 text-rose-500" /> Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setOpen(false)
+                  onDetails()
+                }}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[var(--text-primary)] hover:bg-[var(--accent)]/10 transition-colors text-left"
+              >
+                <ExternalLink className="w-4 h-4 text-[var(--accent)]" /> Details
+              </button>
+            </>
+          )}
+
+          {/* Partial or Failed: Rerun, Details, Delete */}
+          {(row.status === 'partial' || row.status === 'failed') && (
+            <>
+              <button
+                onClick={() => {
+                  setOpen(false)
+                  onRerun()
+                }}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[var(--text-primary)] hover:bg-emerald-500/10 transition-colors text-left"
+              >
+                <RefreshCw className="w-4 h-4 text-emerald-500" /> Rerun
+              </button>
+              <button
+                onClick={() => {
+                  setOpen(false)
+                  onDetails()
+                }}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[var(--text-primary)] hover:bg-[var(--accent)]/10 transition-colors text-left"
+              >
+                <ExternalLink className="w-4 h-4 text-[var(--accent)]" /> Details
+              </button>
+              <button
+                onClick={() => {
+                  setOpen(false)
+                  onDelete()
+                }}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition-colors text-left"
+              >
+                <Trash2 className="w-4 h-4 text-rose-500" /> Delete
+              </button>
+            </>
+          )}
+
+          {/* Success or Cancelled: Details, Delete */}
+          {(row.status === 'success' || row.status === 'cancelled') && (
+            <>
+              <button
+                onClick={() => {
+                  setOpen(false)
+                  onDetails()
+                }}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[var(--text-primary)] hover:bg-[var(--accent)]/10 transition-colors text-left"
+              >
+                <ExternalLink className="w-4 h-4 text-[var(--accent)]" /> Details
+              </button>
+              <button
+                onClick={() => {
+                  setOpen(false)
+                  onDelete()
+                }}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition-colors text-left"
+              >
+                <Trash2 className="w-4 h-4 text-rose-500" /> Delete
+              </button>
+            </>
+          )}
+
+          {/* Queued: Cancel, Details */}
+          {row.status === 'queued' && (
+            <>
+              <button
+                onClick={() => {
+                  setOpen(false)
+                  onCancel()
+                }}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[var(--text-primary)] hover:bg-rose-500/10 transition-colors text-left"
+              >
+                <XCircle className="w-4 h-4 text-rose-500" /> Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setOpen(false)
+                  onDetails()
+                }}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[var(--text-primary)] hover:bg-[var(--accent)]/10 transition-colors text-left"
+              >
+                <ExternalLink className="w-4 h-4 text-[var(--accent)]" /> Details
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -721,7 +872,7 @@ export default function RunLogsClient() {
       })
       const data = await res.json()
       if (data.success) {
-        showToast('Rerun queued successfully!')
+        showToast(data.message || 'Rerun queued successfully!')
         fetchLogs(page)
       } else {
         showToast(data.error || 'Rerun failed', 'error')
@@ -730,6 +881,83 @@ export default function RunLogsClient() {
       showToast('Rerun failed', 'error')
     } finally {
       setRerunningId(null)
+    }
+  }
+
+  const handlePause = async (row: RunLogRow) => {
+    try {
+      const res = await fetch('/api/user/run-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'pause', automationId: row.id }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        showToast('Automation paused!')
+        fetchLogs(page)
+      } else {
+        showToast(data.error || 'Failed to pause automation', 'error')
+      }
+    } catch {
+      showToast('Error pausing automation', 'error')
+    }
+  }
+
+  const handleResume = async (row: RunLogRow) => {
+    try {
+      const res = await fetch('/api/user/run-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'resume', automationId: row.id }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        showToast('Automation resumed!')
+        fetchLogs(page)
+      } else {
+        showToast(data.error || 'Failed to resume automation', 'error')
+      }
+    } catch {
+      showToast('Error resuming automation', 'error')
+    }
+  }
+
+  const handleCancel = async (row: RunLogRow) => {
+    try {
+      const res = await fetch('/api/user/run-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cancel', automationId: row.id }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        showToast('Automation stopped and cancelled!')
+        fetchLogs(page)
+      } else {
+        showToast(data.error || 'Failed to cancel automation', 'error')
+      }
+    } catch {
+      showToast('Error cancelling automation', 'error')
+    }
+  }
+
+  const handleDelete = async (row: RunLogRow) => {
+    if (!window.confirm('Are you sure you want to delete this automation run record?')) return
+    try {
+      const res = await fetch('/api/user/run-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', automationId: row.id }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        showToast('Automation record deleted!')
+        fetchLogs(page)
+      } else {
+        showToast(data.error || 'Failed to delete automation', 'error')
+      }
+    } catch {
+      showToast('Error deleting automation', 'error')
     }
   }
 
@@ -861,6 +1089,10 @@ export default function RunLogsClient() {
                         row={row}
                         onDetails={() => setSelectedRow(row)}
                         onRerun={() => handleRerun(row)}
+                        onPause={() => handlePause(row)}
+                        onResume={() => handleResume(row)}
+                        onCancel={() => handleCancel(row)}
+                        onDelete={() => handleDelete(row)}
                       />
                     </td>
                   </tr>

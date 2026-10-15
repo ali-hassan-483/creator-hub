@@ -33,6 +33,7 @@ enum AutomationStatus {
   completed
   failed
   cancelled
+  paused
 }
 
 enum AutomationRunType {

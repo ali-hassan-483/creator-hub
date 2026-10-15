@@ -83,25 +83,34 @@ export async function GET(req: NextRequest) {
       const opts = (automation.options as Record<string, any>) || {}
       const mockVideoUploads: any[] = opts.mockVideoUploads || []
 
-      // Find channels in this automation that have NOT yet had their 1 video uploaded
+      // Find channels in this automation that have NOT yet been attempted (succeeded or failed)
       const channelsNeedingUpload = automation.channels.filter((ac) => {
         const ch = ac.channel
         if (!ch || ch.status !== 'active' || ch.removedAt) return false
 
-        // Check if this channel already got its video in this automation run
-        const alreadyUploaded = mockVideoUploads.some(
-          (u) => u.channelId === ch.id && u.youtubeLink
+        // Check if this channel was already processed (either succeeded or failed) in this automation run
+        const alreadyAttempted = mockVideoUploads.some(
+          (u) => u.channelId === ch.id
         )
-        return !alreadyUploaded
+        return !alreadyAttempted
       })
 
-      // If all channels in this automation run already have their video uploaded, mark completed!
+      // If all channels in this automation run have been processed, mark finished!
       if (channelsNeedingUpload.length === 0) {
+        const hasSuccess = mockVideoUploads.some((u) => !!u.youtubeLink)
+        const hasFailed = mockVideoUploads.some((u) => !u.youtubeLink)
+        const finalStatus = (hasSuccess && hasFailed) ? 'completed' : hasFailed ? 'failed' : 'completed'
+        const finalRunStatus = (hasSuccess && hasFailed) ? 'partial' : hasFailed ? 'failed' : 'success'
+
         await prisma.automation.update({
           where: { id: automation.id },
           data: {
-            status: 'completed',
+            status: finalStatus,
             completedAt: new Date(),
+            options: {
+              ...opts,
+              runStatus: finalRunStatus,
+            },
           },
         })
         continue
@@ -123,6 +132,34 @@ export async function GET(req: NextRequest) {
         // Check YouTube 24h upload cooldown
         if (extra.uploadCooldownUntil && new Date(extra.uploadCooldownUntil) > new Date()) {
           console.log(`[Worker Poll] Channel @${channel.channelHandle} is on cooldown until ${extra.uploadCooldownUntil}`)
+          const failureItem = {
+            id: `fail_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            channelId: channel.id,
+            channelName: channel.channelName || channel.channelHandle || 'YouTube Channel',
+            campaign: campaign.name,
+            stage: 'Upload Failed',
+            videoTitle: 'Daily limit cooldown active',
+            youtubeLink: null,
+            error: `YouTube 24h cooldown active until ${new Date(extra.uploadCooldownUntil).toLocaleTimeString()}`,
+            uploadedAt: new Date().toISOString(),
+            vpsNode: vps.label,
+          }
+          const updatedUploads = [failureItem, ...mockVideoUploads]
+          const isAllDone = updatedUploads.length >= automation.channels.length
+          const hasAnySuccess = updatedUploads.some((u: any) => !!u.youtubeLink)
+
+          await prisma.automation.update({
+            where: { id: automation.id },
+            data: {
+              status: isAllDone ? (hasAnySuccess ? 'completed' : 'failed') : 'running',
+              completedAt: isAllDone ? new Date() : null,
+              options: {
+                ...opts,
+                mockVideoUploads: updatedUploads,
+                runStatus: isAllDone ? (hasAnySuccess ? 'partial' : 'failed') : 'running',
+              },
+            },
+          })
           continue
         }
 
@@ -132,6 +169,34 @@ export async function GET(req: NextRequest) {
 
         if (!refreshToken || !clientId || !clientSecret) {
           console.warn(`[Worker Poll] Channel @${channel.channelHandle} is missing Google credentials.`)
+          const failureItem = {
+            id: `fail_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            channelId: channel.id,
+            channelName: channel.channelName || channel.channelHandle || 'YouTube Channel',
+            campaign: campaign.name,
+            stage: 'Upload Failed',
+            videoTitle: 'Credentials Missing',
+            youtubeLink: null,
+            error: 'Missing Google OAuth credentials',
+            uploadedAt: new Date().toISOString(),
+            vpsNode: vps.label,
+          }
+          const updatedUploads = [failureItem, ...mockVideoUploads]
+          const isAllDone = updatedUploads.length >= automation.channels.length
+          const hasAnySuccess = updatedUploads.some((u: any) => !!u.youtubeLink)
+
+          await prisma.automation.update({
+            where: { id: automation.id },
+            data: {
+              status: isAllDone ? (hasAnySuccess ? 'completed' : 'failed') : 'running',
+              completedAt: isAllDone ? new Date() : null,
+              options: {
+                ...opts,
+                mockVideoUploads: updatedUploads,
+                runStatus: isAllDone ? (hasAnySuccess ? 'partial' : 'failed') : 'running',
+              },
+            },
+          })
           continue
         }
 

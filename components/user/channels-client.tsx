@@ -562,35 +562,18 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
 
                       {/* Status */}
                       <td className="px-5 py-4">
-                        {ch.status === 'error' ? (
-                          <div className="flex items-center gap-2">
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20" title="YouTube Daily Limit Exceeded or Upload Failed">
-                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                              Failed (Limit Hit)
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => handleStatusChange(ch.id, 'active')}
-                              className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-xs"
-                              title="Resume and re-activate uploading for this channel"
-                            >
-                              Re-activate
-                            </button>
-                          </div>
-                        ) : (
-                          <select
-                            value={ch.status === 'active' ? 'active' : 'inactive'}
-                            onChange={(e) => handleStatusChange(ch.id, e.target.value)}
-                            className={`text-xs font-semibold px-2.5 py-1 rounded-full border cursor-pointer ${
-                              ch.status === 'active'
-                                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
-                                : 'bg-muted text-muted-foreground border-border'
-                            }`}
-                          >
-                            <option value="active">Active</option>
-                            <option value="inactive">Not Active</option>
-                          </select>
-                        )}
+                        <select
+                          value={ch.status === 'active' ? 'active' : 'inactive'}
+                          onChange={(e) => handleStatusChange(ch.id, e.target.value)}
+                          className={`text-xs font-semibold px-2.5 py-1 rounded-full border cursor-pointer ${
+                            ch.status === 'active'
+                              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                              : 'bg-muted text-muted-foreground border-border'
+                          }`}
+                        >
+                          <option value="active">Active</option>
+                          <option value="inactive">Not Active</option>
+                        </select>
                       </td>
 
                       {/* Added Date */}
@@ -652,33 +635,18 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
                   <span className="px-2 py-0.5 rounded bg-muted text-muted-foreground font-medium">
                     {ch.niche || 'General'}
                   </span>
-                  {ch.status === 'error' ? (
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
-                        Failed
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleStatusChange(ch.id, 'active')}
-                        className="text-[10px] font-bold px-2 py-0.5 rounded bg-primary text-primary-foreground"
-                      >
-                        Re-activate
-                      </button>
-                    </div>
-                  ) : (
-                    <select
-                      value={ch.status === 'active' ? 'active' : 'inactive'}
-                      onChange={(e) => handleStatusChange(ch.id, e.target.value)}
-                      className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border cursor-pointer ${
-                        ch.status === 'active'
-                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
-                          : 'bg-muted text-muted-foreground border-border'
-                      }`}
-                    >
-                      <option value="active">Active</option>
-                      <option value="inactive">Not Active</option>
-                    </select>
-                  )}
+                  <select
+                    value={ch.status === 'active' ? 'active' : 'inactive'}
+                    onChange={(e) => handleStatusChange(ch.id, e.target.value)}
+                    className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border cursor-pointer ${
+                      ch.status === 'active'
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                        : 'bg-muted text-muted-foreground border-border'
+                    }`}
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Not Active</option>
+                  </select>
                 </div>
               </div>
             ))

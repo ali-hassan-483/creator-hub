@@ -274,13 +274,15 @@ export async function GET(req: NextRequest) {
       }
 
       // Derive display status
-      let displayStatus: 'success' | 'partial' | 'cancelled' | 'running' | 'queued' | 'failed' =
+      let displayStatus: 'success' | 'partial' | 'cancelled' | 'running' | 'queued' | 'failed' | 'paused' =
         'queued'
       if (auto.status === 'cancelled' || opts.runStatus === 'cancelled') {
         displayStatus = 'cancelled'
-      } else if (auto.status === 'failed') {
+      } else if (auto.status === 'paused' || opts.runStatus === 'paused') {
+        displayStatus = 'paused'
+      } else if (auto.status === 'failed' || opts.runStatus === 'failed') {
         displayStatus = 'failed'
-      } else if (auto.status === 'running') {
+      } else if (auto.status === 'running' || opts.runStatus === 'running') {
         displayStatus = 'running'
       } else if (auto.status === 'completed') {
         const hasFailedUpload = mockUploads.some((u) => !u.youtubeLink)
@@ -353,6 +355,93 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, ...result })
     }
 
+    if (action === 'pause') {
+      const { automationId } = body
+      if (!automationId) {
+        return NextResponse.json({ error: 'automationId required' }, { status: 400 })
+      }
+      const auto = await prisma.automation.findFirst({
+        where: { id: automationId, userId },
+      })
+      if (!auto) {
+        return NextResponse.json({ error: 'Automation not found' }, { status: 404 })
+      }
+      const opts = (auto.options as any) || {}
+      await prisma.automation.update({
+        where: { id: automationId },
+        data: {
+          status: 'paused',
+          options: { ...opts, runStatus: 'paused' },
+        },
+      })
+      return NextResponse.json({ success: true, message: 'Automation paused' })
+    }
+
+    if (action === 'resume') {
+      const { automationId } = body
+      if (!automationId) {
+        return NextResponse.json({ error: 'automationId required' }, { status: 400 })
+      }
+      const auto = await prisma.automation.findFirst({
+        where: { id: automationId, userId },
+      })
+      if (!auto) {
+        return NextResponse.json({ error: 'Automation not found' }, { status: 404 })
+      }
+      const opts = (auto.options as any) || {}
+      await prisma.automation.update({
+        where: { id: automationId },
+        data: {
+          status: 'running',
+          options: { ...opts, runStatus: 'running' },
+        },
+      })
+      return NextResponse.json({ success: true, message: 'Automation resumed' })
+    }
+
+    if (action === 'cancel') {
+      const { automationId } = body
+      if (!automationId) {
+        return NextResponse.json({ error: 'automationId required' }, { status: 400 })
+      }
+      const auto = await prisma.automation.findFirst({
+        where: { id: automationId, userId },
+      })
+      if (!auto) {
+        return NextResponse.json({ error: 'Automation not found' }, { status: 404 })
+      }
+      const opts = (auto.options as any) || {}
+      await prisma.automation.update({
+        where: { id: automationId },
+        data: {
+          status: 'cancelled',
+          options: {
+            ...opts,
+            cancelReason: 'Stopped by user',
+            runStatus: 'cancelled',
+          },
+        },
+      })
+      return NextResponse.json({ success: true, message: 'Automation cancelled' })
+    }
+
+    if (action === 'delete') {
+      const { automationId } = body
+      if (!automationId) {
+        return NextResponse.json({ error: 'automationId required' }, { status: 400 })
+      }
+      const auto = await prisma.automation.findFirst({
+        where: { id: automationId, userId },
+      })
+      if (!auto) {
+        return NextResponse.json({ error: 'Automation not found' }, { status: 404 })
+      }
+      await prisma.automationChannel.deleteMany({ where: { automationId } })
+      await prisma.automationCredential.deleteMany({ where: { automationId } })
+      await prisma.automation.delete({ where: { id: automationId, userId } })
+      return NextResponse.json({ success: true, message: 'Automation run deleted successfully' })
+    }
+
     if (action === 'rerun') {
       const { automationId } = body
       if (!automationId) {
@@ -366,20 +455,36 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Automation not found' }, { status: 404 })
       }
 
+      // Filter only channels that did NOT have a successful upload
+      const opts = (original.options as any) || {}
+      const mockUploads: any[] = opts.mockVideoUploads || []
+      const succeededChannelIds = new Set(
+        mockUploads.filter((u: any) => !!u.youtubeLink).map((u: any) => u.channelId)
+      )
+
+      const failedChannels = original.channels.filter(
+        (c) => !succeededChannelIds.has(c.channelId)
+      )
+      const rerunChannels = failedChannels.length > 0 ? failedChannels : original.channels
+
       const newRun = await prisma.automation.create({
         data: {
           userId,
           campaignId: original.campaignId,
-          name: `[Rerun] ${original.name || 'Automation'}`,
+          name: `[Rerun] ${original.name?.replace(/^\[Rerun\]\s*/, '') || 'Automation'}`,
           runType: 'immediate',
           status: 'queued',
           channels: {
-            create: original.channels.map((c) => ({ channelId: c.channelId })),
+            create: rerunChannels.map((c) => ({ channelId: c.channelId })),
           },
         },
       })
 
-      return NextResponse.json({ success: true, automationId: newRun.id, message: 'Rerun queued!' })
+      return NextResponse.json({
+        success: true,
+        automationId: newRun.id,
+        message: `Rerun queued for ${rerunChannels.length} channel(s)!`,
+      })
     }
 
     if (action === 'mark_whop_submitted') {

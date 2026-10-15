@@ -235,6 +235,7 @@ async function reportUploadFailure(job, reason, errorMessage) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         apiKey: API_KEY,
+        automationId: job.automationId,
         channelId: job.channel.id,
         campaignId: job.campaign.id,
         reason,
