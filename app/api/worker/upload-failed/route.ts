@@ -37,12 +37,13 @@ export async function POST(req: NextRequest) {
     const extra = (channel.extraData as Record<string, any>) || {}
     const now = new Date()
 
-    // If YouTube upload limit exceeded, put channel on a 24-hour cooldown
+    // If YouTube upload limit exceeded, pause channel (status = error)
     if (reason === 'uploadLimitExceeded' || errorMessage?.includes('uploadLimitExceeded')) {
       const cooldownUntil = new Date(now.getTime() + 24 * 60 * 60 * 1000)
       await prisma.channel.update({
         where: { id: channelId },
         data: {
+          status: 'error',
           extraData: {
             ...extra,
             uploadCooldownUntil: cooldownUntil.toISOString(),
@@ -52,10 +53,11 @@ export async function POST(req: NextRequest) {
         },
       })
 
-      // Update recent automation run status to inform user
+      // Mark running/queued automation as failed to stop execution
       const recentAutomation = await prisma.automation.findFirst({
         where: {
           userId: channel.userId,
+          status: { in: ['queued', 'running'] },
           ...(campaignId ? { campaignId } : {}),
         },
         orderBy: { createdAt: 'desc' },
@@ -66,10 +68,13 @@ export async function POST(req: NextRequest) {
         await prisma.automation.update({
           where: { id: recentAutomation.id },
           data: {
+            status: 'failed',
+            errorMessage: `YouTube daily upload limit reached for channel @${channel.channelHandle || channel.channelName}. Channel paused.`,
+            completedAt: now,
             options: {
               ...opts,
-              runStatus: 'partial',
-              cancelReason: `YouTube daily upload limit reached for channel @${channel.channelHandle || channel.channelName}. Resumes after 24h.`,
+              runStatus: 'failed',
+              cancelReason: `YouTube daily upload limit reached for channel @${channel.channelHandle || channel.channelName}. Channel paused.`,
             },
           },
         })
@@ -77,7 +82,7 @@ export async function POST(req: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        message: 'Channel placed on 24h cooldown due to YouTube upload limit.',
+        message: 'Channel paused (status = error) due to YouTube upload limit.',
         cooldownUntil: cooldownUntil.toISOString(),
       })
     }
@@ -86,6 +91,7 @@ export async function POST(req: NextRequest) {
     await prisma.channel.update({
       where: { id: channelId },
       data: {
+        status: 'error',
         extraData: {
           ...extra,
           lastUploadError: errorMessage || 'Upload failed',

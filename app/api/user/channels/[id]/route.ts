@@ -27,12 +27,21 @@ export async function PATCH(
       return NextResponse.json({ error: 'Channel not found or already removed.' }, { status: 404 })
     }
 
+    const extra = (existing.extraData as Record<string, any>) || {}
+    let updatedExtra = data.extraData !== undefined ? data.extraData : extra
+
+    // If user is manually re-activating the channel, clear cooldown and error
+    if (data.status === 'active') {
+      const { uploadCooldownUntil, lastUploadError, ...rest } = updatedExtra
+      updatedExtra = rest
+    }
+
     const updated = await prisma.channel.update({
       where: { id },
       data: {
         ...(data.channelName !== undefined && { channelName: data.channelName.trim() }),
         ...(data.status !== undefined && { status: data.status }),
-        ...(data.extraData !== undefined && { extraData: data.extraData }),
+        extraData: updatedExtra,
       },
     })
 
