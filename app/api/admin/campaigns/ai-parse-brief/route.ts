@@ -22,6 +22,7 @@ Parse the following campaign brief text and extract these fields:
 - submissionLink: string (Whop or other form URL)
 - whopChannelName: string (e.g. #clipping-submissions)
 - fixYoutubeMentions: "yes" or "no"
+- youtubeMentionChannel: string (e.g. "@ChannelName" if mentioned in the brief, otherwise empty string)
 - enablePendingTasks: "enabled" or "disabled"
 - dailyPostLimit: number
 - sourceVideoUrls: string (comma separated URLs for YouTube or Drive)

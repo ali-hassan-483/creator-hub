@@ -5,7 +5,7 @@ import Link from 'next/link'
 import {
   Megaphone, Eye, Zap, Search, CheckCircle2,
   AlertCircle, ArrowRight, FileText, Sparkles, Clock, ExternalLink, Film,
-  Radio, DollarSign
+  Radio, DollarSign, AtSign
 } from 'lucide-react'
 
 interface UserCampaignItem {
@@ -124,6 +124,19 @@ export function CampaignsCatalogClient({ initialCampaigns }: CampaignsCatalogCli
                       <span>CPM: {c.config.cpm.startsWith('$') ? c.config.cpm : `$${c.config.cpm}`}</span>
                     </div>
                   )}
+
+                  {/* YouTube Mention Badge */}
+                  {c.config?.fixYoutubeMentions === 'yes' ? (
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-rose-500/10 text-rose-600 dark:text-rose-400 text-xs font-semibold border border-rose-500/20">
+                      <AtSign size={13} />
+                      <span>Mention: {c.config.youtubeMentionChannel || 'Yes'}</span>
+                    </div>
+                  ) : (
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-muted text-muted-foreground text-xs font-semibold border border-border">
+                      <AtSign size={13} />
+                      <span>Mention: No</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -203,6 +216,21 @@ export function CampaignsCatalogClient({ initialCampaigns }: CampaignsCatalogCli
                   </div>
                 </div>
               )}
+
+              {/* YouTube Channel Mention */}
+              <div className="p-2.5 bg-rose-500/10 border border-rose-500/20 rounded-lg text-xs flex items-center gap-2 text-rose-700 dark:text-rose-300">
+                <AtSign size={16} />
+                <div>
+                  <span className="font-bold">
+                    Mention: {selectedCampaign.config?.fixYoutubeMentions === 'yes' ? `Yes (${selectedCampaign.config.youtubeMentionChannel || 'Required'})` : 'No'}
+                  </span>
+                  <p className="text-[10px] opacity-80">
+                    {selectedCampaign.config?.fixYoutubeMentions === 'yes'
+                      ? `Must mention ${selectedCampaign.config.youtubeMentionChannel || 'channel'} in title/description`
+                      : 'No YouTube channel mention required'}
+                  </p>
+                </div>
+              </div>
 
               {selectedCampaign.config?.whopChannelName && (
                 <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-xs flex items-center gap-2 text-emerald-700 dark:text-emerald-300 col-span-full">

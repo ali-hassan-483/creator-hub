@@ -115,6 +115,7 @@ const defaultFormState = {
 
   // Rules & Source Material (Screenshot 2)
   fixYoutubeMentions: 'no' as 'no' | 'yes',
+  youtubeMentionChannel: '',
   whopChannelName: '',
   cpm: '',
   enablePendingTasks: 'disabled' as 'disabled' | 'enabled',
@@ -415,6 +416,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
         whopChannelName: p.whopChannelName || prev.whopChannelName,
         cpm: p.cpm || prev.cpm,
         fixYoutubeMentions: p.fixYoutubeMentions || prev.fixYoutubeMentions,
+        youtubeMentionChannel: p.youtubeMentionChannel || prev.youtubeMentionChannel,
         enablePendingTasks: p.enablePendingTasks || prev.enablePendingTasks,
         dailyPostLimit: p.dailyPostLimit !== undefined ? p.dailyPostLimit : prev.dailyPostLimit,
         sourceVideoUrls: p.sourceVideoUrls || prev.sourceVideoUrls,
@@ -516,6 +518,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
       subcampaignGid: formData.subcampaignGid.trim(),
       submissionLink: formData.submissionLink.trim(),
       fixYoutubeMentions: formData.fixYoutubeMentions,
+      youtubeMentionChannel: formData.youtubeMentionChannel.trim(),
       whopChannelName: formData.whopChannelName.trim(),
       cpm: formData.cpm.trim(),
       enablePendingTasks: formData.enablePendingTasks,
@@ -645,6 +648,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
       subcampaignGid: cfg.subcampaignGid || '',
       niche: cfg.niche || 'Gaming',
       fixYoutubeMentions: (cfg.fixYoutubeMentions as 'no' | 'yes') || 'no',
+      youtubeMentionChannel: cfg.youtubeMentionChannel || '',
       enablePendingTasks: (cfg.enablePendingTasks as 'disabled' | 'enabled') || 'disabled',
       sourceVideoUrls: cfg.sourceVideoUrls || '',
       specifyTimeRanges: cfg.specifyTimeRanges ?? false,
@@ -932,6 +936,15 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                           {cfg.cpm && (
                             <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
                               CPM: {cfg.cpm.startsWith('$') ? cfg.cpm : `$${cfg.cpm}`}
+                            </span>
+                          )}
+                          {cfg.fixYoutubeMentions === 'yes' ? (
+                            <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                              Mention: {cfg.youtubeMentionChannel || 'Yes'}
+                            </span>
+                          ) : (
+                            <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground">
+                              Mention: No
                             </span>
                           )}
                         </div>
@@ -1338,10 +1351,28 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                       onChange={(e: any) => setFormData({ ...formData, fixYoutubeMentions: e.target.value })}
                       className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     >
-                      <option value="no">No (Keep plaintext)</option>
-                      <option value="yes">Yes (Send Discord alert when views crossed)</option>
+                      <option value="no">No</option>
+                      <option value="yes">Yes</option>
                     </select>
                   </div>
+
+                  {formData.fixYoutubeMentions === 'yes' && (
+                    <div className="animate-in fade-in slide-in-from-top-1 duration-150">
+                      <label className="block text-xs font-medium text-foreground mb-1">
+                        Channel to Mention <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. @MrBeast or @ClipFarm"
+                        value={formData.youtubeMentionChannel}
+                        onChange={(e) => setFormData({ ...formData, youtubeMentionChannel: e.target.value })}
+                        className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+                      />
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Specify YouTube channel handle to mention
+                      </p>
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-xs font-medium text-foreground mb-1">Whop Channel Name</label>
