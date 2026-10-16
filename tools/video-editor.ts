@@ -107,12 +107,13 @@ function overlayPositionToXY(
     xExpr = `(W-w)/2`
   }
 
-  // Vertical Y expression
+  // Vertical Y expression (COMMAS MUST BE AVOIDED — commas split FFMPEG filter complex chains!)
   let yExpr = `30`
   if (heightPercent !== undefined && !isNaN(heightPercent)) {
     // Exact placement height % from top to bottom (0% = top, 50% = middle, 100% = bottom)
-    const clamped = Math.max(0, Math.min(100, heightPercent))
-    yExpr = `max(20,min(H-h-20,(H*${clamped}/100)-(h/2)))`
+    const clamped = Math.max(2, Math.min(98, heightPercent))
+    const targetY = Math.round((H * clamped) / 100)
+    yExpr = `${targetY}-(h/2)`
   } else {
     if (pos.includes('top')) {
       yExpr = `30`
