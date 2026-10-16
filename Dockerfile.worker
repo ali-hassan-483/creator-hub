@@ -14,8 +14,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
-# Install OpenAI Whisper
-RUN pip3 install --no-cache-dir --break-system-packages openai-whisper
+# Install OpenAI Whisper (CPU-only PyTorch ~180MB, avoids 4.5GB of useless CUDA GPU bloat)
+RUN pip3 install --no-cache-dir --break-system-packages torch --index-url https://download.pytorch.org/whl/cpu && \
+    pip3 install --no-cache-dir --break-system-packages openai-whisper
 
 COPY package.json ./
 RUN npm install
