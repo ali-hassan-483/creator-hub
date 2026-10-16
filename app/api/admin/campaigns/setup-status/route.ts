@@ -8,6 +8,7 @@ import {
   getSourcesDir,
   getAssetsDir,
   getClipsDir,
+  getTranscriptsDir,
   isSetupComplete,
   runCampaignSetup,
   countEditedClips,
@@ -361,6 +362,38 @@ export async function POST(req: NextRequest) {
         message: 'Clip generation started in background!',
         status: 'generating',
         campaignId,
+      })
+    }
+
+    // ── ACTION: Delete Clips & Sources (Complete VPS Campaign Data Wipe) ───
+    if (action === 'delete_clips_and_sources' || action === 'reset_all_data') {
+      const campaignDir = getCampaignDir(campaignId)
+      if (fs.existsSync(campaignDir)) {
+        try {
+          fs.rmSync(campaignDir, { recursive: true, force: true })
+        } catch (err: any) {
+          console.warn(`[CampaignData] Failed to completely remove ${campaignDir}:`, err.message)
+        }
+      }
+
+      // Recreate clean empty directory structure
+      try {
+        fs.mkdirSync(campaignDir, { recursive: true })
+        fs.mkdirSync(getSourcesDir(campaignId), { recursive: true })
+        fs.mkdirSync(getClipsDir(campaignId), { recursive: true })
+        fs.mkdirSync(getTranscriptsDir(campaignId), { recursive: true })
+        fs.mkdirSync(getAssetsDir(campaignId), { recursive: true })
+      } catch {}
+
+      activeSetups.delete(campaignId)
+      activeClipGenerations.delete(campaignId)
+
+      return NextResponse.json({
+        success: true,
+        message: 'All campaign clips, transcripts, and source videos have been completely deleted from the VPS!',
+        campaignId,
+        sourceCount: 0,
+        clipCount: 0,
       })
     }
 

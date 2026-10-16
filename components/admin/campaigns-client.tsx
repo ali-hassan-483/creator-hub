@@ -303,6 +303,57 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
     } catch {}
   }
 
+  // Delete Clips & Sources confirmation modal state & handler
+  const [deleteDataModalCampaign, setDeleteDataModalCampaign] = useState<CampaignItem | null>(null)
+  const [isDeletingData, setIsDeletingData] = useState(false)
+
+  async function handleDeleteClipsAndSources() {
+    if (!deleteDataModalCampaign) return
+    setIsDeletingData(true)
+    try {
+      const res = await fetch('/api/admin/campaigns/setup-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          campaignId: deleteDataModalCampaign.id,
+          action: 'delete_clips_and_sources',
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to delete clips and sources')
+
+      // Update local setup status immediately
+      setSetupStatuses((prev) => ({
+        ...prev,
+        [deleteDataModalCampaign.id]: {
+          sourceStatus: 'pending',
+          progress: null,
+          sourceCount: 0,
+          clipCount: 0,
+          error: null,
+          clipStatus: 'pending',
+          clipProgress: null,
+          clipError: null,
+        },
+      }))
+
+      // Update campaign in local list
+      setCampaigns((prev) =>
+        prev.map((c) =>
+          c.id === deleteDataModalCampaign.id
+            ? { ...c, availableClips: 0, sourceFilesCount: 0 }
+            : c
+        )
+      )
+
+      setDeleteDataModalCampaign(null)
+    } catch (err: any) {
+      alert(err.message || 'Error deleting clips and sources')
+    } finally {
+      setIsDeletingData(false)
+    }
+  }
+
   // Filter
   const filteredCampaigns = campaigns.filter((c) => {
     const matchesSearch =
@@ -1105,6 +1156,17 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                                     )}
                                   </div>
                                 )}
+
+                                {(ss.sourceCount > 0 || (ss.clipCount ?? c.availableClips ?? 0) > 0) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeleteDataModalCampaign(c)}
+                                    className="text-[9px] text-rose-500 hover:text-rose-700 hover:underline pt-1 block font-medium"
+                                    title="Delete clips, transcripts, and source videos from VPS"
+                                  >
+                                    🗑 Delete clips & sources
+                                  </button>
+                                )}
                               </div>
                             </div>
                           )
@@ -1162,6 +1224,15 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                           >
                             <Upload size={13} />
                             <span>Upload</span>
+                          </button>
+
+                          <button
+                            onClick={() => setDeleteDataModalCampaign(c)}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 transition-colors"
+                            title="Delete all clips, transcripts, and source videos from VPS"
+                          >
+                            <Trash2 size={12} />
+                            <span>Delete Clips & Sources</span>
                           </button>
 
                           <button
@@ -2527,6 +2598,80 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE CLIPS & SOURCES CONFIRMATION MODAL */}
+      {deleteDataModalCampaign && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-card border border-border w-full max-w-md rounded-2xl shadow-2xl p-6 space-y-4 animate-in zoom-in-95">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                  <Trash2 size={22} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-foreground">Delete Clips &amp; Sources?</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Campaign: <strong className="text-foreground">{deleteDataModalCampaign.name}</strong>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setDeleteDataModalCampaign(null)}
+                className="p-1 rounded-md text-muted-foreground hover:bg-muted"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-700 dark:text-rose-300 space-y-2">
+              <p className="font-semibold flex items-center gap-1.5">
+                <AlertCircle size={14} /> VPS Storage Clean-Up
+              </p>
+              <p className="text-[11px] leading-relaxed opacity-90">
+                Are you sure? This will permanently delete all data for this campaign from the VPS storage:
+              </p>
+              <ul className="list-disc list-inside text-[11px] space-y-0.5 pl-1 opacity-90 font-mono">
+                <li>All generated edited clips (.mp4 &amp; .meta.json)</li>
+                <li>All downloaded source videos (.mp4, .mov, etc.)</li>
+                <li>All transcript JSON files (.json)</li>
+                <li>All hooks, CTAs, and overlay assets</li>
+              </ul>
+              <p className="text-[11px] pt-1.5 border-t border-rose-500/20 opacity-90">
+                After deletion, you can freshly re-download sources or generate clips again from scratch.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-border">
+              <button
+                type="button"
+                onClick={() => setDeleteDataModalCampaign(null)}
+                disabled={isDeletingData}
+                className="px-4 py-2 border border-border rounded-xl text-xs font-semibold text-foreground hover:bg-muted transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteClipsAndSources}
+                disabled={isDeletingData}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold transition disabled:opacity-50 shadow-sm"
+              >
+                {isDeletingData ? (
+                  <>
+                    <RefreshCw size={13} className="animate-spin" />
+                    <span>Deleting from VPS...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={13} />
+                    <span>Yes, Delete Clips &amp; Sources</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
