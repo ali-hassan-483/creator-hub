@@ -83,18 +83,35 @@ export async function GET(req: NextRequest) {
         continue
       }
 
+      // Auto-complete zombie automations created > 24 hours ago
+      const isStale = (Date.now() - new Date(automation.createdAt).getTime()) > 24 * 60 * 60 * 1000
+      if (isStale) {
+        console.log(`[Worker Poll] Auto-completing stale automation ${automation.id} (created >24h ago)`)
+        await prisma.automation.update({
+          where: { id: automation.id },
+          data: { status: 'completed', completedAt: new Date() },
+        })
+        continue
+      }
+
       const opts = (automation.options as Record<string, any>) || {}
       const mockVideoUploads: any[] = opts.mockVideoUploads || []
 
-      // Find channels in this automation that have NOT yet been attempted (succeeded or failed)
+      // Find channels in this automation that have NOT yet been attempted (succeeded, failed, or currently in_progress)
       const channelsNeedingUpload = automation.channels.filter((ac) => {
         const ch = ac.channel
         if (!ch || ch.status !== 'active' || ch.removedAt) return false
 
-        // Check if this channel was already processed (either succeeded or failed) in this automation run
-        const alreadyAttempted = mockVideoUploads.some(
-          (u) => u.channelId === ch.id
-        )
+        // Check if this channel was already processed or is currently being uploaded by a worker
+        const alreadyAttempted = mockVideoUploads.some((u) => {
+          if (u.channelId !== ch.id) return false
+          if (u.status === 'in_progress') {
+            // Allow retry if in_progress has been stuck for > 15 minutes (worker crashed/timed out)
+            const elapsed = Date.now() - new Date(u.uploadedAt).getTime()
+            return elapsed < 15 * 60 * 1000
+          }
+          return true
+        })
         return !alreadyAttempted
       })
 
@@ -174,6 +191,71 @@ export async function GET(req: NextRequest) {
             vpsNode: vps.label,
           }
           mockVideoUploads.unshift(failureItem)
+          const isAllDone = mockVideoUploads.length >= automation.channels.length
+          const hasAnySuccess = mockVideoUploads.some((u: any) => !!u.youtubeLink)
+
+          await prisma.automation.update({
+            where: { id: automation.id },
+            data: {
+              status: isAllDone ? (hasAnySuccess ? 'completed' : 'failed') : 'running',
+              completedAt: isAllDone ? new Date() : null,
+              options: {
+                ...opts,
+                mockVideoUploads,
+                runStatus: isAllDone ? (hasAnySuccess ? 'partial' : 'failed') : 'running',
+              },
+            },
+          })
+          continue
+        }
+
+        // ── Check Channel Daily Upload Limit (STRICT RULE: Max 1 video per channel per day, resets 12 AM PKT) ──
+        const todayStart = getPakistanTodayStart()
+
+        // 1. Check VideoAnalytic for successful uploads today for this channel
+        const uploadsTodayCount = await prisma.videoAnalytic.count({
+          where: {
+            channelId: channel.id,
+            publishedAt: { gte: todayStart },
+          },
+        })
+
+        // 2. Also check all automations today for successful uploads to this channel
+        let hasUploadedToday = uploadsTodayCount >= 1
+        if (!hasUploadedToday) {
+          const todayAutos = await prisma.automation.findMany({
+            where: {
+              userId: automation.userId,
+              createdAt: { gte: todayStart },
+            },
+            select: { options: true },
+          })
+          for (const auto of todayAutos) {
+            const autoUploads = ((auto.options as any)?.mockVideoUploads || []) as any[]
+            if (autoUploads.some((u: any) => u.channelId === channel.id && !!u.youtubeLink)) {
+              hasUploadedToday = true
+              break
+            }
+          }
+        }
+
+        if (hasUploadedToday) {
+          console.log(
+            `[Worker Poll] Channel @${channel.channelHandle} skipped: Channel already uploaded 1 video today (daily limit reached since 12:00 AM PKT).`
+          )
+          const skipItem = {
+            id: `skip_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            channelId: channel.id,
+            channelName: channel.channelName || channel.channelHandle || 'YouTube Channel',
+            campaign: campaign.name,
+            stage: 'Daily Limit Reached',
+            videoTitle: 'Channel already uploaded today',
+            youtubeLink: null,
+            error: 'Channel reached daily upload limit (1 video per channel/day). Next upload available after 12:00 AM PKT.',
+            uploadedAt: new Date().toISOString(),
+            vpsNode: vps.label,
+          }
+          mockVideoUploads.unshift(skipItem)
           const isAllDone = mockVideoUploads.length >= automation.channels.length
           const hasAnySuccess = mockVideoUploads.some((u: any) => !!u.youtubeLink)
 
@@ -345,12 +427,39 @@ export async function GET(req: NextRequest) {
         }
 
         const downloadUrl = `${baseUrl}/api/n8n/video-stream?campaignId=${campaign.id}&file=${encodeURIComponent(clipFileName)}`
+        const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+
+        // 🚀 IN-FLIGHT JOB LOCK: Record this channel as in_progress immediately in the automation
+        // so no concurrent worker or poll can pick this channel a second time!
+        const inProgressItem = {
+          id: jobId,
+          channelId: channel.id,
+          channelName: channel.channelName || channel.channelHandle || 'YouTube Channel',
+          campaign: campaign.name,
+          stage: 'Uploading to YouTube...',
+          videoTitle: title,
+          clipFilename: clipFileName,
+          youtubeLink: null,
+          uploadedAt: new Date().toISOString(),
+          vpsNode: vps.label,
+          status: 'in_progress',
+        }
+        mockVideoUploads.unshift(inProgressItem)
+        await prisma.automation.update({
+          where: { id: automation.id },
+          data: {
+            options: {
+              ...opts,
+              mockVideoUploads,
+            },
+          },
+        })
 
         return NextResponse.json({
           success: true,
           hasJob: true,
           job: {
-            jobId: `job_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+            jobId,
             automationId: automation.id,
             channel: {
               id: channel.id,

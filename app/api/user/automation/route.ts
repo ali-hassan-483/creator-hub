@@ -92,6 +92,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Please select at least one channel' }, { status: 400 })
     }
 
+    // Deduplicate channelIds so a single channel is never queued multiple times in one automation
+    const uniqueChannelIds = Array.from(new Set(channelIds.map((cid: string) => String(cid).trim()).filter(Boolean)))
+    if (uniqueChannelIds.length === 0) {
+      return NextResponse.json({ error: 'Please select at least one valid channel' }, { status: 400 })
+    }
+
     if (!campaignId) {
       return NextResponse.json({ error: 'Please select a campaign' }, { status: 400 })
     }
@@ -106,7 +112,7 @@ export async function POST(req: NextRequest) {
           runType: 'immediate',
           status: 'queued',
           channels: {
-            create: channelIds.map((cid: string) => ({
+            create: uniqueChannelIds.map((cid: string) => ({
               channelId: cid,
             })),
           },
@@ -147,7 +153,7 @@ export async function POST(req: NextRequest) {
             scheduleTimes,
           },
           channels: {
-            create: channelIds.map((cid: string) => ({
+            create: uniqueChannelIds.map((cid: string) => ({
               channelId: cid,
             })),
           },

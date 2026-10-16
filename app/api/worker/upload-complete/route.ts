@@ -89,9 +89,12 @@ export async function POST(req: NextRequest) {
         whopEmail,
       }
 
-      const updatedUploads = [uploadItem, ...videoUploads]
+      // Remove in_progress item for this channel
+      const filteredUploads = videoUploads.filter((u: any) => !(u.channelId === channel.id && u.status === 'in_progress'))
+      const updatedUploads = [uploadItem, ...filteredUploads]
       const totalChannels = targetAutomation.channels?.length || 1
-      const isAllDone = updatedUploads.length >= totalChannels
+      const completedCount = updatedUploads.filter((u: any) => u.status !== 'in_progress').length
+      const isAllDone = completedCount >= totalChannels
 
       await prisma.automation.update({
         where: { id: targetAutomation.id },

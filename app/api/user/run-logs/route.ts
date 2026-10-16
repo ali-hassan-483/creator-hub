@@ -461,6 +461,36 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, message: 'Automation cancelled' })
     }
 
+    if (action === 'cancel_all') {
+      const activeRuns = await prisma.automation.findMany({
+        where: {
+          userId,
+          status: { in: ['queued', 'running'] },
+        },
+      })
+
+      for (const run of activeRuns) {
+        const opts = (run.options as any) || {}
+        await prisma.automation.update({
+          where: { id: run.id },
+          data: {
+            status: 'cancelled',
+            completedAt: new Date(),
+            options: {
+              ...opts,
+              cancelReason: 'Cancelled all active runs by user',
+              runStatus: 'cancelled',
+            },
+          },
+        })
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Cancelled ${activeRuns.length} active automation run(s).`,
+      })
+    }
+
     if (action === 'delete') {
       const { automationId } = body
       if (!automationId) {

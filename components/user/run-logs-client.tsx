@@ -37,6 +37,8 @@ interface VideoUpload {
   youtubeLink: string | null
   uploadedAt: string
   error?: string | null
+  vpsNode?: string | null
+  status?: string | null
 }
 
 interface WhopSubmission {
@@ -326,7 +328,8 @@ function DetailsModal({
                   </thead>
                   <tbody>
                     {row.videoUploads.map((upload, i) => {
-                      const isFailed = upload.stage === 'Upload Failed' || !upload.youtubeLink
+                      const isInProgress = (upload as any).status === 'in_progress' || upload.stage?.includes('Progress')
+                      const isFailed = !isInProgress && (upload.stage === 'Upload Failed' || (!upload.youtubeLink && !!upload.error))
                       return (
                         <tr
                           key={upload.id}
@@ -337,7 +340,9 @@ function DetailsModal({
                           </td>
                           <td className="py-3 pr-4">
                             <div className="flex items-center gap-1.5">
-                              {isFailed ? (
+                              {isInProgress ? (
+                                <Loader2 className="w-4 h-4 text-amber-500 animate-spin shrink-0" />
+                              ) : isFailed ? (
                                 <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
                               ) : (
                                 <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
@@ -353,13 +358,16 @@ function DetailsModal({
                           <td className="py-3 pr-4">
                             <span
                               className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                                upload.stage === 'Video Uploaded'
+                                isInProgress
+                                  ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                                  : upload.stage === 'Video Uploaded'
                                   ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
                                   : isFailed
                                   ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400'
                                   : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
                               }`}
                             >
+                              {isInProgress && <Loader2 className="w-3 h-3 animate-spin" />}
                               {isFailed && <AlertCircle className="w-3 h-3" />}
                               {upload.stage}
                             </span>
@@ -373,7 +381,12 @@ function DetailsModal({
                             </span>
                           </td>
                           <td className="py-3 pr-4">
-                            {upload.youtubeLink ? (
+                            {isInProgress ? (
+                              <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 font-medium">
+                                <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                                <span>Uploading on {upload.vpsNode || 'VPS'}...</span>
+                              </div>
+                            ) : upload.youtubeLink ? (
                               <div className="flex items-center gap-1">
                                 <a
                                   href={upload.youtubeLink}
@@ -991,6 +1004,32 @@ export default function RunLogsClient() {
     }
   }
 
+  const [cancellingAll, setCancellingAll] = useState(false)
+  const hasActiveRuns = rows.some((r) => r.status === 'running' || r.status === 'queued')
+
+  const handleCancelAll = async () => {
+    if (!window.confirm('Are you sure you want to stop and cancel ALL currently running or queued automations?')) return
+    setCancellingAll(true)
+    try {
+      const res = await fetch('/api/user/run-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cancel_all' }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        showToast(data.message || 'All running automations stopped!')
+        fetchLogs(page)
+      } else {
+        showToast(data.error || 'Failed to stop all automations', 'error')
+      }
+    } catch {
+      showToast('Error stopping all automations', 'error')
+    } finally {
+      setCancellingAll(false)
+    }
+  }
+
   const handleDelete = async (row: RunLogRow) => {
     if (!window.confirm('Are you sure you want to delete this automation run record?')) return
     try {
@@ -1036,6 +1075,21 @@ export default function RunLogsClient() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {hasActiveRuns && (
+            <button
+              onClick={handleCancelAll}
+              disabled={cancellingAll}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-rose-500/10 text-rose-600 hover:bg-rose-500/20 border border-rose-200 dark:border-rose-900/50 transition-colors shadow-sm"
+              title="Stop and cancel all currently running or queued automations"
+            >
+              {cancellingAll ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <XCircle className="w-4 h-4" />
+              )}
+              Stop All Running
+            </button>
+          )}
           <button
             onClick={() => fetchLogs(page)}
             disabled={loading}
