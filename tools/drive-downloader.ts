@@ -218,15 +218,17 @@ export async function downloadDriveFile(options: DriveDownloadOptions): Promise<
   // ── Strategy 3: Direct HTTP export download ─────────────────────────────
   try {
     const directUrl = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t`
-    const outputPath = path.join(outputDir, `${baseName}.mp4`)
+    // Detect extension from URL or use generic — will be a video/image
+    const urlExt = path.extname(new URL(directUrl).pathname) || ''
+    const outputPath = path.join(outputDir, `${baseName}${urlExt || '.bin'}`)
     console.log(`[Drive-Downloader] Attempting direct HTTP download: ${directUrl}`)
 
     await downloadHttpWithRedirects(directUrl, outputPath)
     if (fs.existsSync(outputPath)) {
       const stats = fs.statSync(outputPath)
-      if (stats.size > 10240) {
+      if (stats.size > 1024) {
         console.log(`[Drive-Downloader] ✅ Saved via direct HTTP: ${outputPath} (${(stats.size / 1024 / 1024).toFixed(1)} MB)`)
-        return { success: true, filePath: outputPath, filename: `${baseName}.mp4` }
+        return { success: true, filePath: outputPath, filename: `${baseName}${urlExt || '.bin'}` }
       } else {
         fs.unlinkSync(outputPath)
       }
@@ -294,7 +296,10 @@ export async function downloadLogoOverlay(
   }
 
   // Direct URL download (non-Drive)
-  const outputPath = path.join(outputDir, 'logo_overlay.png')
+  // Detect extension from URL, default to .png for logos
+  const urlPath = new URL(logoUrl).pathname
+  const ext = path.extname(urlPath) || '.png'
+  const outputPath = path.join(outputDir, `logo_overlay${ext}`)
   return new Promise((resolve) => {
     const protocol = logoUrl.startsWith('https') ? https : http
     const file = fs.createWriteStream(outputPath)

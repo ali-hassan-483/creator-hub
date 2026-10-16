@@ -31,6 +31,7 @@ interface CampaignPreviewMockupProps {
     logoOverlayUrl?: string
     overlayPosition?: string
     overlayWidthPercent?: number
+    overlayHeightPercent?: number
     numBottomBanners?: number
     banners?: BannerItem[]
     onScreenTextPool?: string

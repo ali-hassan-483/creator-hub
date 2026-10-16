@@ -153,6 +153,7 @@ const defaultFormState = {
   logoOverlayUrl: '',
   overlayPosition: 'Bottom Center',
   overlayWidthPercent: 60,
+  overlayHeightPercent: 50,
 
   // Bottom Banners (New Screenshot 2)
   numBottomBanners: 1, // 0 to 5
@@ -598,6 +599,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
       logoOverlayUrl: formData.logoOverlayUrl.trim(),
       overlayPosition: formData.overlayPosition,
       overlayWidthPercent: Number(formData.overlayWidthPercent) || 60,
+      overlayHeightPercent: Number(formData.overlayHeightPercent) || 50,
       numBottomBanners: Number(formData.numBottomBanners) || 0,
       banners: formData.banners.slice(0, Number(formData.numBottomBanners) || 0),
       onScreenFontName: formData.onScreenFontName.trim(),
@@ -725,6 +727,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
       logoOverlayUrl: cfg.logoOverlayUrl || '',
       overlayPosition: cfg.overlayPosition || 'top-left',
       overlayWidthPercent: cfg.overlayWidthPercent ?? 60,
+      overlayHeightPercent: cfg.overlayHeightPercent ?? 50,
       numBottomBanners: cfg.numBottomBanners ?? 0,
       banners: Array.isArray(cfg.banners) && cfg.banners.length > 0 ? cfg.banners : defaultBanners,
       onScreenFontName: cfg.onScreenFontName || 'Montenegrin Gothic One',
@@ -1805,7 +1808,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                   <div>
                     <label className="block text-xs font-medium text-foreground mb-1">Overlay Position</label>
                     <select
@@ -1831,6 +1834,19 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                       placeholder="60"
                       value={formData.overlayWidthPercent}
                       onChange={(e) => setFormData({ ...formData, overlayWidthPercent: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Placement Height (%)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      placeholder="50"
+                      value={formData.overlayHeightPercent}
+                      onChange={(e) => setFormData({ ...formData, overlayHeightPercent: Number(e.target.value) })}
                       className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     />
                   </div>
