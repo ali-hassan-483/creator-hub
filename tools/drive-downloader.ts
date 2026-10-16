@@ -85,42 +85,77 @@ function getDriveClient(accessToken?: string) {
   return null
 }
 
+export interface HttpDownloadResult {
+  success: boolean
+  contentType?: string
+  contentDisposition?: string
+  error?: string
+}
+
 /**
  * Download HTTP/HTTPS URL following all redirects.
  */
-function downloadHttpWithRedirects(url: string, destPath: string, maxRedirects = 10): Promise<void> {
-  return new Promise((resolve, reject) => {
+export function downloadHttpWithRedirects(url: string, destPath: string, maxRedirects = 10): Promise<HttpDownloadResult> {
+  return new Promise((resolve) => {
     function fetchUrl(currentUrl: string, redirectsRemaining: number) {
       if (redirectsRemaining <= 0) {
-        return reject(new Error('Too many redirects'))
+        return resolve({ success: false, error: 'Too many redirects' })
       }
 
-      const client = currentUrl.startsWith('https') ? https : http
-      const req = client.get(currentUrl, (res) => {
+      let parsedUrl: URL
+      try {
+        parsedUrl = new URL(currentUrl)
+      } catch (e: any) {
+        return resolve({ success: false, error: `Invalid URL: ${e.message}` })
+      }
+
+      const client = parsedUrl.protocol === 'https:' ? https : http
+      const options = {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': '*/*',
+        },
+      }
+
+      const req = client.get(currentUrl, options, (res) => {
         if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           const nextUrl = new URL(res.headers.location, currentUrl).href
           return fetchUrl(nextUrl, redirectsRemaining - 1)
         }
 
         if (res.statusCode !== 200) {
-          return reject(new Error(`HTTP status ${res.statusCode}`))
+          return resolve({ success: false, error: `HTTP status ${res.statusCode}` })
+        }
+
+        const contentType = res.headers['content-type'] || ''
+        const contentDisposition = res.headers['content-disposition'] || ''
+
+        // Reject HTML error/warning pages when downloading binary media
+        if (contentType.toLowerCase().includes('text/html')) {
+          return resolve({ success: false, contentType, error: 'Received HTML page instead of binary media' })
         }
 
         const file = fs.createWriteStream(destPath)
         res.pipe(file)
         file.on('finish', () => {
           file.close()
-          resolve()
+          resolve({ success: true, contentType, contentDisposition })
         })
         file.on('error', (err) => {
-          fs.unlink(destPath, () => {})
-          reject(err)
+          try { fs.unlinkSync(destPath) } catch {}
+          resolve({ success: false, error: err.message })
         })
       })
 
       req.on('error', (err) => {
-        fs.unlink(destPath, () => {})
-        reject(err)
+        try { fs.unlinkSync(destPath) } catch {}
+        resolve({ success: false, error: err.message })
+      })
+
+      req.setTimeout(60000, () => {
+        req.destroy()
+        try { fs.unlinkSync(destPath) } catch {}
+        resolve({ success: false, error: 'Download request timed out' })
       })
     }
 
@@ -218,19 +253,21 @@ export async function downloadDriveFile(options: DriveDownloadOptions): Promise<
   // ── Strategy 3: Direct HTTP export download ─────────────────────────────
   try {
     const directUrl = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t`
-    // Detect extension from URL or use generic — will be a video/image
-    const urlExt = path.extname(new URL(directUrl).pathname) || ''
-    const outputPath = path.join(outputDir, `${baseName}${urlExt || '.bin'}`)
+    const tempOutput = path.join(outputDir, `${baseName}_temp_${Date.now()}`)
     console.log(`[Drive-Downloader] Attempting direct HTTP download: ${directUrl}`)
 
-    await downloadHttpWithRedirects(directUrl, outputPath)
-    if (fs.existsSync(outputPath)) {
-      const stats = fs.statSync(outputPath)
+    const httpRes = await downloadHttpWithRedirects(directUrl, tempOutput)
+    if (httpRes.success && fs.existsSync(tempOutput)) {
+      const stats = fs.statSync(tempOutput)
       if (stats.size > 1024) {
-        console.log(`[Drive-Downloader] ✅ Saved via direct HTTP: ${outputPath} (${(stats.size / 1024 / 1024).toFixed(1)} MB)`)
-        return { success: true, filePath: outputPath, filename: `${baseName}${urlExt || '.bin'}` }
+        const detectedExt = getExtFromMime(httpRes.contentType || '') || '.mp4'
+        const finalPath = path.join(outputDir, `${baseName}${detectedExt}`)
+        try { fs.unlinkSync(finalPath) } catch {}
+        fs.renameSync(tempOutput, finalPath)
+        console.log(`[Drive-Downloader] ✅ Saved via direct HTTP: ${finalPath} (${(stats.size / 1024 / 1024).toFixed(1)} MB)`)
+        return { success: true, filePath: finalPath, filename: path.basename(finalPath), mimeType: httpRes.contentType }
       } else {
-        fs.unlinkSync(outputPath)
+        try { fs.unlinkSync(tempOutput) } catch {}
       }
     }
   } catch (httpErr: any) {
@@ -273,7 +310,7 @@ export async function downloadDriveUrls(
 }
 
 /**
- * Download logo/overlay image from Drive URL.
+ * Download logo/overlay image from Drive URL or direct HTTP link.
  * Returns local path to the image file.
  */
 export async function downloadLogoOverlay(
@@ -282,12 +319,56 @@ export async function downloadLogoOverlay(
   accessToken?: string
 ): Promise<string | null> {
   if (!logoUrl || logoUrl.trim() === '') return null
+  const trimmed = logoUrl.trim()
 
-  const isDriveUrl = logoUrl.includes('drive.google.com') || logoUrl.includes('docs.google.com')
+  fs.mkdirSync(outputDir, { recursive: true })
+
+  const isDriveUrl = trimmed.includes('drive.google.com') || trimmed.includes('docs.google.com')
   
   if (isDriveUrl) {
+    let fileId: string
+    try {
+      fileId = extractDriveFileId(trimmed)
+    } catch {
+      return null
+    }
+
+    // Google Drive direct image CDN endpoints (instant, zero credentials needed for public files)
+    const candidateUrls = [
+      `https://lh3.googleusercontent.com/d/${fileId}`,
+      `https://drive.google.com/thumbnail?id=${fileId}&sz=w2500`,
+      `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t`,
+      `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`,
+    ]
+
+    for (const url of candidateUrls) {
+      try {
+        const tempPath = path.join(outputDir, `logo_temp_${Date.now()}`)
+        const res = await downloadHttpWithRedirects(url, tempPath)
+        if (res.success && fs.existsSync(tempPath)) {
+          const stats = fs.statSync(tempPath)
+          if (stats.size > 100) {
+            const ext = getExtFromMime(res.contentType || '') || '.png'
+            const finalPath = path.join(outputDir, `logo_overlay${ext}`)
+            // Clean up any old logo files in assets dir
+            for (const old of fs.readdirSync(outputDir).filter(f => f.startsWith('logo_overlay'))) {
+              try { fs.unlinkSync(path.join(outputDir, old)) } catch {}
+            }
+            fs.renameSync(tempPath, finalPath)
+            console.log(`[Drive-Downloader] ✅ Logo downloaded from Drive: ${finalPath} (${stats.size} bytes)`)
+            return finalPath
+          } else {
+            try { fs.unlinkSync(tempPath) } catch {}
+          }
+        }
+      } catch (err: any) {
+        console.warn(`[Drive-Downloader] Logo candidate ${url} failed:`, err?.message || err)
+      }
+    }
+
+    // Fallback: general downloadDriveFile
     const result = await downloadDriveFile({
-      fileIdOrUrl: logoUrl,
+      fileIdOrUrl: trimmed,
       outputDir,
       filename: 'logo_overlay',
       accessToken,
@@ -296,32 +377,54 @@ export async function downloadLogoOverlay(
   }
 
   // Direct URL download (non-Drive)
-  // Detect extension from URL, default to .png for logos
-  const urlPath = new URL(logoUrl).pathname
-  const ext = path.extname(urlPath) || '.png'
-  const outputPath = path.join(outputDir, `logo_overlay${ext}`)
-  return new Promise((resolve) => {
-    const protocol = logoUrl.startsWith('https') ? https : http
-    const file = fs.createWriteStream(outputPath)
-    protocol.get(logoUrl, (res) => {
-      res.pipe(file)
-      file.on('finish', () => { file.close(); resolve(outputPath) })
-    }).on('error', () => { fs.unlink(outputPath, () => {}); resolve(null) })
-  })
+  try {
+    const tempPath = path.join(outputDir, `logo_temp_${Date.now()}`)
+    const res = await downloadHttpWithRedirects(trimmed, tempPath)
+    if (res.success && fs.existsSync(tempPath)) {
+      const stats = fs.statSync(tempPath)
+      if (stats.size > 100) {
+        let ext = getExtFromMime(res.contentType || '')
+        if (!ext) {
+          try {
+            ext = path.extname(new URL(trimmed).pathname) || '.png'
+          } catch {
+            ext = '.png'
+          }
+        }
+        const finalPath = path.join(outputDir, `logo_overlay${ext}`)
+        for (const old of fs.readdirSync(outputDir).filter(f => f.startsWith('logo_overlay'))) {
+          try { fs.unlinkSync(path.join(outputDir, old)) } catch {}
+        }
+        fs.renameSync(tempPath, finalPath)
+        console.log(`[Drive-Downloader] ✅ Logo downloaded from direct URL: ${finalPath} (${stats.size} bytes)`)
+        return finalPath
+      } else {
+        try { fs.unlinkSync(tempPath) } catch {}
+      }
+    }
+  } catch (err: any) {
+    console.warn(`[Drive-Downloader] Direct logo download failed:`, err?.message || err)
+  }
+
+  return null
 }
 
-function getExtFromMime(mimeType: string): string {
+export function getExtFromMime(mimeType: string): string {
+  const clean = (mimeType || '').split(';')[0].trim().toLowerCase()
   const map: Record<string, string> = {
     'video/mp4': '.mp4',
     'video/quicktime': '.mov',
     'video/x-msvideo': '.avi',
     'video/webm': '.webm',
+    'video/x-matroska': '.mkv',
     'image/png': '.png',
     'image/jpeg': '.jpg',
+    'image/jpg': '.jpg',
     'image/gif': '.gif',
     'image/webp': '.webp',
+    'image/svg+xml': '.svg',
     'audio/mpeg': '.mp3',
     'audio/mp4': '.m4a',
   }
-  return map[mimeType] || ''
+  return map[clean] || ''
 }

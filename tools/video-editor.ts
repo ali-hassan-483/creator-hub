@@ -60,8 +60,9 @@ export interface VideoEditOptions {
   
   // Logo overlay
   logoPath?: string           // local path to logo image
-  overlayPosition?: string    // 'top_left' | 'top_center' | 'top_right' | 'bottom_left' | 'bottom_center' | 'bottom_right'
-  overlayWidth?: number       // % of canvas width (e.g. 15)
+  overlayPosition?: string    // 'Top Left' | 'top_left' | 'Bottom Center' | etc.
+  overlayWidth?: number       // % of canvas width (e.g. 15 or 60)
+  overlayHeightPercent?: number // % from top to bottom (0-100)
   
   // Bottom banners
   banners: BannerConfig[]
@@ -86,17 +87,43 @@ function parseBgColor(bgStr: string): { color: string; alpha: number } {
   return { color: color || 'black', alpha: parseFloat(alphaStr ?? '1') }
 }
 
-/** Convert overlay position name to FFMPEG x/y expressions */
-function overlayPositionToXY(position: string, W: number, H: number, logoW: number): string {
-  switch (position) {
-    case 'top_left':      return `x=20:y=20`
-    case 'top_center':    return `x=(W-w)/2:y=20`
-    case 'top_right':     return `x=W-w-20:y=20`
-    case 'bottom_left':   return `x=20:y=H-h-20`
-    case 'bottom_center': return `x=(W-w)/2:y=H-h-20`
-    case 'bottom_right':  return `x=W-w-20:y=H-h-20`
-    default:              return `x=W-w-20:y=20`
+/** Convert overlay position name and placement height percent to FFMPEG x/y expressions */
+function overlayPositionToXY(
+  position: string,
+  W: number,
+  H: number,
+  logoW: number,
+  heightPercent?: number
+): string {
+  const pos = (position || '').toLowerCase().replace(/\s+/g, '_')
+
+  // Horizontal X expression
+  let xExpr = `(W-w)/2`
+  if (pos.includes('left')) {
+    xExpr = `30`
+  } else if (pos.includes('right')) {
+    xExpr = `W-w-30`
+  } else if (pos.includes('center')) {
+    xExpr = `(W-w)/2`
   }
+
+  // Vertical Y expression
+  let yExpr = `30`
+  if (heightPercent !== undefined && !isNaN(heightPercent)) {
+    // Exact placement height % from top to bottom (0% = top, 50% = middle, 100% = bottom)
+    const clamped = Math.max(0, Math.min(100, heightPercent))
+    yExpr = `max(20,min(H-h-20,(H*${clamped}/100)-(h/2)))`
+  } else {
+    if (pos.includes('top')) {
+      yExpr = `30`
+    } else if (pos.includes('bottom')) {
+      yExpr = `H-h-30`
+    } else if (pos.includes('center') || pos.includes('middle')) {
+      yExpr = `(H-h)/2`
+    }
+  }
+
+  return `x=${xExpr}:y=${yExpr}`
 }
 
 /** Get video duration in seconds using ffprobe */
@@ -300,6 +327,7 @@ export async function editVideoClip(options: VideoEditOptions): Promise<{ succes
     logoPath,
     overlayPosition,
     overlayWidth,
+    overlayHeightPercent,
     banners,
     canvasWidth = DEFAULT_WIDTH,
     canvasHeight = DEFAULT_HEIGHT,
@@ -346,7 +374,7 @@ export async function editVideoClip(options: VideoEditOptions): Promise<{ succes
     const logoW = Math.round(canvasWidth * (overlayWidth || 15) / 100)
     const logoScaleFilter = `[${logoIdx}:v]scale=${logoW}:-1[logo]`
     filterParts.push(logoScaleFilter)
-    const xyStr = overlayPositionToXY(overlayPosition || 'top_right', canvasWidth, canvasHeight, logoW)
+    const xyStr = overlayPositionToXY(overlayPosition || 'top_right', canvasWidth, canvasHeight, logoW, overlayHeightPercent)
     filterParts.push(`[${lastStream}][logo]overlay=${xyStr}[with_logo]`)
     lastStream = 'with_logo'
   }

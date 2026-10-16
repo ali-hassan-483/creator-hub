@@ -33,6 +33,7 @@ import {
   generateContinuousSlices,
   SliceJob,
 } from './video-editor'
+import { downloadLogoOverlay } from './drive-downloader'
 import { addSubtitlesToVideo } from './subtitle-generator'
 import {
   findViralClips,
@@ -119,8 +120,17 @@ export async function maintainCampaignClipPool(
   const hooksDir = path.join(getCampaignDir(campaignId), 'hooks')
   const ctasDir = path.join(getCampaignDir(campaignId), 'ctas')
 
-  const logoFiles = fs.existsSync(assetsDir) ? fs.readdirSync(assetsDir).map(f => path.join(assetsDir, f)) : []
-  const logoPath = logoFiles.length > 0 ? logoFiles[0] : undefined
+  const logoFiles = fs.existsSync(assetsDir)
+    ? fs.readdirSync(assetsDir).filter(f => !f.startsWith('.') && !f.endsWith('.part')).map(f => path.join(assetsDir, f))
+    : []
+  let logoPath = logoFiles.length > 0 ? logoFiles[0] : undefined
+
+  if (!logoPath && cfg.logoOverlayUrl) {
+    try {
+      const dl = await downloadLogoOverlay(cfg.logoOverlayUrl, assetsDir)
+      if (dl) logoPath = dl
+    } catch {}
+  }
 
   const hookFiles = fs.existsSync(hooksDir) ? fs.readdirSync(hooksDir).map(f => path.join(hooksDir, f)) : []
   const ctaFiles = fs.existsSync(ctasDir) ? fs.readdirSync(ctasDir).map(f => path.join(ctasDir, f)) : []
@@ -328,8 +338,9 @@ export async function maintainCampaignClipPool(
       cornerStyles,
       volumeMultiplier,
       logoPath,
-      overlayPosition: cfg.overlayPosition || 'top_right',
-      overlayWidth: parseFloat(cfg.overlayWidth || '15'),
+      overlayPosition: cfg.overlayPosition || 'Bottom Center',
+      overlayWidth: parseFloat(cfg.overlayWidthPercent ?? cfg.overlayWidth ?? '60'),
+      overlayHeightPercent: cfg.overlayHeightPercent !== undefined ? parseFloat(cfg.overlayHeightPercent) : undefined,
       banners: renderBanners,
     })
 

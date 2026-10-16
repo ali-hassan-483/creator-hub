@@ -329,8 +329,9 @@ const worker = new Worker(
             cornerStyles,
             volumeMultiplier,
             logoPath: logoPath || undefined,
-            overlayPosition: cfg.overlayPosition || 'top_right',
-            overlayWidth: parseFloat(cfg.overlayWidth || '15'),
+            overlayPosition: cfg.overlayPosition || 'Bottom Center',
+            overlayWidth: parseFloat(cfg.overlayWidthPercent ?? cfg.overlayWidth ?? '60'),
+            overlayHeightPercent: cfg.overlayHeightPercent !== undefined ? parseFloat(cfg.overlayHeightPercent) : undefined,
             banners,
           })
 

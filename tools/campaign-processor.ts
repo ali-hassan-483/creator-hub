@@ -85,13 +85,33 @@ export function getClipTranscriptText(
     .trim()
 }
 
+const VALID_VIDEO_EXTS = new Set([
+  '.mp4', '.mov', '.webm', '.mkv', '.m4v', '.avi', '.flv', '.wmv', '.ts', '.mts', '.3gp'
+])
+
 /** Get all existing source video files for a campaign */
 export function getExistingSourceVideos(campaignId: string): string[] {
   const sourcesDir = getSourcesDir(campaignId)
   if (!fs.existsSync(sourcesDir)) return []
   return fs.readdirSync(sourcesDir)
-    .filter(f => f.endsWith('.mp4') || f.endsWith('.mov') || f.endsWith('.webm'))
+    .filter(f => {
+      if (f.startsWith('.') || f.endsWith('.part') || f.endsWith('.json') || f.endsWith('.txt')) {
+        return false
+      }
+      const ext = path.extname(f).toLowerCase()
+      if (VALID_VIDEO_EXTS.has(ext)) return true
+      // Accept any file that is not a known non-video file
+      return !['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.json', '.srt', '.vtt', '.ass', '.txt', '.log'].includes(ext)
+    })
     .map(f => path.join(sourcesDir, f))
+    .filter(fullPath => {
+      try {
+        const stat = fs.statSync(fullPath)
+        return stat.isFile() && stat.size > 1024
+      } catch {
+        return false
+      }
+    })
 }
 
 /** Count how many edited clips exist for a campaign */
@@ -108,11 +128,8 @@ export function isSetupComplete(campaignId: string): boolean {
   const flagPath = getSetupFlagPath(campaignId)
   if (!fs.existsSync(flagPath)) return false
 
-  const sourcesDir = getSourcesDir(campaignId)
-  if (!fs.existsSync(sourcesDir)) return false
-
-  const sourceFiles = fs.readdirSync(sourcesDir).filter(f => !f.startsWith('.'))
-  if (sourceFiles.length === 0) {
+  const sources = getExistingSourceVideos(campaignId)
+  if (sources.length === 0) {
     // Stale or empty setup flag — clean up so setup can be retriggered
     try { fs.unlinkSync(flagPath) } catch {}
     return false

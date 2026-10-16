@@ -20,6 +20,7 @@ import {
   generateMultiCutSlices,
   generateContinuousSlices,
 } from '@/tools/video-editor'
+import { downloadLogoOverlay } from '@/tools/drive-downloader'
 import { addSubtitlesToVideo } from '@/tools/subtitle-generator'
 import {
   findViralClips,
@@ -95,8 +96,21 @@ async function executeSandboxRender(jobId: string, campaignId: string) {
     const cornerStyles: string[] = cfg.foregroundCornerStyles || ['sharp']
 
     const assetsDir = getAssetsDir(campaignId)
-    const logoFiles = fs.existsSync(assetsDir) ? fs.readdirSync(assetsDir).map(f => path.join(assetsDir, f)) : []
-    const logoPath = logoFiles.length > 0 ? logoFiles[0] : undefined
+    const logoFiles = fs.existsSync(assetsDir)
+      ? fs.readdirSync(assetsDir).filter(f => !f.startsWith('.') && !f.endsWith('.part')).map(f => path.join(assetsDir, f))
+      : []
+    let logoPath = logoFiles.length > 0 ? logoFiles[0] : undefined
+
+    // On-demand download if logo is configured but not yet in assets folder
+    if (!logoPath && cfg.logoOverlayUrl) {
+      update('rendering', 'Downloading campaign logo overlay...')
+      try {
+        const dl = await downloadLogoOverlay(cfg.logoOverlayUrl, assetsDir)
+        if (dl) logoPath = dl
+      } catch (err: any) {
+        console.warn('[SandboxRender] Failed to download logo on demand:', err?.message || err)
+      }
+    }
 
     const banners = (cfg.banners || []).slice(0, 5).map((b: any) => ({
       text: b.text || '',
@@ -228,8 +242,9 @@ async function executeSandboxRender(jobId: string, campaignId: string) {
       cornerStyles,
       volumeMultiplier,
       logoPath,
-      overlayPosition: cfg.overlayPosition || 'top_right',
-      overlayWidth: parseFloat(cfg.overlayWidth || '15'),
+      overlayPosition: cfg.overlayPosition || 'Bottom Center',
+      overlayWidth: parseFloat(cfg.overlayWidthPercent ?? cfg.overlayWidth ?? '60'),
+      overlayHeightPercent: cfg.overlayHeightPercent !== undefined ? parseFloat(cfg.overlayHeightPercent) : undefined,
       banners: renderBanners,
     })
 

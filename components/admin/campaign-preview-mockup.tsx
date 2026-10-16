@@ -139,6 +139,7 @@ export function CampaignPreviewMockup({ formData }: CampaignPreviewMockupProps) 
   const getLogoStyle = () => {
     const pos = (formData.overlayPosition || 'Bottom Center').toLowerCase()
     const width = Math.min(Math.max(formData.overlayWidthPercent || 40, 15), 80)
+    const heightPercent = formData.overlayHeightPercent
 
     const baseStyle: React.CSSProperties = {
       position: 'absolute',
@@ -146,26 +147,37 @@ export function CampaignPreviewMockup({ formData }: CampaignPreviewMockupProps) 
       zIndex: 20,
     }
 
-    if (pos.includes('top left')) {
-      return { ...baseStyle, top: '7%', left: '4%' }
+    // Determine horizontal position
+    let horizontalStyle: React.CSSProperties = { left: '50%', transform: 'translateX(-50%)' }
+    if (pos.includes('left')) {
+      horizontalStyle = { left: '4%' }
+    } else if (pos.includes('right')) {
+      horizontalStyle = { right: showRail ? '18%' : '4%' }
+    } else if (pos.includes('center')) {
+      horizontalStyle = { left: '50%', transform: 'translateX(-50%)' }
     }
-    if (pos.includes('top right')) {
-      return { ...baseStyle, top: '7%', right: showRail ? '18%' : '4%' }
+
+    // If custom placement height % is provided, use exact percentage from top
+    if (heightPercent !== undefined && !isNaN(heightPercent)) {
+      const clamped = Math.max(0, Math.min(100, heightPercent))
+      const combinedTransform = horizontalStyle.transform
+        ? `${horizontalStyle.transform} translateY(-50%)`
+        : 'translateY(-50%)'
+      return {
+        ...baseStyle,
+        ...horizontalStyle,
+        top: `${clamped}%`,
+        transform: combinedTransform,
+      }
     }
-    if (pos.includes('top center')) {
-      return { ...baseStyle, top: '7%', left: '50%', transform: 'translateX(-50%)' }
+
+    if (pos.includes('top')) {
+      return { ...baseStyle, ...horizontalStyle, top: '7%' }
     }
-    if (pos.includes('bottom left')) {
-      return { ...baseStyle, bottom: '15%', left: '4%' }
+    if (pos.includes('bottom')) {
+      return { ...baseStyle, ...horizontalStyle, bottom: '15%' }
     }
-    if (pos.includes('bottom right')) {
-      return { ...baseStyle, bottom: '15%', right: showRail ? '18%' : '4%' }
-    }
-    if (pos.includes('center') && !pos.includes('bottom') && !pos.includes('top')) {
-      return { ...baseStyle, top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }
-    }
-    // Default: Bottom Center
-    return { ...baseStyle, bottom: '15%', left: '50%', transform: 'translateX(-50%)' }
+    return { ...baseStyle, ...horizontalStyle, top: '50%', transform: 'translate(-50%, -50%)' }
   }
 
   // On-screen text sample
