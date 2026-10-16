@@ -121,19 +121,24 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    // If a clip filename was uploaded, remove or move it from pool
+    // Permanently delete the uploaded clip video and its metadata JSON to free up VPS disk space
     if (campaignId && clipFilename) {
       try {
         const clipsDir = getClipsDir(campaignId)
-        const filePath = path.join(clipsDir, path.basename(clipFilename))
+        const baseName = path.basename(clipFilename)
+        const filePath = path.join(clipsDir, baseName)
+        const metaPath = path.join(clipsDir, baseName.replace(/\.mp4$/, '.meta.json'))
+
         if (fs.existsSync(filePath)) {
-          // Move to posted archive folder
-          const archiveDir = path.join(clipsDir, 'posted')
-          fs.mkdirSync(archiveDir, { recursive: true })
-          fs.renameSync(filePath, path.join(archiveDir, path.basename(clipFilename)))
+          fs.unlinkSync(filePath)
+          console.log(`[N8N Upload Complete] Deleted uploaded clip video: ${baseName}`)
+        }
+        if (fs.existsSync(metaPath)) {
+          fs.unlinkSync(metaPath)
+          console.log(`[N8N Upload Complete] Deleted uploaded clip metadata: ${path.basename(metaPath)}`)
         }
       } catch (fileErr) {
-        console.warn('[N8N Upload Complete] Could not archive clip file:', fileErr)
+        console.warn('[N8N Upload Complete] Could not delete clip file:', fileErr)
       }
     }
 

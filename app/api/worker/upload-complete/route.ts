@@ -145,7 +145,7 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    // Archive the uploaded clip so it is not re-uploaded
+    // Permanently delete the uploaded clip video and its metadata JSON to free up VPS disk space
     if (campaignId && clipFilename) {
       try {
         const clipsDir = getClipsDir(campaignId)
@@ -153,17 +153,16 @@ export async function POST(req: NextRequest) {
         const filePath = path.join(clipsDir, baseName)
         const metaPath = path.join(clipsDir, baseName.replace(/\.mp4$/, '.meta.json'))
 
-        const archiveDir = path.join(clipsDir, 'posted')
-        fs.mkdirSync(archiveDir, { recursive: true })
-
         if (fs.existsSync(filePath)) {
-          fs.renameSync(filePath, path.join(archiveDir, baseName))
+          fs.unlinkSync(filePath)
+          console.log(`[Worker Upload Complete] Deleted uploaded clip video: ${baseName}`)
         }
         if (fs.existsSync(metaPath)) {
-          fs.renameSync(metaPath, path.join(archiveDir, path.basename(metaPath)))
+          fs.unlinkSync(metaPath)
+          console.log(`[Worker Upload Complete] Deleted uploaded clip metadata: ${path.basename(metaPath)}`)
         }
       } catch (fileErr) {
-        console.warn('[Worker Upload Complete] Could not archive clip:', fileErr)
+        console.warn('[Worker Upload Complete] Could not delete clip:', fileErr)
       }
     }
 
