@@ -88,7 +88,8 @@ export async function downloadYouTubeVideo(options: YouTubeDownloadOptions): Pro
     '--merge-output-format', 'mp4',
     '--retries', '5',
     '--fragment-retries', '5',
-    '--extractor-args', 'youtube:player_client=ios,android,mweb',
+    '--js-runtimes', 'node',
+    '--extractor-args', 'youtube:player_client=android,ios,mweb',
     '--newline',
     '--progress',
   ]
@@ -151,7 +152,7 @@ export async function downloadYouTubeVideo(options: YouTubeDownloadOptions): Pro
 export async function getYouTubeVideoInfo(url: string): Promise<Record<string, any> | null> {
   const ytDlp = getYtDlpPath()
   try {
-    const command = `"${ytDlp}" "${url}" --dump-json --no-playlist --extractor-args "youtube:player_client=ios,android,mweb"`
+    const command = `"${ytDlp}" "${url}" --dump-json --no-playlist --js-runtimes node --extractor-args "youtube:player_client=android,ios,mweb"`
     const { stdout } = await execAsync(command, { maxBuffer: 5 * 1024 * 1024 })
     return JSON.parse(stdout.trim())
   } catch (error: any) {
