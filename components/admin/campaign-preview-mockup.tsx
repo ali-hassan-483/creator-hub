@@ -252,6 +252,14 @@ export function CampaignPreviewMockup({ formData }: CampaignPreviewMockupProps) 
           {/* Simulated Video Canvas Backdrop */}
           <div className="absolute inset-0 opacity-20 pointer-events-none bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:16px_16px]" />
 
+          {/* Story Re-Cut Brand-Safe Indicator Badge */}
+          <div className="absolute top-10 left-3 z-30 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/60 border border-white/20 backdrop-blur-md">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-[9px] font-bold tracking-wide text-white/90 uppercase">
+              Story Re-Cut 9:16
+            </span>
+          </div>
+
           {/* Guidelines / Ruler Overlay */}
           {showRuler && (
             <div className="absolute inset-0 pointer-events-none z-10">

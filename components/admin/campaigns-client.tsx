@@ -126,9 +126,11 @@ const defaultFormState = {
   minEngagementRate: 0,
   audioNotes: '',
 
-  // Clipping & Timing (Screenshot 3)
-  clippingStrategies: ['multi_cut'] as string[],
-  shortDuration: 25,
+  // Story Re-Cut & Timing (Brand-Safe Whop Shorts Style)
+  shortDuration: 45,
+  hookDuration: 3.5,
+  punchZoom: 1.2,
+  tightenSilence: true,
   startOffset: 0,
   volumeMultiplier: 1.0,
   hookVideoUrls: '',
@@ -155,9 +157,9 @@ const defaultFormState = {
   overlayWidthPercent: 60,
   overlayHeightPercent: 50,
 
-  // Bottom Banners (New Screenshot 2)
-  numBottomBanners: 1, // 0 to 5
-  banners: defaultBanners,
+  // Bottom Banners & Old Templates (Disabled for Brand-Safe Story Re-Cut)
+  numBottomBanners: 0,
+  banners: [] as any[],
 
   // On-screen Text Styling (New Screenshot 3)
   onScreenFontName: 'Montenegrin Gothic One',
@@ -170,9 +172,9 @@ const defaultFormState = {
   onScreenStyledWordsColor: 'yellow',
   useSameForSpeakingWordHighlight: false,
 
-  // Video Layout & Styling (New Screenshot 3 & 4)
-  backgroundStyles: ['Split Mirror Blur'] as string[],
-  foregroundCornerStyles: ['Sharp Rectangular Edges'] as string[],
+  // Video Layout & Styling (Brand-Safe Full 9:16 Frame)
+  backgroundStyles: [] as string[],
+  foregroundCornerStyles: [] as string[],
 
   // Subtitles (New Screenshot 4)
   enableSubtitles: 'Disabled (Fallback to AI Captions)',
@@ -475,7 +477,6 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
         minViews: p.minViews !== undefined ? p.minViews : prev.minViews,
         minEngagementRate: p.minEngagementRate !== undefined ? p.minEngagementRate : prev.minEngagementRate,
         audioNotes: p.audioNotes || prev.audioNotes,
-        clippingStrategies: p.clippingStrategies || prev.clippingStrategies,
         shortDuration: p.shortDuration !== undefined ? p.shortDuration : prev.shortDuration,
         startOffset: p.startOffset !== undefined ? p.startOffset : prev.startOffset,
         volumeMultiplier: p.volumeMultiplier !== undefined ? p.volumeMultiplier : prev.volumeMultiplier,
@@ -501,43 +502,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
     }
   }
 
-  // Toggle helpers
-  function toggleStrategy(strategy: string) {
-    setFormData((prev) => {
-      const exists = prev.clippingStrategies.includes(strategy)
-      if (exists) {
-        if (prev.clippingStrategies.length === 1) return prev
-        return { ...prev, clippingStrategies: prev.clippingStrategies.filter((s) => s !== strategy) }
-      } else {
-        return { ...prev, clippingStrategies: [...prev.clippingStrategies, strategy] }
-      }
-    })
-  }
-
-  function toggleBackgroundStyle(style: string) {
-    setFormData((prev) => {
-      const exists = prev.backgroundStyles.includes(style)
-      if (exists) {
-        if (prev.backgroundStyles.length === 1) return prev
-        return { ...prev, backgroundStyles: prev.backgroundStyles.filter((s) => s !== style) }
-      } else {
-        return { ...prev, backgroundStyles: [...prev.backgroundStyles, style] }
-      }
-    })
-  }
-
-  function toggleCornerStyle(style: string) {
-    setFormData((prev) => {
-      const exists = prev.foregroundCornerStyles.includes(style)
-      if (exists) {
-        if (prev.foregroundCornerStyles.length === 1) return prev
-        return { ...prev, foregroundCornerStyles: prev.foregroundCornerStyles.filter((s) => s !== style) }
-      } else {
-        return { ...prev, foregroundCornerStyles: [...prev.foregroundCornerStyles, style] }
-      }
-    })
-  }
-
+  // Subtitle case helper
   function toggleSubtitleCase(c: string) {
     setFormData((prev) => {
       const exists = prev.subtitleTextCases.includes(c)
@@ -579,8 +544,11 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
       specifyTimeRanges: formData.specifyTimeRanges,
       minEngagementRate: Number(formData.minEngagementRate) || 0,
       audioNotes: formData.audioNotes.trim(),
-      clippingStrategies: formData.clippingStrategies,
-      shortDuration: Number(formData.shortDuration) || 25,
+      editingEngine: 'story_recut',
+      shortDuration: Number(formData.shortDuration) || 45,
+      hookDuration: Number(formData.hookDuration) || 3.5,
+      punchZoom: Number(formData.punchZoom) || 1.2,
+      tightenSilence: formData.tightenSilence,
       startOffset: Number(formData.startOffset) || 0,
       volumeMultiplier: Number(formData.volumeMultiplier) || 1.0,
       hookVideoUrls: formData.hookVideoUrls.trim(),
@@ -707,8 +675,10 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
       specifyTimeRanges: cfg.specifyTimeRanges ?? false,
       minEngagementRate: cfg.minEngagementRate ?? 0,
       audioNotes: cfg.audioNotes || c.description || '',
-      clippingStrategies: Array.isArray(cfg.clippingStrategies) ? cfg.clippingStrategies : ['multi_cut'],
-      shortDuration: cfg.shortDuration ?? 25,
+      shortDuration: cfg.shortDuration ?? 45,
+      hookDuration: cfg.hookDuration ?? 3.5,
+      punchZoom: cfg.punchZoom ?? 1.2,
+      tightenSilence: cfg.tightenSilence ?? true,
       startOffset: cfg.startOffset ?? 0,
       volumeMultiplier: cfg.volumeMultiplier ?? 1.0,
       hookVideoUrls: cfg.hookVideoUrls || '',
@@ -953,9 +923,6 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
               ) : (
                 filteredCampaigns.map((c) => {
                   const cfg = c.config || {}
-                  const strategies = Array.isArray(cfg.clippingStrategies)
-                    ? cfg.clippingStrategies
-                    : ['multi_cut']
                   const ss = setupStatuses[c.id]
                   const liveClipCount = ss?.clipCount ?? c.availableClips ?? 0
 
@@ -1006,17 +973,12 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
 
                       {/* Clipping Strategy */}
                       <td className="px-5 py-4">
-                        <div className="flex flex-wrap gap-1">
-                          {strategies.map((strat: string) => (
-                            <span
-                              key={strat}
-                              className="px-2 py-0.5 rounded text-[10px] font-semibold bg-primary/10 text-primary uppercase"
-                            >
-                              {strat.replace('_', ' ')}
-                            </span>
-                          ))}
-                          <span className="text-[11px] text-muted-foreground block w-full">
-                            {cfg.shortDuration || 25}s / offset {cfg.startOffset || 0}s
+                        <div className="space-y-1">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-primary/15 text-primary uppercase inline-block">
+                            Story Re-Cut
+                          </span>
+                          <span className="text-[11px] text-muted-foreground block">
+                            {cfg.shortDuration || 45}s • Hook {cfg.hookDuration || 3.5}s • 9:16
                           </span>
                         </div>
                       </td>
@@ -1276,8 +1238,8 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                 </h3>
                 <p className="text-xs text-muted-foreground">
                   {editingCampaign
-                    ? `Update settings, clipping strategies, banners, or subtitles for "${editingCampaign.name}"`
-                    : 'Configure clipping strategy, submission targets, source video links, bottom banners, subtitles, and styling.'}
+                    ? `Update settings, story re-cut options, or subtitles for "${editingCampaign.name}"`
+                    : 'Configure brand-safe Story Re-Cut editor, submission targets, source video links, and keyword captions.'}
                 </p>
               </div>
               <button
@@ -1557,49 +1519,37 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                 </div>
               </div>
 
-              {/* SECTION 3: CLIPPING & TIMING */}
+              {/* SECTION 3: STORY RE-CUT EDITING (BRAND-SAFE WHOP SHORTS STYLE) */}
               <div className="space-y-3 pt-3 border-t border-border">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                  <Sliders size={14} /> Clipping & Timing
-                </h4>
-                
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-2">
-                    Clipping Strategy (Multi-Select)
-                  </label>
-                  <div className="flex flex-wrap gap-3">
-                    {[
-                      { key: 'multi_cut', label: 'Multi-Cut' },
-                      { key: 'continuous', label: 'Continuous' },
-                      { key: 'smart_ai', label: 'Smart AI' },
-                    ].map((item) => (
-                      <label
-                        key={item.key}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium cursor-pointer transition-colors ${
-                          formData.clippingStrategies.includes(item.key)
-                            ? 'bg-primary/10 border-primary text-primary'
-                            : 'bg-card border-border text-foreground hover:bg-muted'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={formData.clippingStrategies.includes(item.key)}
-                          onChange={() => toggleStrategy(item.key)}
-                          className="rounded border-input text-primary"
-                        />
-                        <span>{item.label}</span>
-                      </label>
-                    ))}
-                  </div>
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <Sliders size={14} /> Story Re-Cut Editor (Whop Shorts Style)
+                  </h4>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-primary/10 text-primary border border-primary/20">
+                    Brand-Safe 9:16 Full Frame
+                  </span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                {/* Info Card explaining the Story Re-Cut Engine */}
+                <div className="bg-primary/5 border border-primary/15 rounded-xl p-3 text-xs space-y-1.5">
+                  <p className="font-semibold text-foreground flex items-center gap-1.5">
+                    ✨ Cold-Open Payoff Reorder + Punch Zoom + Pacing
+                  </p>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    Uses <strong>only brand source footage</strong> (no templates, no fake banners, no mirror blurs).
+                    Plays the payoff/hook first (3-4s at 1.2x punch zoom) → Setup context → Payoff in full context.
+                    Auto-tightens dead silence at cut boundaries and burns clean keyword-highlighted captions.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5">
                   <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">Short Duration (seconds)</label>
+                    <label className="block text-xs font-medium text-foreground mb-1">Target Duration (seconds)</label>
                     <input
                       type="number"
-                      min={5}
-                      placeholder="25"
+                      min={15}
+                      max={180}
+                      placeholder="45"
                       value={formData.shortDuration}
                       onChange={(e) => setFormData({ ...formData, shortDuration: Number(e.target.value) })}
                       className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
@@ -1607,28 +1557,43 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">Start Offset (seconds)</label>
+                    <label className="block text-xs font-medium text-foreground mb-1">Cold-Open Hook (seconds)</label>
                     <input
                       type="number"
-                      min={0}
-                      placeholder="30"
-                      value={formData.startOffset}
-                      onChange={(e) => setFormData({ ...formData, startOffset: Number(e.target.value) })}
+                      step="0.5"
+                      min={2}
+                      max={8}
+                      placeholder="3.5"
+                      value={formData.hookDuration}
+                      onChange={(e) => setFormData({ ...formData, hookDuration: Number(e.target.value) })}
                       className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">Volume Multiplier</label>
+                    <label className="block text-xs font-medium text-foreground mb-1">Punch Zoom Level</label>
                     <input
                       type="number"
-                      step="0.1"
-                      min={0.1}
-                      placeholder="1.0"
-                      value={formData.volumeMultiplier}
-                      onChange={(e) => setFormData({ ...formData, volumeMultiplier: Number(e.target.value) })}
+                      step="0.05"
+                      min={1.0}
+                      max={1.5}
+                      placeholder="1.20"
+                      value={formData.punchZoom}
+                      onChange={(e) => setFormData({ ...formData, punchZoom: Number(e.target.value) })}
                       className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     />
+                  </div>
+
+                  <div className="flex flex-col justify-end">
+                    <label className="flex items-center gap-2 p-2 rounded-lg border border-border bg-card cursor-pointer hover:bg-muted text-xs font-medium">
+                      <input
+                        type="checkbox"
+                        checked={formData.tightenSilence}
+                        onChange={(e) => setFormData({ ...formData, tightenSilence: e.target.checked })}
+                        className="rounded border-input text-primary"
+                      />
+                      <span>Tighten Dead Silence</span>
+                    </label>
                   </div>
                 </div>
 
@@ -1853,156 +1818,6 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                 </div>
               </div>
 
-              {/* SECTION 6: BOTTOM BANNERS (Screenshot 2) */}
-              <div className="space-y-3 pt-3 border-t border-border">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                    <Palette size={14} /> Bottom Banners
-                  </h4>
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs font-medium text-foreground">Number of Bottom Banners:</label>
-                    <select
-                      value={formData.numBottomBanners}
-                      onChange={(e) => setFormData({ ...formData, numBottomBanners: Number(e.target.value) })}
-                      className="px-2.5 py-1 bg-background border border-input rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-ring"
-                    >
-                      <option value={0}>No Banner</option>
-                      <option value={1}>1 Banner</option>
-                      <option value={2}>2 Banners</option>
-                      <option value={3}>3 Banners</option>
-                      <option value={4}>4 Banners</option>
-                      <option value={5}>5 Banners</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Banner list rendering */}
-                {Array.from({ length: formData.numBottomBanners }).map((_, idx) => {
-                  const b = formData.banners[idx] || defaultBanners[idx]
-                  return (
-                    <div key={idx} className="bg-muted/30 border border-border rounded-xl p-3.5 space-y-3">
-                      <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">
-                        Banner #{idx + 1}
-                      </h5>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-[11px] font-medium text-foreground mb-1">Banner #{idx + 1} Text</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. Click link in bio!"
-                            value={b.text}
-                            onChange={(e) => updateBannerField(idx, 'text', e.target.value)}
-                            className="w-full px-3 py-1.5 bg-background border border-input rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-medium text-foreground mb-1">Banner #{idx + 1} Font</label>
-                          <input
-                            type="text"
-                            placeholder="Montenegrin Gothic One"
-                            value={b.font}
-                            onChange={(e) => updateBannerField(idx, 'font', e.target.value)}
-                            className="w-full px-3 py-1.5 bg-background border border-input rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        <div>
-                          <label className="block text-[11px] font-medium text-foreground mb-1">Text Color</label>
-                          <input
-                            type="text"
-                            placeholder="white"
-                            value={b.textColor}
-                            onChange={(e) => updateBannerField(idx, 'textColor', e.target.value)}
-                            className="w-full px-3 py-1.5 bg-background border border-input rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-medium text-foreground mb-1">Position Height (%)</label>
-                          <input
-                            type="number"
-                            placeholder="85"
-                            value={b.positionHeightPercent}
-                            onChange={(e) => updateBannerField(idx, 'positionHeightPercent', Number(e.target.value))}
-                            className="w-full px-3 py-1.5 bg-background border border-input rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-medium text-foreground mb-1">Font Size (px)</label>
-                          <input
-                            type="number"
-                            placeholder="54"
-                            value={b.fontSizePx}
-                            onChange={(e) => updateBannerField(idx, 'fontSizePx', Number(e.target.value))}
-                            className="w-full px-3 py-1.5 bg-background border border-input rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-medium text-foreground mb-1">Background (color@opacity)</label>
-                          <input
-                            type="text"
-                            placeholder="red@0.8"
-                            value={b.background}
-                            onChange={(e) => updateBannerField(idx, 'background', e.target.value)}
-                            className="w-full px-3 py-1.5 bg-background border border-input rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div>
-                          <label className="block text-[11px] font-medium text-foreground mb-1">Styled Word Count</label>
-                          <input
-                            type="number"
-                            min={0}
-                            placeholder="0"
-                            value={b.styledWordCount}
-                            onChange={(e) => updateBannerField(idx, 'styledWordCount', Number(e.target.value))}
-                            className="w-full px-3 py-1.5 bg-background border border-input rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-medium text-foreground mb-1">Styled Words Color</label>
-                          <input
-                            type="text"
-                            placeholder="yellow"
-                            value={b.styledWordsColor}
-                            onChange={(e) => updateBannerField(idx, 'styledWordsColor', e.target.value)}
-                            className="w-full px-3 py-1.5 bg-background border border-input rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-medium text-foreground mb-1">Show Only in Last Seconds</label>
-                          <select
-                            value={b.showOnlyInLastSeconds}
-                            onChange={(e: any) => updateBannerField(idx, 'showOnlyInLastSeconds', e.target.value)}
-                            className="w-full px-3 py-1.5 bg-background border border-input rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                          >
-                            <option value="No">No (all video)</option>
-                            <option value="Yes">Yes (last N seconds)</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      {b.showOnlyInLastSeconds === 'Yes' && (
-                        <div>
-                          <label className="block text-[11px] font-medium text-foreground mb-1">Duration (Last N sec)</label>
-                          <input
-                            type="number"
-                            min={1}
-                            placeholder="5"
-                            value={b.lastNDuration}
-                            onChange={(e) => updateBannerField(idx, 'lastNDuration', Number(e.target.value))}
-                            className="w-full px-3 py-1.5 bg-background border border-input rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-
               {/* SECTION 7: ON-SCREEN TEXT STYLING (Screenshot 3) */}
               <div className="space-y-3 pt-3 border-t border-border">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
@@ -2117,79 +1932,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                 </div>
               </div>
 
-              {/* SECTION 8: VIDEO LAYOUT & CANVAS STYLING (Screenshots 3 & 4) */}
-              <div className="space-y-3 pt-3 border-t border-border">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                  <Film size={14} /> Video Layout & Styling
-                </h4>
-
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-2">
-                    Background Style (Multi-Select)
-                  </label>
-                  <div className="flex flex-wrap gap-2.5">
-                    {[
-                      'Split Mirror Blur',
-                      'Vibrant Mirror Blur',
-                      'Solid White Canvas',
-                      'Solid Black Canvas',
-                      'Custom Color',
-                      'RGB Monitor',
-                    ].map((style) => (
-                      <label
-                        key={style}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer transition-colors ${
-                          formData.backgroundStyles.includes(style)
-                            ? 'bg-primary/10 border-primary text-primary'
-                            : 'bg-card border-border text-foreground hover:bg-muted'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={formData.backgroundStyles.includes(style)}
-                          onChange={() => toggleBackgroundStyle(style)}
-                          className="rounded border-input text-primary"
-                        />
-                        <span>{style}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-2">
-                    Foreground Corner Style (Multi-Select)
-                  </label>
-                  <div className="flex flex-wrap gap-2.5">
-                    {[
-                      'Sharp Rectangular Edges',
-                      'Smooth Rounded Corners',
-                      'Soft Feathered Edges',
-                      'Rounded with White Border',
-                      'Rounded with Drop Shadow',
-                    ].map((corner) => (
-                      <label
-                        key={corner}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer transition-colors ${
-                          formData.foregroundCornerStyles.includes(corner)
-                            ? 'bg-primary/10 border-primary text-primary'
-                            : 'bg-card border-border text-foreground hover:bg-muted'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={formData.foregroundCornerStyles.includes(corner)}
-                          onChange={() => toggleCornerStyle(corner)}
-                          className="rounded border-input text-primary"
-                        />
-                        <span>{corner}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* SECTION 9: SUBTITLES (Speech-to-Text / xAI Grok / Whisper) (Screenshot 4) */}
+              {/* SECTION 9: SUBTITLES & CLEAN KEYWORD CAPTIONS */}
               <div className="space-y-3 pt-3 border-t border-border">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                   <Captions size={14} /> Subtitles (Speech-to-Text / xAI Grok)

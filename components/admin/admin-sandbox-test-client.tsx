@@ -211,21 +211,21 @@ export function AdminSandboxTestClient({ initialCampaigns = [] }: AdminSandboxTe
         {selectedCampaign && (
           <div className="bg-muted/40 border border-border rounded-2xl p-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
             <div>
-              <span className="text-muted-foreground text-[11px] block">Clipping Strategy</span>
-              <span className="font-semibold text-foreground capitalize">
-                {(cfg.clippingStrategies || ['multi_cut']).join(', ')}
+              <span className="text-muted-foreground text-[11px] block">Editing Style</span>
+              <span className="font-semibold text-primary capitalize">
+                Story Re-Cut (9:16 Full Frame)
               </span>
             </div>
             <div>
-              <span className="text-muted-foreground text-[11px] block">Subtitles</span>
+              <span className="text-muted-foreground text-[11px] block">Pacing & Hook</span>
               <span className="font-semibold text-foreground">
-                {cfg.enableSubtitles || 'Enabled'}
+                Cold-Open + 1.2x Punch
               </span>
             </div>
             <div>
-              <span className="text-muted-foreground text-[11px] block">Bottom Banners</span>
+              <span className="text-muted-foreground text-[11px] block">Duration</span>
               <span className="font-semibold text-foreground">
-                {cfg.numBottomBanners ?? (cfg.banners?.filter((b: any) => b.text)?.length || 0)} banner(s)
+                {cfg.shortDuration || 45}s Target
               </span>
             </div>
             <div>

@@ -69,6 +69,50 @@ export function loadTranscript(videoPath: string, campaignId: string): Transcrip
   }
 }
 
+function formatSrtTime(sec: number): string {
+  const h = Math.floor(sec / 3600)
+  const m = Math.floor((sec % 3600) / 60)
+  const s = Math.floor(sec % 60)
+  const ms = Math.floor((sec % 1) * 1000)
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(ms).padStart(3, '0')}`
+}
+
+export function segmentsToSrt(segments: TranscriptSegment[]): string {
+  return segments
+    .filter(s => s && typeof s.start === 'number' && typeof s.end === 'number')
+    .map((seg, idx) => {
+      const start = formatSrtTime(seg.start)
+      const end = formatSrtTime(seg.end)
+      return `${idx + 1}\n${start} --> ${end}\n${(seg.text || '').trim()}\n`
+    })
+    .join('\n')
+}
+
+/**
+ * Returns the path to the SRT transcript file for story_recut_editor.py.
+ * If only a .json transcript exists, automatically generates the .srt file.
+ */
+export function loadTranscriptSrt(videoPath: string, campaignId: string): string | null {
+  const transcriptsDir = getTranscriptsDir(campaignId)
+  const baseName = path.basename(videoPath, path.extname(videoPath))
+  const srtPath = path.join(transcriptsDir, `${baseName}.srt`)
+  if (fs.existsSync(srtPath)) return srtPath
+
+  const jsonPath = path.join(transcriptsDir, `${baseName}.json`)
+  if (!fs.existsSync(jsonPath)) return null
+
+  try {
+    const segments: TranscriptSegment[] = JSON.parse(fs.readFileSync(jsonPath, 'utf8'))
+    if (segments.length > 0) {
+      const srtContent = segmentsToSrt(segments)
+      fs.writeFileSync(srtPath, srtContent, 'utf8')
+      return srtPath
+    }
+  } catch {}
+
+  return null
+}
+
 /**
  * Get transcript text for a specific time range (for metadata generation).
  * Returns the words spoken between startTime and endTime.
@@ -244,8 +288,10 @@ export async function runCampaignSetup(
 
     if (segments.length > 0) {
       fs.writeFileSync(transcriptPath, JSON.stringify(segments, null, 2), 'utf8')
+      const srtPath = path.join(transcriptsDir, `${baseName}.srt`)
+      fs.writeFileSync(srtPath, segmentsToSrt(segments), 'utf8')
       transcriptPaths[videoPath] = transcriptPath
-      log(`✅ Transcript saved: ${baseName}.json (${segments.length} segments)`)
+      log(`✅ Transcript saved: ${baseName}.json & ${baseName}.srt (${segments.length} segments)`)
     } else {
       log(`⚠️ No transcript generated for: ${baseName}`)
     }
