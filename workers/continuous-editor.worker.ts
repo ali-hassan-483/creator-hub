@@ -9,6 +9,11 @@
  * - Har 5 minute baad sleep & recheck loop.
  */
 
+import dns from 'dns'
+if (dns && typeof dns.setDefaultResultOrder === 'function') {
+  dns.setDefaultResultOrder('ipv4first')
+}
+
 import { prisma } from '../lib/db'
 import { maintainCampaignClipPool, TARGET_EDITED_CLIPS } from '../tools/continuous-edit-engine'
 import { countEditedClips } from '../tools/campaign-processor'
