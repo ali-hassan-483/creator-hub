@@ -74,12 +74,10 @@ services:
     restart: unless-stopped
     command: npm run worker:analytics
     environment:
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@postgres:5432/content_platform
+      DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://redis:6379
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
 
@@ -96,15 +94,13 @@ services:
       - ./storage:/app/storage
     command: npm run worker:automation
     environment:
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@postgres:5432/content_platform
+      DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://redis:6379
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_API_KEYS: ${GEMINI_API_KEYS:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
 
@@ -117,12 +113,10 @@ services:
     restart: unless-stopped
     command: npm run worker:scheduler
     environment:
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@postgres:5432/content_platform
+      DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://redis:6379
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
 
@@ -139,15 +133,13 @@ services:
       - ./storage:/app/storage
     command: npm run worker:editor
     environment:
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@postgres:5432/content_platform
+      DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://redis:6379
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_API_KEYS: ${GEMINI_API_KEYS:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
 
