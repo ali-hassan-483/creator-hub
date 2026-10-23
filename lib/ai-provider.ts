@@ -19,8 +19,19 @@ export const DEFAULT_OPENROUTER_KEY =
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
 const OPENROUTER_MODELS = [
-  'google/gemini-2.5-flash',
   'google/gemini-2.5-flash-lite',
+  'google/gemini-2.5-flash',
+  'google/gemini-2.0-flash-exp:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'mistralai/mistral-small-24b-instruct-2501:free',
+]
+
+// Native Gemini models to try in order of highest free quota (1,500 RPD) to lowest (20 RPD)
+const GEMINI_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-1.5-flash',
+  'gemini-3.8-flash',
 ]
 
 /**
@@ -71,7 +82,8 @@ export async function callOpenRouter(
     throw new Error('No OpenRouter API key configured.')
   }
 
-  const maxTokens = options?.maxTokens || 2500
+  // Default to 400 tokens for titles, descriptions, on-screen hooks (prevents 402 insufficient credit errors)
+  let maxTokens = options?.maxTokens || 400
   const temperature = options?.temperature ?? 0.7
   const modelsToTry = options?.model ? [options.model, ...OPENROUTER_MODELS] : OPENROUTER_MODELS
 
@@ -85,6 +97,10 @@ export async function callOpenRouter(
       }
       messages.push({ role: 'user', content: prompt })
 
+      // For free tier models (:free suffix), max_tokens can remain normal
+      const isFreeModel = model.endsWith(':free')
+      const tokensToSend = isFreeModel ? Math.max(maxTokens, 500) : maxTokens
+
       const response = await fetch(OPENROUTER_API_URL, {
         method: 'POST',
         headers: {
@@ -96,13 +112,21 @@ export async function callOpenRouter(
         body: JSON.stringify({
           model,
           messages,
-          max_tokens: maxTokens,
+          max_tokens: tokensToSend,
           temperature,
         }),
       })
 
       if (!response.ok) {
         const errText = await response.text()
+        // If OpenRouter says user can only afford X tokens, reduce maxTokens for subsequent calls
+        const affordMatch = errText.match(/can only afford (\d+)/i)
+        if (affordMatch && affordMatch[1]) {
+          const affordable = parseInt(affordMatch[1], 10)
+          if (affordable > 50) {
+            maxTokens = Math.min(maxTokens, affordable - 10)
+          }
+        }
         throw new Error(`OpenRouter error (${model}) [HTTP ${response.status}]: ${errText}`)
       }
 
@@ -128,35 +152,51 @@ async function callGeminiDirect(
   prompt: string,
   systemInstruction?: string
 ): Promise<string> {
-  const GEMINI_MODEL = 'gemini-3.8-flash'
-  const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
-
   return executeGeminiWithFailover(async (apiKey) => {
-    const body: any = {
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 4096,
-      },
+    let lastErr: any = null
+
+    for (const model of GEMINI_MODELS) {
+      try {
+        const body: any = {
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 2048,
+          },
+        }
+
+        if (systemInstruction) {
+          body.systemInstruction = { parts: [{ text: systemInstruction }] }
+        }
+
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+
+        if (!response.ok) {
+          const err = await response.text()
+          throw new Error(`Gemini ${model} API error ${response.status}: ${err}`)
+        }
+
+        const data = (await response.json()) as any
+        const output = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+        if (output) return output
+      } catch (err: any) {
+        lastErr = err
+        // If quota or rate limit, try next model before moving to next key
+        const isQuota = err?.message?.includes('429') || err?.message?.includes('quota') || err?.message?.includes('RESOURCE_EXHAUSTED')
+        if (isQuota) {
+          console.warn(`[GeminiDirect] Model ${model} quota reached, trying next model...`)
+          continue
+        }
+        throw err
+      }
     }
 
-    if (systemInstruction) {
-      body.systemInstruction = { parts: [{ text: systemInstruction }] }
-    }
-
-    const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-
-    if (!response.ok) {
-      const err = await response.text()
-      throw new Error(`Gemini API error ${response.status}: ${err}`)
-    }
-
-    const data = (await response.json()) as any
-    return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || ''
+    throw lastErr || new Error('All Gemini models failed')
   })
 }
 
