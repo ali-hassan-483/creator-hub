@@ -413,7 +413,7 @@ export async function editVideoClip(options: VideoEditOptions): Promise<{ succes
 
   try {
     fs.mkdirSync(path.dirname(outputPath), { recursive: true })
-    await execAsync(cmd, { maxBuffer: 10 * 1024 * 1024 })
+    await execAsync(cmd, { maxBuffer: 10 * 1024 * 1024, timeout: 5 * 60 * 1000 }) // 5 min timeout
     console.log(`[FFMPEG] ✅ Output: ${outputPath}`)
     return { success: true, outputPath }
   } catch (error: any) {
@@ -515,7 +515,7 @@ export async function concatVideos(inputPaths: string[], outputPath: string): Pr
 
   try {
     const cmd = `${FFMPEG_BIN} -f concat -safe 0 -i "${concatFile}" -c copy -y "${outputPath}"`
-    await execAsync(cmd, { maxBuffer: 5 * 1024 * 1024 })
+    await execAsync(cmd, { maxBuffer: 5 * 1024 * 1024, timeout: 3 * 60 * 1000 }) // 3 min timeout
     fs.unlinkSync(concatFile)
     return true
   } catch (err: any) {

@@ -326,6 +326,7 @@ export async function maintainCampaignClipPool(
     }
 
     // Render Video via FFMPEG
+    log(`🎬 Rendering clip #${currentCount + 1}: ${path.basename(sourceVideo)} [${slice.startTime.toFixed(1)}s → ${slice.endTime.toFixed(1)}s]`)
     const editRes = await editVideoClip({
       inputPath: sourceVideo,
       outputPath: rawClipPath,
@@ -351,9 +352,11 @@ export async function maintainCampaignClipPool(
 
     // Burn Subtitles if enabled
     if (subtitleEnabled) {
+      log(`📝 Adding subtitles to clip #${currentCount + 1}...`)
       const subWorkDir = path.join(clipsDir, 'tmp_sub', clipId)
       const subOk = await addSubtitlesToVideo(rawClipPath, finalClipPath, subtitleConfig, subWorkDir)
       if (!subOk) {
+        log(`⚠️ Subtitles skipped (no transcription or burn failed) — using raw clip`)
         fs.renameSync(rawClipPath, finalClipPath)
       } else if (fs.existsSync(rawClipPath)) {
         try { fs.unlinkSync(rawClipPath) } catch {}

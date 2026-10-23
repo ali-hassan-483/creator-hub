@@ -62,13 +62,17 @@ export async function transcribeWithWhisper(videoPath: string, outputDir: string
   try {
     // Extract audio first
     const audioPath = path.join(outputDir, 'audio_temp.wav')
+    console.log(`[Subtitles] 🎵 Extracting audio for Whisper...`)
     await execAsync(`ffmpeg -i "${videoPath}" -vn -ar 16000 -ac 1 -y "${audioPath}"`, {
       maxBuffer: 5 * 1024 * 1024,
+      timeout: 60000, // 1 min timeout for audio extraction
     })
 
-    // Run Whisper with word timestamps
-    const cmd = `${whisperBin} "${audioPath}" --output_dir "${outputDir}" --output_format json --word_timestamps True --model base`
-    await execAsync(cmd, { maxBuffer: 20 * 1024 * 1024, timeout: 600000 })
+    // Run Whisper with word timestamps (tiny model = 3x faster than base, good enough for subtitles)
+    const whisperModel = process.env.WHISPER_MODEL || 'tiny'
+    const cmd = `${whisperBin} "${audioPath}" --output_dir "${outputDir}" --output_format json --word_timestamps True --model ${whisperModel}`
+    console.log(`[Whisper] 🏃 Running Whisper ${whisperModel} model...`)
+    await execAsync(cmd, { maxBuffer: 20 * 1024 * 1024, timeout: 180000 }) // 3 min timeout
 
     // Read output JSON
     const jsonFiles = fs.readdirSync(outputDir).filter(f => f.endsWith('.json') && f.includes('audio_temp'))
@@ -111,8 +115,10 @@ export async function transcribeWithGemini(videoPath: string): Promise<Transcrip
   try {
     // Extract audio as base64
     const audioPath = videoPath + '_audio.mp3'
+    console.log(`[Gemini-Transcribe] 🎵 Extracting audio for Gemini...`)
     await execAsync(`ffmpeg -i "${videoPath}" -vn -b:a 64k -y "${audioPath}"`, {
       maxBuffer: 5 * 1024 * 1024,
+      timeout: 60000, // 1 min timeout
     })
     const audioData = fs.readFileSync(audioPath).toString('base64')
     if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath)
@@ -344,7 +350,8 @@ export async function burnSubtitlesIntoVideo(
   ].join(' ')
 
   try {
-    await execAsync(cmd, { maxBuffer: 10 * 1024 * 1024 })
+    console.log(`[Subtitles] 🔥 Burning subtitles into video...`)
+    await execAsync(cmd, { maxBuffer: 10 * 1024 * 1024, timeout: 3 * 60 * 1000 }) // 3 min timeout
     console.log(`[Subtitles] ✅ Burned subtitles into: ${outputVideo}`)
     return true
   } catch (error: any) {
@@ -365,6 +372,7 @@ export async function addSubtitlesToVideo(
   fs.mkdirSync(workDir, { recursive: true })
 
   // 1. Transcribe
+  console.log(`[Subtitles] Step 1/3: Transcribing audio...`)
   const segments = await transcribeVideo(videoPath, workDir)
   if (segments.length === 0) {
     console.warn('[Subtitles] No transcription data — skipping subtitles')
@@ -372,9 +380,11 @@ export async function addSubtitlesToVideo(
   }
 
   // 2. Generate ASS
+  console.log(`[Subtitles] Step 2/3: Generating ASS subtitle file (${segments.length} segments)...`)
   const assPath = path.join(workDir, 'subtitles.ass')
   generateAssSubtitles(segments, assPath, config)
 
   // 3. Burn into video
+  console.log(`[Subtitles] Step 3/3: Burning subtitles into video...`)
   return burnSubtitlesIntoVideo(videoPath, assPath, outputPath)
 }
