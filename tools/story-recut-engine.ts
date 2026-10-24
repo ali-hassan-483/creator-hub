@@ -209,7 +209,15 @@ export async function renderStoryRecutBatch(
   const cutmapPath = path.join(outputDir, `cutmap_batch_${Date.now()}.json`)
   fs.writeFileSync(cutmapPath, JSON.stringify(cutmap, null, 2), 'utf8')
 
-  const scriptPath = path.join(__dirname, 'story_recut_editor.py')
+  // Resolve script path reliably across both standalone worker and Next.js webpack-bundled API routes
+  let scriptPath = path.join(process.cwd(), 'tools', 'story_recut_editor.py')
+  if (!fs.existsSync(scriptPath)) {
+    scriptPath = path.join(__dirname, 'story_recut_editor.py')
+  }
+  if (!fs.existsSync(scriptPath)) {
+    scriptPath = '/app/tools/story_recut_editor.py'
+  }
+
   const pythonBin = process.platform === 'win32' ? 'python' : 'python3'
 
   const cmdParts = [

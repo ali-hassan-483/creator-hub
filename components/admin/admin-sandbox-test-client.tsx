@@ -163,7 +163,7 @@ export function AdminSandboxTestClient({ initialCampaigns = [] }: AdminSandboxTe
           </span>
         </div>
         <p className="text-xs text-muted-foreground mt-1">
-          Select any campaign to compile a test 9:16 vertical video clip using the campaign’s exact banner positions, subtitles, logo overlay, and AI metadata without publishing to YouTube.
+          Select any campaign to compile a test 9:16 vertical video clip using the Story Re-Cut engine (Cold-Open Payoff Hook + Punch Zoom + Clean Keyword Captions) without publishing to YouTube.
         </p>
       </div>
 
@@ -171,10 +171,10 @@ export function AdminSandboxTestClient({ initialCampaigns = [] }: AdminSandboxTe
       <div className="bg-card border border-border rounded-3xl p-6 sm:p-8 shadow-sm space-y-5">
         <div>
           <h2 className="text-base font-bold text-foreground">
-            Test Rendering & Styling Engine
+            Test Story Re-Cut Rendering Engine
           </h2>
           <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
-            Runs FFmpeg locally on the VPS with your bottom banners, on-screen text, and subtitles. Uses AI (Gemini / OpenRouter fallback) to extract viral timestamps and generate titles.
+            Runs Story Re-Cut locally on the VPS with brand-safe 9:16 vertical crop, cold-open payoff hook, dynamic zoom, and clean spoken captions. Uses AI to generate viral titles and metadata.
           </p>
         </div>
 
