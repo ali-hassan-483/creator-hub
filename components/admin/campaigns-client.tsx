@@ -38,69 +38,6 @@ interface CampaignsClientProps {
   allUsers: UserOption[]
 }
 
-const defaultBanners = [
-  {
-    text: '',
-    font: 'Montenegrin Gothic One',
-    textColor: 'white',
-    positionHeightPercent: 85,
-    fontSizePx: 54,
-    background: 'red@0.8',
-    styledWordCount: 0,
-    styledWordsColor: 'yellow',
-    showOnlyInLastSeconds: 'No' as 'No' | 'Yes',
-    lastNDuration: 5,
-  },
-  {
-    text: '',
-    font: 'Montenegrin Gothic One',
-    textColor: 'white',
-    positionHeightPercent: 90,
-    fontSizePx: 54,
-    background: 'black@0.8',
-    styledWordCount: 0,
-    styledWordsColor: 'yellow',
-    showOnlyInLastSeconds: 'No' as 'No' | 'Yes',
-    lastNDuration: 5,
-  },
-  {
-    text: '',
-    font: 'Montenegrin Gothic One',
-    textColor: 'white',
-    positionHeightPercent: 75,
-    fontSizePx: 54,
-    background: 'red@0.8',
-    styledWordCount: 0,
-    styledWordsColor: 'yellow',
-    showOnlyInLastSeconds: 'No' as 'No' | 'Yes',
-    lastNDuration: 5,
-  },
-  {
-    text: '',
-    font: 'Montenegrin Gothic One',
-    textColor: 'white',
-    positionHeightPercent: 70,
-    fontSizePx: 54,
-    background: 'red@0.8',
-    styledWordCount: 0,
-    styledWordsColor: 'yellow',
-    showOnlyInLastSeconds: 'No' as 'No' | 'Yes',
-    lastNDuration: 5,
-  },
-  {
-    text: '',
-    font: 'Montenegrin Gothic One',
-    textColor: 'white',
-    positionHeightPercent: 65,
-    fontSizePx: 54,
-    background: 'red@0.8',
-    styledWordCount: 0,
-    styledWordsColor: 'yellow',
-    showOnlyInLastSeconds: 'No' as 'No' | 'Yes',
-    lastNDuration: 5,
-  },
-]
-
 const defaultFormState = {
   // AI brief scanner
   briefText: '',
@@ -147,36 +84,11 @@ const defaultFormState = {
   maxTitleCharacters: 60,
   predefinedDescription: '',
 
-  // Descriptions & Links (New Screenshot 1)
+  // Descriptions & Links
   useOnlyPredefinedDesc: false,
   linksInDescription: '',
 
-  // Visual Overlay & Styling (New Screenshot 1)
-  logoOverlayUrl: '',
-  overlayPosition: 'Bottom Center',
-  overlayWidthPercent: 60,
-  overlayHeightPercent: 50,
-
-  // Bottom Banners & Old Templates (Disabled for Brand-Safe Story Re-Cut)
-  numBottomBanners: 0,
-  banners: [] as any[],
-
-  // On-screen Text Styling (New Screenshot 3)
-  onScreenFontName: 'Montenegrin Gothic One',
-  useSameFontForBannersAndSubs: false,
-  onScreenTextColor: 'white',
-  onScreenPositionHeightPercent: 27,
-  onScreenSizePx: 64,
-  onScreenBackground: 'black@0.5',
-  onScreenStyledWordCount: 0,
-  onScreenStyledWordsColor: 'yellow',
-  useSameForSpeakingWordHighlight: false,
-
-  // Video Layout & Styling (Brand-Safe Full 9:16 Frame)
-  backgroundStyles: [] as string[],
-  foregroundCornerStyles: [] as string[],
-
-  // Subtitles (New Screenshot 4)
+  // Subtitles (Clean Keyword Captions from Story Re-Cut)
   enableSubtitles: 'Disabled (Fallback to AI Captions)',
   subtitleFonts: 'Montenegrin Gothic One',
   subtitleColors: 'white',
@@ -187,9 +99,25 @@ const defaultFormState = {
   speakingWordHighlight: 'yellow',
   subtitleTextCases: ['ALL UPPERCASE'] as string[],
 
-  // Admin Guide Links & Styling Presets (New Screenshot 5)
+  // On-Screen Text Styling
+  onScreenFontName: 'Montenegrin Gothic One',
+  useSameFontForBannersAndSubs: false,
+  onScreenTextColor: 'white',
+  onScreenPositionHeightPercent: 27,
+  onScreenSizePx: 64,
+  onScreenBackground: 'black@0.5',
+  onScreenStyledWordCount: 0,
+  onScreenStyledWordsColor: 'yellow',
+  useSameForSpeakingWordHighlight: false,
+
+  // Visual Overlay (Logo)
+  logoOverlayUrl: '',
+  overlayPosition: 'Bottom Center',
+  overlayWidthPercent: 60,
+  overlayHeightPercent: 50,
+
+  // Admin Guide Links
   adminGuideLinks: '',
-  useStylingPresets: false,
 
   // Access
   assignAllUsers: true,
@@ -515,14 +443,6 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
     })
   }
 
-  function updateBannerField(index: number, field: string, val: any) {
-    setFormData((prev) => {
-      const updatedBanners = [...prev.banners]
-      updatedBanners[index] = { ...updatedBanners[index], [field]: val }
-      return { ...prev, banners: updatedBanners }
-    })
-  }
-
   // Create Campaign
   async function handleCreateCampaign(e: React.FormEvent) {
     e.preventDefault()
@@ -568,8 +488,6 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
       overlayPosition: formData.overlayPosition,
       overlayWidthPercent: Number(formData.overlayWidthPercent) || 60,
       overlayHeightPercent: Number(formData.overlayHeightPercent) || 50,
-      numBottomBanners: Number(formData.numBottomBanners) || 0,
-      banners: formData.banners.slice(0, Number(formData.numBottomBanners) || 0),
       onScreenFontName: formData.onScreenFontName.trim(),
       useSameFontForBannersAndSubs: formData.useSameFontForBannersAndSubs,
       onScreenTextColor: formData.onScreenTextColor.trim(),
@@ -579,8 +497,6 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
       onScreenStyledWordCount: Number(formData.onScreenStyledWordCount) || 0,
       onScreenStyledWordsColor: formData.onScreenStyledWordsColor.trim(),
       useSameForSpeakingWordHighlight: formData.useSameForSpeakingWordHighlight,
-      backgroundStyles: formData.backgroundStyles,
-      foregroundCornerStyles: formData.foregroundCornerStyles,
       enableSubtitles: formData.enableSubtitles,
       subtitleFonts: formData.subtitleFonts.trim(),
       subtitleColors: formData.subtitleColors.trim(),
@@ -591,7 +507,6 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
       speakingWordHighlight: formData.speakingWordHighlight.trim(),
       subtitleTextCases: formData.subtitleTextCases,
       adminGuideLinks: formData.adminGuideLinks.trim(),
-      useStylingPresets: formData.useStylingPresets,
     }
 
     try {
@@ -694,23 +609,6 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
       predefinedDescription: cfg.predefinedDescription || '',
       useOnlyPredefinedDesc: cfg.useOnlyPredefinedDesc ?? false,
       linksInDescription: cfg.linksInDescription || '',
-      logoOverlayUrl: cfg.logoOverlayUrl || '',
-      overlayPosition: cfg.overlayPosition || 'top-left',
-      overlayWidthPercent: cfg.overlayWidthPercent ?? 60,
-      overlayHeightPercent: cfg.overlayHeightPercent ?? 50,
-      numBottomBanners: cfg.numBottomBanners ?? 0,
-      banners: Array.isArray(cfg.banners) && cfg.banners.length > 0 ? cfg.banners : defaultBanners,
-      onScreenFontName: cfg.onScreenFontName || 'Montenegrin Gothic One',
-      useSameFontForBannersAndSubs: cfg.useSameFontForBannersAndSubs ?? false,
-      onScreenTextColor: cfg.onScreenTextColor || 'white',
-      onScreenPositionHeightPercent: cfg.onScreenPositionHeightPercent ?? 27,
-      onScreenSizePx: cfg.onScreenSizePx ?? 64,
-      onScreenBackground: cfg.onScreenBackground || 'black@0.5',
-      onScreenStyledWordCount: cfg.onScreenStyledWordCount ?? 0,
-      onScreenStyledWordsColor: cfg.onScreenStyledWordsColor || 'yellow',
-      useSameForSpeakingWordHighlight: cfg.useSameForSpeakingWordHighlight ?? false,
-      backgroundStyles: Array.isArray(cfg.backgroundStyles) ? cfg.backgroundStyles : ['Split Mirror Blur'],
-      foregroundCornerStyles: Array.isArray(cfg.foregroundCornerStyles) ? cfg.foregroundCornerStyles : ['Sharp Rectangular Edges'],
       enableSubtitles: cfg.enableSubtitles || 'Disabled (Fallback to AI Captions)',
       subtitleFonts: cfg.subtitleFonts || 'Montenegrin Gothic One',
       subtitleColors: cfg.subtitleColors || 'white',
@@ -720,8 +618,20 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
       maxWordsPerScreen: cfg.maxWordsPerScreen ?? 5,
       speakingWordHighlight: cfg.speakingWordHighlight || 'yellow',
       subtitleTextCases: Array.isArray(cfg.subtitleTextCases) ? cfg.subtitleTextCases : ['ALL UPPERCASE'],
+      onScreenFontName: cfg.onScreenFontName || 'Montenegrin Gothic One',
+      useSameFontForBannersAndSubs: cfg.useSameFontForBannersAndSubs ?? false,
+      onScreenTextColor: cfg.onScreenTextColor || 'white',
+      onScreenPositionHeightPercent: cfg.onScreenPositionHeightPercent ?? 27,
+      onScreenSizePx: cfg.onScreenSizePx ?? 64,
+      onScreenBackground: cfg.onScreenBackground || 'black@0.5',
+      onScreenStyledWordCount: cfg.onScreenStyledWordCount ?? 0,
+      onScreenStyledWordsColor: cfg.onScreenStyledWordsColor || 'yellow',
+      useSameForSpeakingWordHighlight: cfg.useSameForSpeakingWordHighlight ?? false,
+      logoOverlayUrl: cfg.logoOverlayUrl || '',
+      overlayPosition: cfg.overlayPosition || 'Bottom Center',
+      overlayWidthPercent: cfg.overlayWidthPercent ?? 60,
+      overlayHeightPercent: cfg.overlayHeightPercent ?? 50,
       adminGuideLinks: cfg.adminGuideLinks || '',
-      useStylingPresets: cfg.useStylingPresets ?? false,
       assignAllUsers: c.assignedUsers.length === 0,
       assignedUserIds: c.assignedUsers.map((u) => u.id),
     })
@@ -1756,316 +1666,10 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                 </div>
               </div>
 
-              {/* SECTION 5: VISUAL OVERLAY & STYLING (Screenshot 1) */}
+              {/* SECTION 5: ADMIN GUIDE LINKS */}
               <div className="space-y-3 pt-3 border-t border-border">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                  <Image size={14} /> Visual Overlay & Styling
-                </h4>
-
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">Logo / Overlay URL</label>
-                  <input
-                    type="text"
-                    placeholder="Google Drive image link or direct URL"
-                    value={formData.logoOverlayUrl}
-                    onChange={(e) => setFormData({ ...formData, logoOverlayUrl: e.target.value })}
-                    className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">Overlay Position</label>
-                    <select
-                      value={formData.overlayPosition}
-                      onChange={(e) => setFormData({ ...formData, overlayPosition: e.target.value })}
-                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    >
-                      <option value="Top Left">Top Left</option>
-                      <option value="Top Center">Top Center</option>
-                      <option value="Top Right">Top Right</option>
-                      <option value="Bottom Left">Bottom Left</option>
-                      <option value="Bottom Center">Bottom Center</option>
-                      <option value="Bottom Right">Bottom Right</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">Overlay Width (%)</label>
-                    <input
-                      type="number"
-                      min={10}
-                      max={100}
-                      placeholder="60"
-                      value={formData.overlayWidthPercent}
-                      onChange={(e) => setFormData({ ...formData, overlayWidthPercent: Number(e.target.value) })}
-                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">Placement Height (%)</label>
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      placeholder="50"
-                      value={formData.overlayHeightPercent}
-                      onChange={(e) => setFormData({ ...formData, overlayHeightPercent: Number(e.target.value) })}
-                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* SECTION 7: ON-SCREEN TEXT STYLING (Screenshot 3) */}
-              <div className="space-y-3 pt-3 border-t border-border">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                  <Type size={14} /> On-Screen Text Styling
-                </h4>
-
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">On-screen text Font Name</label>
-                  <input
-                    type="text"
-                    placeholder="Montenegrin Gothic One"
-                    value={formData.onScreenFontName}
-                    onChange={(e) => setFormData({ ...formData, onScreenFontName: e.target.value })}
-                    className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="useSameFont"
-                    checked={formData.useSameFontForBannersAndSubs}
-                    onChange={(e) => setFormData({ ...formData, useSameFontForBannersAndSubs: e.target.checked })}
-                    className="rounded border-input text-primary focus:ring-ring"
-                  />
-                  <label htmlFor="useSameFont" className="text-xs text-foreground cursor-pointer">
-                    Use same font for Banners & Subtitles
-                  </label>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">On-screen text Color</label>
-                    <input
-                      type="text"
-                      placeholder="white"
-                      value={formData.onScreenTextColor}
-                      onChange={(e) => setFormData({ ...formData, onScreenTextColor: e.target.value })}
-                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">On-screen text Position (Height %)</label>
-                    <input
-                      type="number"
-                      placeholder="27"
-                      value={formData.onScreenPositionHeightPercent}
-                      onChange={(e) => setFormData({ ...formData, onScreenPositionHeightPercent: Number(e.target.value) })}
-                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">On-screen text Size (px)</label>
-                    <input
-                      type="number"
-                      placeholder="64"
-                      value={formData.onScreenSizePx}
-                      onChange={(e) => setFormData({ ...formData, onScreenSizePx: Number(e.target.value) })}
-                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">On-screen text Background</label>
-                    <input
-                      type="text"
-                      placeholder="black@0.5"
-                      value={formData.onScreenBackground}
-                      onChange={(e) => setFormData({ ...formData, onScreenBackground: e.target.value })}
-                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">On-screen Styled Word Count</label>
-                    <input
-                      type="number"
-                      min={0}
-                      placeholder="0"
-                      value={formData.onScreenStyledWordCount}
-                      onChange={(e) => setFormData({ ...formData, onScreenStyledWordCount: Number(e.target.value) })}
-                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">On-screen Styled Words Color</label>
-                    <input
-                      type="text"
-                      placeholder="yellow"
-                      value={formData.onScreenStyledWordsColor}
-                      onChange={(e) => setFormData({ ...formData, onScreenStyledWordsColor: e.target.value })}
-                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="useSameForSpeaking"
-                    checked={formData.useSameForSpeakingWordHighlight}
-                    onChange={(e) => setFormData({ ...formData, useSameForSpeakingWordHighlight: e.target.checked })}
-                    className="rounded border-input text-primary focus:ring-ring"
-                  />
-                  <label htmlFor="useSameForSpeaking" className="text-xs text-foreground cursor-pointer">
-                    Use same for Speaking Word Highlight
-                  </label>
-                </div>
-              </div>
-
-              {/* SECTION 9: SUBTITLES & CLEAN KEYWORD CAPTIONS */}
-              <div className="space-y-3 pt-3 border-t border-border">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                  <Captions size={14} /> Subtitles (Speech-to-Text / xAI Grok)
-                </h4>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">Enable Subtitles</label>
-                    <select
-                      value={formData.enableSubtitles}
-                      onChange={(e) => setFormData({ ...formData, enableSubtitles: e.target.value })}
-                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    >
-                      <option value="Disabled (Fallback to AI Captions)">Disabled (Fallback to AI Captions)</option>
-                      <option value="Enabled (Auto-generated)">Enabled (Auto-generated)</option>
-                      <option value="Disabled">Disabled</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">Subtitle Fonts</label>
-                    <input
-                      type="text"
-                      placeholder="Montenegrin Gothic One"
-                      value={formData.subtitleFonts}
-                      onChange={(e) => setFormData({ ...formData, subtitleFonts: e.target.value })}
-                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">Subtitle Colors</label>
-                    <input
-                      type="text"
-                      placeholder="white"
-                      value={formData.subtitleColors}
-                      onChange={(e) => setFormData({ ...formData, subtitleColors: e.target.value })}
-                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">Outline Colors</label>
-                    <input
-                      type="text"
-                      placeholder="black"
-                      value={formData.outlineColors}
-                      onChange={(e) => setFormData({ ...formData, outlineColors: e.target.value })}
-                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">Subtitle Word Size(s)</label>
-                    <input
-                      type="number"
-                      placeholder="100"
-                      value={formData.subtitleWordSize}
-                      onChange={(e) => setFormData({ ...formData, subtitleWordSize: Number(e.target.value) })}
-                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">Placement Height (%)</label>
-                    <input
-                      type="number"
-                      placeholder="80"
-                      value={formData.subtitlesPlacementHeightPercent}
-                      onChange={(e) => setFormData({ ...formData, subtitlesPlacementHeightPercent: Number(e.target.value) })}
-                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">Max Words Per Screen</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={20}
-                      placeholder="5"
-                      value={formData.maxWordsPerScreen}
-                      onChange={(e) => setFormData({ ...formData, maxWordsPerScreen: Number(e.target.value) })}
-                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">Speaking Word Highlight</label>
-                    <input
-                      type="text"
-                      placeholder="yellow"
-                      value={formData.speakingWordHighlight}
-                      onChange={(e) => setFormData({ ...formData, speakingWordHighlight: e.target.value })}
-                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-2">
-                    Subtitle Text Case (Multi-Select)
-                  </label>
-                  <div className="flex flex-wrap gap-2.5">
-                    {['ALL UPPERCASE', 'all lowercase', 'Normal Text'].map((c) => (
-                      <label
-                        key={c}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer transition-colors ${
-                          formData.subtitleTextCases.includes(c)
-                            ? 'bg-primary/10 border-primary text-primary'
-                            : 'bg-card border-border text-foreground hover:bg-muted'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={formData.subtitleTextCases.includes(c)}
-                          onChange={() => toggleSubtitleCase(c)}
-                          className="rounded border-input text-primary"
-                        />
-                        <span>{c}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* SECTION 10: ADMIN'S GUIDE LINKS & STYLING PRESETS (Screenshot 5) */}
-              <div className="space-y-3 pt-3 border-t border-border">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                  <LinkIcon size={14} /> Admin Guidelines & Presets
+                  <LinkIcon size={14} /> Admin Guidelines
                 </h4>
 
                 <div>
@@ -2080,19 +1684,6 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                   <span className="text-[11px] text-muted-foreground block mt-1">
                     Guideline documents will be displayed to users in their Campaign Catalog.
                   </span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="useStylingPresets"
-                    checked={formData.useStylingPresets}
-                    onChange={(e) => setFormData({ ...formData, useStylingPresets: e.target.checked })}
-                    className="rounded border-input text-primary focus:ring-ring"
-                  />
-                  <label htmlFor="useStylingPresets" className="text-xs text-foreground cursor-pointer font-medium">
-                    Use Styling Presets
-                  </label>
                 </div>
               </div>
 
