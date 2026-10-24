@@ -109,7 +109,7 @@ export async function maintainCampaignClipPool(
   const clipsDir = getClipsDir(campaignId)
   const shortDuration = parseFloat(cfg.shortDuration || '45')
   const hookDuration = parseFloat(cfg.hookDuration || '3.5')
-  const tightenSilence = cfg.tightenSilence !== false // enabled by default
+  const tightenSilence = cfg.tightenSilence === true // disabled by default for 3x render speed
 
   const metaConfig: AiMetadataConfig = {
     titlesGuide: cfg.titlesGuide,

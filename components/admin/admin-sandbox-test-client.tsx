@@ -229,9 +229,9 @@ export function AdminSandboxTestClient({ initialCampaigns = [] }: AdminSandboxTe
               </span>
             </div>
             <div>
-              <span className="text-muted-foreground text-[11px] block">On-Screen Text</span>
+              <span className="text-muted-foreground text-[11px] block">Cold-Open Hook</span>
               <span className="font-semibold text-foreground">
-                {cfg.onScreenPositionHeightPercent ? `${cfg.onScreenPositionHeightPercent}% height` : 'Auto'}
+                {cfg.hookDuration || 3.5}s Payoff
               </span>
             </div>
           </div>

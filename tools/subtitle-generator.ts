@@ -113,12 +113,12 @@ import { executeGeminiWithFailover } from '../lib/gemini-pool'
  */
 export async function transcribeWithGemini(videoPath: string): Promise<TranscriptSegment[]> {
   try {
-    // Extract audio as base64
+    // Extract speech-optimized mono audio (24kbps 16kHz mono = ~10.8MB per hour, safely under Google's 20MB inlineData limit)
     const audioPath = videoPath + '_audio.mp3'
-    console.log(`[Gemini-Transcribe] 🎵 Extracting audio for Gemini...`)
-    await execAsync(`ffmpeg -i "${videoPath}" -vn -b:a 64k -y "${audioPath}"`, {
-      maxBuffer: 5 * 1024 * 1024,
-      timeout: 60000, // 1 min timeout
+    console.log(`[Gemini-Transcribe] 🎵 Extracting speech-optimized audio for Gemini...`)
+    await execAsync(`ffmpeg -i "${videoPath}" -vn -ar 16000 -ac 1 -b:a 24k -t 3600 -y "${audioPath}"`, {
+      maxBuffer: 15 * 1024 * 1024,
+      timeout: 90000, // 1.5 min timeout
     })
     const audioData = fs.readFileSync(audioPath).toString('base64')
     if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath)

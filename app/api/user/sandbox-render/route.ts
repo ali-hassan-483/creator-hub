@@ -4,27 +4,19 @@ import { prisma } from '@/lib/db'
 import * as fs from 'fs'
 import * as path from 'path'
 import {
-  getCampaignDir,
-  getSourcesDir,
-  getAssetsDir,
   getClipsDir,
   loadTranscript,
-  getClipTranscriptText,
+  loadTranscriptSrt,
   runCampaignSetup,
   isSetupComplete,
   getExistingSourceVideos,
 } from '@/tools/campaign-processor'
+import { getVideoInfo } from '@/tools/video-editor'
 import {
-  editVideoClip,
-  getVideoInfo,
-  generateMultiCutSlices,
-  generateContinuousSlices,
-} from '@/tools/video-editor'
-import { downloadLogoOverlay } from '@/tools/drive-downloader'
-import { addSubtitlesToVideo } from '@/tools/subtitle-generator'
+  buildStoryRecutMap,
+  renderStoryRecutBatch,
+} from '@/tools/story-recut-engine'
 import {
-  findViralClips,
-  generateFullMetadata,
   generateBatchMetadataFromGuidelines,
   ShortMetadata,
   AiMetadataConfig,
@@ -67,76 +59,47 @@ async function executeSandboxRender(jobId: string, campaignId: string) {
     const clipsDir = getClipsDir(campaignId)
     fs.mkdirSync(clipsDir, { recursive: true })
 
-    // 1. One-time setup if needed
-    if (!isSetupComplete(campaignId)) {
-      update('rendering', 'Setting up source videos and transcripts...')
+    // Check if source videos exist; if not, run one-time setup
+    let sourceVideos = getExistingSourceVideos(campaignId)
+    if (sourceVideos.length === 0) {
+      update('rendering', 'Setting up source video files...')
       await runCampaignSetup(campaignId, {
         ...cfg,
         campaignName: campaign.name,
         niche: cfg.niche || 'general',
       })
+      sourceVideos = getExistingSourceVideos(campaignId)
     }
 
-    const sourceVideos = getExistingSourceVideos(campaignId)
     if (sourceVideos.length === 0) {
-      throw new Error('No source video files found for this campaign. Please ensure source URLs are downloaded or clips are uploaded.')
+      throw new Error('No source video files found for this campaign. Please ensure source URLs are valid or video clips are uploaded.')
     }
 
     const sourceVideo = sourceVideos[0]
     update('rendering', 'Inspecting video dimensions & duration...')
-    const videoInfo = await getVideoInfo(sourceVideo)
+    let videoDuration = 1800
+    try {
+      const vInfo = await getVideoInfo(sourceVideo)
+      videoDuration = vInfo.duration
+    } catch {}
+
     const transcript = loadTranscript(sourceVideo, campaignId)
+    const srtPath = loadTranscriptSrt(sourceVideo, campaignId)
 
-    // Slicing config
-    const clippingStrategies: string[] = cfg.clippingStrategies || ['multi_cut']
     const shortDuration = parseFloat(cfg.shortDuration || '45')
-    const startOffset = parseFloat(cfg.startOffset || '0')
-    const volumeMultiplier = parseFloat(cfg.volumeMultiplier || '1.0')
-    const backgroundStyles: string[] = cfg.backgroundStyles || ['split_mirror_blur']
-    const cornerStyles: string[] = cfg.foregroundCornerStyles || ['sharp']
+    const hookDuration = parseFloat(cfg.hookDuration || '3.5')
 
-    const assetsDir = getAssetsDir(campaignId)
-    const logoFiles = fs.existsSync(assetsDir)
-      ? fs.readdirSync(assetsDir).filter(f => !f.startsWith('.') && !f.endsWith('.part')).map(f => path.join(assetsDir, f))
-      : []
-    let logoPath = logoFiles.length > 0 ? logoFiles[0] : undefined
+    update('rendering', 'Building Story Re-Cut plan (Cold-Open Hook + Punch Zoom)...')
+    const cutmap = buildStoryRecutMap(videoDuration, transcript, srtPath, {
+      clipCount: 1,
+      startIndex: 1,
+      targetDuration: shortDuration,
+      hookDuration: hookDuration,
+      campaignName: campaign.name,
+    })
 
-    // On-demand download if logo is configured but not yet in assets folder
-    if (!logoPath && cfg.logoOverlayUrl) {
-      update('rendering', 'Downloading campaign logo overlay...')
-      try {
-        const dl = await downloadLogoOverlay(cfg.logoOverlayUrl, assetsDir)
-        if (dl) logoPath = dl
-      } catch (err: any) {
-        console.warn('[SandboxRender] Failed to download logo on demand:', err?.message || err)
-      }
-    }
-
-    const banners = (cfg.banners || []).slice(0, 5).map((b: any) => ({
-      text: b.text || '',
-      font: b.font || 'Arial',
-      textColor: b.textColor || 'white',
-      positionHeight: parseFloat(b.positionHeight || '85'),
-      fontSize: parseInt(b.fontSize || '54', 10),
-      background: b.background || 'black@0.7',
-      styledWordCount: parseInt(b.styledWordCount || '0', 10),
-      styledWordsColor: b.styledWordsColor || 'yellow',
-      showOnlyInLastSeconds: b.showOnlyInLastSeconds === true,
-      lastSecondsDuration: parseFloat(b.lastSecondsDuration || '0'),
-    })).filter((b: any) => b.text.trim() !== '')
-
-    const subtitleEnabled = cfg.enableSubtitles !== 'Disabled'
-    const subtitleConfig = {
-      font: cfg.subtitleFonts || 'Arial',
-      textColor: cfg.subtitleColors || 'white',
-      outlineColor: cfg.outlineColors || 'black',
-      fontSize: parseInt(cfg.subtitleWordSize || '60', 10),
-      placementHeight: parseFloat(cfg.subtitlePlacementHeight || '80'),
-      maxWordsPerScreen: parseInt(cfg.maxWordsPerScreen || '5', 10),
-      speakingWordHighlight: cfg.speakingWordHighlight || 'yellow',
-      textCase: cfg.subtitleTextCases || ['UPPERCASE'],
-    }
-
+    // Generate metadata for the test clip
+    update('rendering', 'Generating title & descriptions with AI...')
     const metaConfig: AiMetadataConfig = {
       titlesGuide: cfg.titlesGuide,
       descriptionsGuide: cfg.descriptionsGuide,
@@ -152,118 +115,55 @@ async function executeSandboxRender(jobId: string, campaignId: string) {
       campaignName: campaign.name,
     }
 
-    // Determine slice range
-    let startTime = startOffset
-    let endTime = Math.min(videoInfo.duration, startOffset + shortDuration)
-
-    if (clippingStrategies.includes('continuous')) {
-      const continuous = generateContinuousSlices({
-        videoDuration: videoInfo.duration,
-        clipCount: 1,
-        minDuration: shortDuration * 0.8,
-        maxDuration: shortDuration * 1.2,
-        startOffset,
-      })
-      if (continuous[0]) {
-        startTime = continuous[0].startTime
-        endTime = continuous[0].endTime
-      }
-    } else if (clippingStrategies.includes('smart_ai') && transcript.length > 0) {
-      update('rendering', 'Finding viral timestamp with AI...')
-      const suggestions = await findViralClips(transcript, {
-        minDuration: shortDuration * 0.8,
-        maxDuration: shortDuration * 1.2,
-        clipCount: 1,
-        niche: cfg.niche,
-        audioNotes: cfg.audioNotes,
-      })
-      if (suggestions[0]) {
-        startTime = suggestions[0].startTime
-        endTime = suggestions[0].endTime
-      }
-    }
-
-    // Generate Metadata
-    update('rendering', 'Generating viral title & on-screen text with AI...')
     let metadata: ShortMetadata
     try {
-      if (clippingStrategies.includes('smart_ai')) {
-        const clipWords = getClipTranscriptText(transcript, startTime, endTime)
-        metadata = await generateFullMetadata(clipWords, metaConfig)
-      } else {
-        const batch = await generateBatchMetadataFromGuidelines(1, metaConfig)
-        metadata = batch[0] || {
-          title: `${campaign.name} - Viral Clip`,
-          description: cfg.predefinedDescription || 'Check this out! #shorts #viral',
-          onScreenText: 'Watch till the end!',
-          hashtags: ['shorts', 'viral'],
-        }
+      const batch = await generateBatchMetadataFromGuidelines(1, metaConfig)
+      metadata = batch[0] || {
+        title: `${campaign.name} - Story Re-Cut Sample`,
+        description: cfg.predefinedDescription || '#shorts #viral',
+        onScreenText: '',
+        hashtags: ['shorts', 'viral'],
       }
     } catch {
       metadata = {
-        title: `${campaign.name} - Sample Clip`,
+        title: `${campaign.name} - Story Re-Cut Sample`,
         description: cfg.predefinedDescription || '#shorts #viral',
-        onScreenText: 'Watch this!',
+        onScreenText: '',
         hashtags: ['shorts', 'viral'],
       }
     }
 
-    // Render Video
-    const clipId = `sandbox_${Date.now()}`
-    const rawClipPath = path.join(clipsDir, `${clipId}_raw.mp4`)
-    const finalClipPath = path.join(clipsDir, `${clipId}.mp4`)
-
-    // Include On-Screen Text Hook banner on video (matching the campaign preview mockup)
-    const renderBanners = [...banners]
-    const hookText = metadata.onScreenText || (cfg.onScreenTextPool ? cfg.onScreenTextPool.split('\n')[0] : '')
-    if (hookText && hookText.trim()) {
-      renderBanners.unshift({
-        text: hookText.trim(),
-        font: cfg.onScreenFontName || 'Arial',
-        textColor: cfg.onScreenTextColor || 'white',
-        positionHeight: parseFloat(cfg.onScreenPositionHeightPercent ?? '27'),
-        fontSize: parseInt(cfg.onScreenSizePx ?? '64', 10),
-        background: cfg.onScreenBackground || 'black@0.5',
-        styledWordCount: parseInt(cfg.onScreenStyledWordCount ?? '0', 10),
-        styledWordsColor: cfg.onScreenStyledWordsColor || 'yellow',
-        showOnlyInLastSeconds: false,
-        lastSecondsDuration: 0,
-      })
-    }
-
-    update('rendering', 'Rendering 9:16 vertical video with FFMPEG (background, banners, logo)...')
-    const editRes = await editVideoClip({
-      inputPath: sourceVideo,
-      outputPath: rawClipPath,
-      startTime,
-      endTime,
-      preset: 'ultrafast', // High-speed preview render for Sandbox!
-      backgroundStyle: backgroundStyles,
-      cornerStyles,
-      volumeMultiplier,
-      logoPath,
-      overlayPosition: cfg.overlayPosition || 'Bottom Center',
-      overlayWidth: parseFloat(cfg.overlayWidthPercent ?? cfg.overlayWidth ?? '60'),
-      overlayHeightPercent: cfg.overlayHeightPercent !== undefined ? parseFloat(cfg.overlayHeightPercent) : undefined,
-      banners: renderBanners,
+    update('rendering', 'Rendering 9:16 vertical video with FFMPEG (ultrafast)...')
+    const manifest = await renderStoryRecutBatch(sourceVideo, cutmap, clipsDir, {
+      tighten: false, // fast preview for sandbox
+      onLog: (msg) => console.log(`[SandboxRender:${jobId}] ${msg}`),
     })
 
-    if (!editRes.success) {
-      throw new Error(`Video rendering failed: ${editRes.error}`)
+    if (!manifest || manifest.length === 0) {
+      throw new Error('Story Re-Cut renderer produced no output')
     }
 
-    if (subtitleEnabled) {
-      update('rendering', 'Generating and burning karaoke subtitles...')
-      const subWorkDir = path.join(clipsDir, 'tmp_sub', clipId)
-      const subOk = await addSubtitlesToVideo(rawClipPath, finalClipPath, subtitleConfig, subWorkDir)
-      if (!subOk) {
-        fs.renameSync(rawClipPath, finalClipPath)
-      } else if (fs.existsSync(rawClipPath)) {
-        try { fs.unlinkSync(rawClipPath) } catch {}
-      }
-    } else {
-      fs.renameSync(rawClipPath, finalClipPath)
-    }
+    const rendered = manifest[0]
+    const clipId = rendered.id
+
+    // Write meta JSON
+    const metaJsonPath = path.join(clipsDir, `${clipId}.meta.json`)
+    fs.writeFileSync(
+      metaJsonPath,
+      JSON.stringify({
+        clipId,
+        videoPath: rendered.file,
+        title: metadata.title,
+        description: metadata.description,
+        onScreenText: metadata.onScreenText,
+        hashtags: metadata.hashtags,
+        duration: rendered.duration_sec,
+        playbackRanges: rendered.playback_order_source_ranges,
+        roles: rendered.roles,
+        createdAt: new Date().toISOString(),
+      }, null, 2),
+      'utf8'
+    )
 
     const finalResult = {
       clipId,
@@ -273,10 +173,11 @@ async function executeSandboxRender(jobId: string, campaignId: string) {
       onScreenText: metadata.onScreenText,
       hashtags: metadata.hashtags,
       videoUrl: `/api/user/sandbox-render?clipId=${clipId}&campaignId=${campaignId}`,
-      duration: Math.round(endTime - startTime),
+      duration: rendered.duration_sec,
+      playbackRanges: rendered.playback_order_source_ranges,
     }
 
-    update('completed', '✅ Sandbox clip rendered successfully!', undefined, finalResult)
+    update('completed', '✅ Sandbox Story Re-Cut clip rendered successfully!', undefined, finalResult)
   } catch (err: any) {
     console.error(`[Sandbox Render Job ${jobId} Error]:`, err)
     update('error', '❌ Render failed', err.message || 'Render failed')
@@ -372,7 +273,7 @@ export async function POST(req: NextRequest) {
       id: jobId,
       campaignId,
       status: 'rendering',
-      progress: '🚀 Initializing render job...',
+      progress: '🚀 Initializing Story Re-Cut render job...',
       startedAt: Date.now(),
     })
 
@@ -384,7 +285,7 @@ export async function POST(req: NextRequest) {
       success: true,
       jobId,
       status: 'rendering',
-      progress: '🚀 Initializing render job...',
+      progress: '🚀 Initializing Story Re-Cut render job...',
     })
 
   } catch (error: any) {

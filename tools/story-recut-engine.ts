@@ -233,7 +233,7 @@ export async function renderStoryRecutBatch(
       timeout: 10 * 60 * 1000, // 10 minutes max for a batch
       env: {
         ...process.env,
-        FFMPEG_PRESET: process.env.FFMPEG_PRESET || 'veryfast',
+        FFMPEG_PRESET: process.env.FFMPEG_PRESET || 'ultrafast',
         FFMPEG_CRF: process.env.FFMPEG_CRF || '22',
       },
     })
