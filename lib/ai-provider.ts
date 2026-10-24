@@ -19,19 +19,19 @@ export const DEFAULT_OPENROUTER_KEY =
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
 const OPENROUTER_MODELS = [
-  'google/gemini-2.5-flash-lite',
-  'google/gemini-2.5-flash',
   'google/gemini-2.0-flash-exp:free',
   'meta-llama/llama-3.3-70b-instruct:free',
   'mistralai/mistral-small-24b-instruct-2501:free',
+  'google/gemini-2.5-flash-lite',
+  'google/gemini-2.5-flash',
 ]
 
-// Native Gemini models to try in order of highest free quota (1,500 RPD) to lowest (20 RPD)
+// Native Gemini models to try in order of highest availability & free tier quota
 const GEMINI_MODELS = [
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-lite',
-  'gemini-1.5-flash',
   'gemini-3.8-flash',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+  'gemini-3.5-flash',
 ]
 
 /**
@@ -186,10 +186,18 @@ async function callGeminiDirect(
         if (output) return output
       } catch (err: any) {
         lastErr = err
-        // If quota or rate limit, try next model before moving to next key
-        const isQuota = err?.message?.includes('429') || err?.message?.includes('quota') || err?.message?.includes('RESOURCE_EXHAUSTED')
-        if (isQuota) {
-          console.warn(`[GeminiDirect] Model ${model} quota reached, trying next model...`)
+        // If quota, rate limit, or model 404/deprecated, try next model before moving to next key
+        const errMsg = String(err?.message || '')
+        const isModelFailover =
+          errMsg.includes('429') ||
+          errMsg.includes('quota') ||
+          errMsg.includes('RESOURCE_EXHAUSTED') ||
+          errMsg.includes('404') ||
+          errMsg.includes('NOT_FOUND') ||
+          errMsg.includes('no longer available') ||
+          errMsg.includes('400')
+        if (isModelFailover) {
+          console.warn(`[GeminiDirect] Model ${model} unavailable (${errMsg.slice(0, 100)}), trying next model...`)
           continue
         }
         throw err

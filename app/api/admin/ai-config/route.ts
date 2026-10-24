@@ -28,7 +28,7 @@ export async function GET() {
       maskedKey,
       isCustom,
       geminiKeyCount: geminiCount,
-      models: ['google/gemini-2.5-flash', 'google/gemini-2.5-flash-lite'],
+      models: ['google/gemini-2.0-flash-exp:free', 'google/gemini-2.5-flash-lite', 'google/gemini-2.5-flash'],
     })
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Failed to load AI config' }, { status: 500 })

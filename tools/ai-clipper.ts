@@ -9,7 +9,7 @@
  * 5. Parse campaign brief docs to auto-fill campaign form fields
  */
 
-const GEMINI_MODEL = 'gemini-2.5-flash'
+const GEMINI_MODEL = 'gemini-3.8-flash'
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`
 
 // ─── Types ────────────────────────────────────────────────────────────────────

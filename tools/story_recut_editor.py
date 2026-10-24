@@ -279,10 +279,6 @@ def render_clip(src, clip, srt_entries, out_dir, tmp, tighten=False):
             "playback_order_source_ranges": [
                 [round(sg["start"], 2), round(sg["end"], 2)] for sg in segments],
             "roles": [sg["role"] for sg in segments]}
-            "duration_sec": round(probe_duration(final), 2),
-            "playback_order_source_ranges": [
-                [round(sg["start"], 2), round(sg["end"], 2)] for sg in segments],
-            "roles": [sg["role"] for sg in segments]}
 
 
 def warn_on_duplicates(clips):

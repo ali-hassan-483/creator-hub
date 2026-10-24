@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      model: 'google/gemini-2.5-flash',
+      model: 'google/gemini-2.0-flash-exp:free',
       response: responseText,
       latencyMs,
     })
