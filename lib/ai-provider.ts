@@ -19,9 +19,11 @@ export const DEFAULT_OPENROUTER_KEY =
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
 const OPENROUTER_MODELS = [
-  'google/gemini-2.0-flash-exp:free',
-  'meta-llama/llama-3.3-70b-instruct:free',
-  'mistralai/mistral-small-24b-instruct-2501:free',
+  'openrouter/free',
+  'google/gemma-2-9b-it:free',
+  'meta-llama/llama-3.2-3b-instruct:free',
+  'meta-llama/llama-3.2-1b-instruct:free',
+  'qwen/qwen-2.5-7b-instruct:free',
   'google/gemini-2.5-flash-lite',
   'google/gemini-2.5-flash',
 ]
