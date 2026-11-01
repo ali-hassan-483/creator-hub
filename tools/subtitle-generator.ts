@@ -16,6 +16,7 @@
 
 import * as fs from 'fs'
 import * as path from 'path'
+import * as os from 'os'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import { resolveToolScript } from './story-recut-engine'
@@ -122,16 +123,18 @@ import { executeGeminiWithFailover } from '../lib/gemini-pool'
  * Uses Multi-Key Failover pool across all user keys.
  */
 export async function transcribeWithGemini(videoPath: string): Promise<TranscriptSegment[]> {
+  const tmpAudioDir = path.join(os.tmpdir(), 'creator_hub_audio')
+  fs.mkdirSync(tmpAudioDir, { recursive: true })
+  const audioPath = path.join(tmpAudioDir, `${path.basename(videoPath)}_${Date.now()}_audio.mp3`)
+
   try {
     // Extract speech-optimized mono audio (24kbps 16kHz mono = ~10.8MB per hour, safely under Google's 20MB inlineData limit)
-    const audioPath = videoPath + '_audio.mp3'
     console.log(`[Gemini-Transcribe] 🎵 Extracting speech-optimized audio for Gemini...`)
     await execAsync(`ffmpeg -i "${videoPath}" -vn -ar 16000 -ac 1 -b:a 24k -t 3600 -y "${audioPath}"`, {
       maxBuffer: 15 * 1024 * 1024,
       timeout: 90000, // 1.5 min timeout
     })
     const audioData = fs.readFileSync(audioPath).toString('base64')
-    if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath)
 
     const prompt = `Transcribe this audio with word-level timestamps in JSON format.
 Return ONLY a JSON array of segments like:
@@ -182,6 +185,10 @@ No markdown, no explanation. Pure JSON only.`
   } catch (error: any) {
     console.error(`[Gemini-Transcribe] ❌ ${error.message}`)
     return []
+  } finally {
+    try {
+      if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath)
+    } catch {}
   }
 }
 

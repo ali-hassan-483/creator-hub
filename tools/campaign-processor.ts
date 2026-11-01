@@ -142,10 +142,11 @@ export function getExistingSourceVideos(campaignId: string): string[] {
       if (f.startsWith('.') || f.endsWith('.part') || f.endsWith('.json') || f.endsWith('.txt')) {
         return false
       }
+      if (f.includes('_audio') || f.endsWith('.mp3') || f.endsWith('.wav') || f.endsWith('.aac') || f.endsWith('.m4a')) {
+        return false
+      }
       const ext = path.extname(f).toLowerCase()
-      if (VALID_VIDEO_EXTS.has(ext)) return true
-      // Accept any file that is not a known non-video file
-      return !['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.json', '.srt', '.vtt', '.ass', '.txt', '.log'].includes(ext)
+      return VALID_VIDEO_EXTS.has(ext)
     })
     .map(f => path.join(sourcesDir, f))
     .filter(fullPath => {
