@@ -139,7 +139,7 @@ def parse_bg_to_ass(bg_str):
     return to_ass_bgr(color_part, alpha=ass_alpha)
 
 
-def style_on_screen_text(text, count, highlight_color):
+def style_on_screen_text(text, count, highlight_color, base_color="white"):
     """Highlight last `count` words in on-screen text with highlight_color in ASS."""
     if not text:
         return ""
@@ -147,14 +147,88 @@ def style_on_screen_text(text, count, highlight_color):
     if not words or count <= 0:
         return text
     highlight_start = max(0, len(words) - count)
-    ass_color = to_ass_bgr(highlight_color)
+    ass_hl = to_ass_bgr(highlight_color)
+    ass_base = to_ass_bgr(base_color)
     res = []
     for i, w in enumerate(words):
         if i >= highlight_start:
-            res.append(f"{{\\c{ass_color}&}}{w}{{\\c&H00FFFFFF&}}")
+            res.append(f"{{\\c{ass_hl}&}}{w}{{\\c{ass_base}&}}")
         else:
             res.append(w)
     return " ".join(res)
+
+
+def format_on_screen_hook(raw_text, styled_cnt, styled_color, base_color="white", font_size=52):
+    """
+    Format on-screen hook text for ASS:
+    - Auto-wrap long single lines into balanced centered lines with \\N (prevent clipping)
+    - Highlight the last `styled_cnt` words with `styled_color`
+    - Normalize newlines to ASS \\N
+    """
+    if not raw_text or not str(raw_text).strip():
+        return ""
+    text = str(raw_text).strip().replace("\r\n", "\n")
+
+    # Dynamic character limit per line based on font size (usable 900px width on 1080 canvas)
+    max_chars = max(18, min(32, int(round(900.0 / (font_size * 0.58)))))
+
+    # If text already has newlines, preserve them
+    if "\n" in text:
+        lines = [l.strip() for l in text.split("\n") if l.strip()]
+    elif len(text) > max_chars and len(text.split()) > 2:
+        words = text.split()
+        total_len = len(text)
+        # If text fits into 2 balanced lines:
+        if total_len <= max_chars * 2 + 6:
+            target_mid = total_len / 2.0
+            best_split = 1
+            best_diff = 9999
+            curr_len = 0
+            for i in range(len(words) - 1):
+                curr_len += len(words[i]) + 1
+                diff = abs(curr_len - target_mid)
+                if diff < best_diff:
+                    best_diff = diff
+                    best_split = i + 1
+            lines = [" ".join(words[:best_split]), " ".join(words[best_split:])]
+        else:
+            # Wrap into 3+ lines if very long
+            lines = []
+            curr = []
+            curr_len = 0
+            for w in words:
+                if curr and (curr_len + len(w) + 1 > max_chars):
+                    lines.append(" ".join(curr))
+                    curr = [w]
+                    curr_len = len(w)
+                else:
+                    curr.append(w)
+                    curr_len += len(w) + (1 if len(curr) > 1 else 0)
+            if curr:
+                lines.append(" ".join(curr))
+    else:
+        lines = [text]
+
+    # Apply word highlighting across the lines
+    all_words = text.split()
+    highlight_start = max(0, len(all_words) - styled_cnt) if styled_cnt > 0 else 999999
+    ass_hl = to_ass_bgr(styled_color)
+    ass_base = to_ass_bgr(base_color)
+
+    word_global_idx = 0
+    formatted_lines = []
+    for line in lines:
+        line_words = line.split()
+        res_words = []
+        for w in line_words:
+            if word_global_idx >= highlight_start:
+                res_words.append(f"{{\\c{ass_hl}&}}{w}{{\\c{ass_base}&}}")
+            else:
+                res_words.append(w)
+            word_global_idx += 1
+        formatted_lines.append(" ".join(res_words))
+
+    return "\\N".join(formatted_lines)
 
 
 def calc_logo_overlay_xy(pos_str, height_pct=None):
@@ -263,9 +337,15 @@ def build_ass(srt_entries, segments, keywords, out_path, on_screen_cfg=None, on_
 
         extra_styles += (
             f"Style: OnScreenHook,{os_font},{os_size},{os_color},{os_color},&H00000000,{os_bg},"
-            f"-1,0,0,0,100,100,0,0,3,10,0,8,60,60,{os_margin_v},1\n"
+            f"-1,0,0,0,100,100,0,0,3,12,0,8,90,90,{os_margin_v},1\n"
         )
-        styled_hook = style_on_screen_text(str(on_screen_text).strip(), styled_cnt, styled_col)
+        styled_hook = format_on_screen_hook(
+            str(on_screen_text).strip(),
+            styled_cnt,
+            styled_col,
+            base_color=osc.get("text_color", "white"),
+            font_size=os_size,
+        )
         extra_events.append(f"Dialogue: 1,0:00:00.00,{fmt_ass_time(total_dur)},OnScreenHook,,0,0,0,,{styled_hook}")
         used += 1
 
@@ -273,11 +353,11 @@ def build_ass(srt_entries, segments, keywords, out_path, on_screen_cfg=None, on_
 ScriptType: v4.00+
 PlayResX: {WIDTH}
 PlayResY: {HEIGHT}
-WrapStyle: 2
+WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{sub_font},{sub_size},{sub_color},{sub_color},{sub_outline},&H64000000,-1,0,0,0,100,100,0,0,1,4,0,2,60,60,{sub_margin_v},1
+Style: Default,{sub_font},{sub_size},{sub_color},{sub_color},{sub_outline},&H64000000,-1,0,0,0,100,100,0,0,1,4,0,2,80,80,{sub_margin_v},1
 {extra_styles}
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

@@ -273,7 +273,7 @@ export function CampaignPreviewMockup({ formData }: CampaignPreviewMockupProps) 
                 fontFamily: formData.onScreenFontName || 'inherit',
               }}
             >
-              <p className="text-[12px] font-black tracking-wide leading-tight drop-shadow-md">
+              <p className="text-[12px] font-black tracking-wide leading-tight drop-shadow-md text-center whitespace-pre-wrap break-words">
                 {renderStyledWords(
                   onScreenText,
                   onScreenColor,
