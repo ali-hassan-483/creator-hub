@@ -70,11 +70,15 @@ def run(cmd, **kw):
 
 
 def probe_duration(path):
-    r = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-         "-of", "json", str(path)],
-        capture_output=True, text=True, check=True)
-    return float(json.loads(r.stdout)["format"]["duration"])
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "json", str(path)],
+            capture_output=True, text=True, check=True)
+        return float(json.loads(r.stdout)["format"]["duration"])
+    except Exception as e:
+        print(f"  [Probe] Error probing duration of {path}: {e}")
+        return 0.0
 
 
 def parse_ts(v):
@@ -869,6 +873,8 @@ def main():
         print(f"No SRT captions file found for {src.name}")
 
     src_dur = probe_duration(src)
+    if src_dur <= 0:
+        raise SystemExit(f"source video is invalid or has 0 duration: {src}")
     out_dir = Path(args.out); out_dir.mkdir(parents=True, exist_ok=True)
 
     manifest = []
