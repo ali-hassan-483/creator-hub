@@ -263,7 +263,7 @@ export function CampaignPreviewMockup({ formData }: CampaignPreviewMockupProps) 
 
           {/* ON-SCREEN TEXT (HOOK BANNER) */}
           <div
-            className="absolute left-3 right-3 z-30 flex justify-center pointer-events-none"
+            className="absolute left-3 right-3 z-30 flex justify-center pointer-events-none -translate-y-1/2"
             style={{ top: `${onScreenPos}%` }}
           >
             <div

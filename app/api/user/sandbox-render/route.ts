@@ -86,8 +86,33 @@ async function executeSandboxRender(jobId: string, campaignId: string) {
       videoDuration = vInfo.duration
     } catch {}
 
-    const transcript = loadTranscript(sourceVideo, campaignId)
-    const srtPath = loadTranscriptSrt(sourceVideo, campaignId)
+    let transcript = loadTranscript(sourceVideo, campaignId)
+    let srtPath = loadTranscriptSrt(sourceVideo, campaignId)
+
+    // If subtitles are enabled and transcript/SRT is missing, generate on demand
+    const subsEnabled = cfg.enableSubtitles !== 'Disabled (Fallback to AI Captions)' && !!cfg.enableSubtitles
+    if (subsEnabled && (!srtPath || transcript.length === 0)) {
+      update('rendering', 'Generating speech-to-text transcript for subtitles...')
+      try {
+        const { transcribeVideo } = await import('@/tools/subtitle-generator')
+        const { segmentsToSrt, getTranscriptsDir } = await import('@/tools/campaign-processor')
+        const transcriptsDir = getTranscriptsDir(campaignId)
+        const baseName = path.basename(sourceVideo, path.extname(sourceVideo))
+        const workDir = path.join(transcriptsDir, 'tmp', baseName)
+        const segments = await transcribeVideo(sourceVideo, workDir)
+        if (segments && segments.length > 0) {
+          const jsonPath = path.join(transcriptsDir, `${baseName}.json`)
+          const generatedSrt = path.join(transcriptsDir, `${baseName}.srt`)
+          fs.writeFileSync(jsonPath, JSON.stringify(segments, null, 2), 'utf8')
+          fs.writeFileSync(generatedSrt, segmentsToSrt(segments), 'utf8')
+          srtPath = generatedSrt
+          transcript = segments
+          console.log(`[SandboxRender] ✅ Generated on-demand transcript: ${segments.length} segments`)
+        }
+      } catch (err: any) {
+        console.warn('[SandboxRender] On-demand transcription failed:', err.message)
+      }
+    }
 
     const shortDuration = parseFloat(cfg.shortDuration || '45')
     const hookDuration = parseFloat(cfg.hookDuration || '3.5')
@@ -162,18 +187,19 @@ async function executeSandboxRender(jobId: string, campaignId: string) {
         text: onScreenTextVal,
         font: cfg.onScreenFontName || 'Arial',
         text_color: cfg.onScreenTextColor || 'white',
-        position_height_percent: Number(cfg.onScreenPositionHeightPercent) || 27,
+        position_height_percent: cfg.onScreenPositionHeightPercent !== undefined && cfg.onScreenPositionHeightPercent !== '' ? Number(cfg.onScreenPositionHeightPercent) : 27,
         size_px: Number(cfg.onScreenSizePx) || 52,
         background: cfg.onScreenBackground || 'black@0.5',
         styled_word_count: Number(cfg.onScreenStyledWordCount) || 0,
         styled_words_color: cfg.onScreenStyledWordsColor || 'yellow',
       },
       subtitlesConfig: {
+        enable: cfg.enableSubtitles !== 'Disabled (Fallback to AI Captions)',
         font: cfg.subtitleFonts || 'Arial',
         color: cfg.subtitleColors || 'white',
         outline_color: cfg.outlineColors || 'black',
         font_size: Number(cfg.subtitleWordSize) || 54,
-        placement_height_percent: Number(cfg.subtitlesPlacementHeightPercent) || 80,
+        placement_height_percent: cfg.subtitlesPlacementHeightPercent !== undefined && cfg.subtitlesPlacementHeightPercent !== '' ? Number(cfg.subtitlesPlacementHeightPercent) : 80,
       },
       onScreenTextList: onScreenTextVal ? [onScreenTextVal] : [],
     })

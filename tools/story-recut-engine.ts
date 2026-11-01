@@ -53,6 +53,7 @@ export interface StoryRecutOnScreenTextConfig {
 }
 
 export interface StoryRecutSubtitleConfig {
+  enable?: boolean
   font?: string
   color?: string
   outline_color?: string

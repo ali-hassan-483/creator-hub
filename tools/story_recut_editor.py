@@ -269,19 +269,33 @@ SRT_TIME = re.compile(
 
 
 def load_srt(path):
-    entries, block = [], Path(path).read_text(encoding="utf-8", errors="ignore").strip().split("\n\n")
-    for b in block:
-        lines = [l for l in b.strip().splitlines() if l.strip()]
-        for i, l in enumerate(lines):
-            m = SRT_TIME.search(l)
-            if m:
-                g = [int(x) for x in m.groups()]
-                start = g[0] * 3600 + g[1] * 60 + g[2] + g[3] / 1000
-                end = g[4] * 3600 + g[5] * 60 + g[6] + g[7] / 1000
-                text = " ".join(lines[i + 1:]).replace("\n", " ").strip()
-                if text:
-                    entries.append((start, end, re.sub(r"<[^>]+>", "", text)))
-                break
+    if not path or not Path(path).is_file():
+        return []
+    try:
+        raw = Path(path).read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return []
+
+    entries = []
+    lines = [l.strip() for l in raw.splitlines() if l.strip()]
+    i = 0
+    while i < len(lines):
+        m = SRT_TIME.search(lines[i])
+        if m:
+            g = [int(x) for x in m.groups()]
+            start = g[0] * 3600 + g[1] * 60 + g[2] + g[3] / 1000
+            end = g[4] * 3600 + g[5] * 60 + g[6] + g[7] / 1000
+            text_lines = []
+            i += 1
+            while i < len(lines) and not SRT_TIME.search(lines[i]) and not lines[i].isdigit():
+                text_lines.append(lines[i])
+                i += 1
+            cleaned_text = " ".join(text_lines).strip()
+            cleaned_text = re.sub(r"<[^>]+>", "", cleaned_text).strip()
+            if cleaned_text:
+                entries.append((start, end, cleaned_text))
+        else:
+            i += 1
     return entries
 
 
@@ -332,8 +346,8 @@ def build_ass(srt_entries, segments, keywords, out_path, on_screen_cfg=None, on_
         styled_cnt = int(osc.get("styled_word_count", 0))
         styled_col = osc.get("styled_words_color", "yellow")
         os_height_pct = float(osc.get("position_height_percent", 27))
-        # Top-center alignment uses MarginV from the TOP
-        os_margin_v = max(20, min(1800, int(round(HEIGHT * (os_height_pct / 100)))))
+        # Top-center alignment uses MarginV from the TOP, centered around os_height_pct
+        os_margin_v = max(10, min(1800, int(round(HEIGHT * (os_height_pct / 100.0) - (os_size * 0.8)))))
 
         extra_styles += (
             f"Style: OnScreenHook,{os_font},{os_size},{os_color},{os_color},&H00000000,{os_bg},"
@@ -346,7 +360,7 @@ def build_ass(srt_entries, segments, keywords, out_path, on_screen_cfg=None, on_
             base_color=osc.get("text_color", "white"),
             font_size=os_size,
         )
-        extra_events.append(f"Dialogue: 1,0:00:00.00,{fmt_ass_time(total_dur)},OnScreenHook,,0,0,0,,{styled_hook}")
+        extra_events.append(f"Dialogue: 1,0:00:00.00,{fmt_ass_time(total_dur)},OnScreenHook,,0,0,{os_margin_v},,{styled_hook}")
         used += 1
 
     header = f"""[Script Info]
@@ -496,11 +510,15 @@ def render_clip(src, clip, srt_entries, out_dir, tmp, cfg, tighten=False):
     on_screen_cfg = cfg.get("on_screen_text") or {}
     subtitle_cfg = cfg.get("subtitles") or {}
 
+    # Check if subtitles are enabled — if disabled, don't pass srt_entries to build_ass
+    subs_enabled = subtitle_cfg.get("enable", False)
+    active_srt = srt_entries if subs_enabled else []
+
     ass_path = None
-    if srt_entries or (clip_text and str(clip_text).strip()):
+    if active_srt or (clip_text and str(clip_text).strip()):
         try:
             ass = tmp / f"{cid}.ass"
-            n = build_ass(srt_entries, segments, keywords, ass, on_screen_cfg=on_screen_cfg, on_screen_text=clip_text, subtitle_cfg=subtitle_cfg)
+            n = build_ass(active_srt, segments, keywords, ass, on_screen_cfg=on_screen_cfg, on_screen_text=clip_text, subtitle_cfg=subtitle_cfg)
             if n > 0:
                 ass_path = ass
                 print(f"  captions/on-screen hook: {n} element(s) burned")

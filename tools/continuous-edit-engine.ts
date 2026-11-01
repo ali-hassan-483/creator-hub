@@ -206,18 +206,19 @@ export async function maintainCampaignClipPool(
       onScreenConfig: {
         font: cfg.onScreenFontName || 'Arial',
         text_color: cfg.onScreenTextColor || 'white',
-        position_height_percent: Number(cfg.onScreenPositionHeightPercent) || 27,
+        position_height_percent: cfg.onScreenPositionHeightPercent !== undefined && cfg.onScreenPositionHeightPercent !== '' ? Number(cfg.onScreenPositionHeightPercent) : 27,
         size_px: Number(cfg.onScreenSizePx) || 52,
         background: cfg.onScreenBackground || 'black@0.5',
         styled_word_count: Number(cfg.onScreenStyledWordCount) || 0,
         styled_words_color: cfg.onScreenStyledWordsColor || 'yellow',
       },
       subtitlesConfig: {
+        enable: cfg.enableSubtitles !== 'Disabled (Fallback to AI Captions)',
         font: cfg.subtitleFonts || 'Arial',
         color: cfg.subtitleColors || 'white',
         outline_color: cfg.outlineColors || 'black',
         font_size: Number(cfg.subtitleWordSize) || 54,
-        placement_height_percent: Number(cfg.subtitlesPlacementHeightPercent) || 80,
+        placement_height_percent: cfg.subtitlesPlacementHeightPercent !== undefined && cfg.subtitlesPlacementHeightPercent !== '' ? Number(cfg.subtitlesPlacementHeightPercent) : 80,
       },
       onScreenTextList: onScreenList,
     })
