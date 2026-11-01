@@ -59,6 +59,9 @@ export interface StoryRecutSubtitleConfig {
   outline_color?: string
   font_size?: number
   placement_height_percent?: number
+  max_words_per_screen?: number
+  speaking_word_highlight?: string
+  text_cases?: string[]
 }
 
 export interface StoryRecutMap {

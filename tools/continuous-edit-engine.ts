@@ -219,6 +219,9 @@ export async function maintainCampaignClipPool(
         outline_color: cfg.outlineColors || 'black',
         font_size: Number(cfg.subtitleWordSize) || 54,
         placement_height_percent: cfg.subtitlesPlacementHeightPercent !== undefined && cfg.subtitlesPlacementHeightPercent !== '' ? Number(cfg.subtitlesPlacementHeightPercent) : 80,
+        max_words_per_screen: Number(cfg.maxWordsPerScreen) || 5,
+        speaking_word_highlight: cfg.speakingWordHighlight || 'yellow',
+        text_cases: Array.isArray(cfg.subtitleTextCases) ? cfg.subtitleTextCases : ['Normal Text'],
       },
       onScreenTextList: onScreenList,
     })

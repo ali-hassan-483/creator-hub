@@ -107,6 +107,9 @@ def to_ass_bgr(color_str, alpha=0):
         "blue": "F6823B",    # BGR for blue
         "green": "22C55E",
         "cyan": "F8BD38",
+        "orange": "0080FF",
+        "purple": "800080",
+        "pink": "CBC0FF",
     }
     if c in named:
         return f"&H{alpha:02X}{named[c]}"
@@ -118,7 +121,7 @@ def to_ass_bgr(color_str, alpha=0):
             r = hex_c[0:2]
             g = hex_c[2:4]
             b = hex_c[4:6]
-            return f"&H{alpha:02X}{b}{g}{r}"
+            return f"&H{alpha:02X}{b.upper()}{g.upper()}{r.upper()}"
     return f"&H{alpha:02X}FFFFFF"
 
 
@@ -324,6 +327,93 @@ def get_whisper_model():
     return _WHISPER_MODEL if _WHISPER_MODEL is not False else None
 
 
+def normalize_font_name(font_name):
+    if not font_name:
+        return "Arial"
+    f = str(font_name).strip()
+    first_part = f.split(",")[0].strip()
+    low = first_part.lower()
+    if "montenegrin" in low or "dela" in low:
+        return "Dela Gothic One"
+    return first_part
+
+
+def apply_text_case(text, cases):
+    if not text:
+        return ""
+    if not cases:
+        return text
+    cases_lower = [str(c).lower() for c in cases]
+    if any("upper" in c for c in cases_lower):
+        return text.upper()
+    if any("lower" in c for c in cases_lower):
+        return text.lower()
+    return text
+
+
+def build_subtitle_karaoke_events(segments_data, max_words=5, hl_color="&H0000D7FF", txt_color="&H00FFFFFF", text_cases=None):
+    """
+    Generate dynamic modern karaoke subtitle events matching admin settings.
+    - Active speaking word highlighted in hl_color
+    - Grouped into max_words words per screen
+    - Text case applied
+    """
+    events = []
+    hl_c = hl_color.rstrip("&")
+    txt_c = txt_color.rstrip("&")
+
+    for seg in segments_data:
+        words = seg.get("words", [])
+        if words:
+            # Word-level timestamps available
+            for i in range(0, len(words), max_words):
+                chunk = words[i : i + max_words]
+                if not chunk:
+                    continue
+                for j, active_w in enumerate(chunk):
+                    ws = active_w["start"]
+                    we = active_w["end"]
+                    if we <= ws:
+                        we = ws + 0.15
+                    parts = []
+                    for idx, w in enumerate(chunk):
+                        w_text = apply_text_case(w["word"], text_cases)
+                        if idx == j:
+                            parts.append(f"{{\\c{hl_c}&}}{w_text}{{\\c{txt_c}&}}")
+                        else:
+                            parts.append(w_text)
+                    events.append((ws, we, " ".join(parts)))
+        else:
+            # Sentence timestamps: divide evenly across words
+            seg_text = seg.get("text", "").strip()
+            if not seg_text:
+                continue
+            all_words = seg_text.split()
+            seg_start = seg.get("start", 0.0)
+            seg_end = seg.get("end", seg_start + 2.0)
+            seg_dur = max(0.5, seg_end - seg_start)
+            chunks = [all_words[i : i + max_words] for i in range(0, len(all_words), max_words)]
+            if not chunks:
+                continue
+            time_per_chunk = seg_dur / len(chunks)
+            for c_idx, chunk in enumerate(chunks):
+                cs = seg_start + c_idx * time_per_chunk
+                ce = cs + time_per_chunk
+                time_per_word = time_per_chunk / max(1, len(chunk))
+                for j in range(len(chunk)):
+                    ws = round(cs + j * time_per_word, 2)
+                    we = round(ws + time_per_word, 2)
+                    parts = []
+                    for idx, w in enumerate(chunk):
+                        w_text = apply_text_case(w, text_cases)
+                        if idx == j:
+                            parts.append(f"{{\\c{hl_c}&}}{w_text}{{\\c{txt_c}&}}")
+                        else:
+                            parts.append(w_text)
+                    events.append((ws, we, " ".join(parts)))
+    return events
+
+
 def transcribe_clip_audio(video_path: Path):
     """Transcribe a rendered clip (15-60s) in 2-3 seconds using Whisper on CPU."""
     model = get_whisper_model()
@@ -342,39 +432,31 @@ def transcribe_clip_audio(video_path: Path):
         res = model.transcribe(str(wav_path), word_timestamps=True, fp16=False, verbose=False)
 
         raw_segments = res.get("segments", [])
-        caption_blocks = []
+        parsed_segments = []
 
         for seg in raw_segments:
-            words = seg.get("words", [])
-            if words:
-                chunk = []
-                for w in words:
-                    w_txt = (w.get("word") or "").strip()
-                    if not w_txt:
-                        continue
-                    chunk.append((float(w.get("start", 0.0)), float(w.get("end", 0.0)), w_txt))
-                    if len(chunk) >= 4:
-                        s_time = round(chunk[0][0], 2)
-                        e_time = round(chunk[-1][1], 2)
-                        text_str = " ".join(x[2] for x in chunk)
-                        if e_time - s_time >= 0.2:
-                            caption_blocks.append((s_time, e_time, text_str))
-                        chunk = []
-                if chunk:
-                    s_time = round(chunk[0][0], 2)
-                    e_time = round(chunk[-1][1], 2)
-                    text_str = " ".join(x[2] for x in chunk)
-                    if e_time - s_time >= 0.2:
-                        caption_blocks.append((s_time, e_time, text_str))
-            else:
-                text_str = (seg.get("text") or "").strip()
-                if text_str:
-                    s_time = round(float(seg.get("start", 0.0)), 2)
-                    e_time = round(float(seg.get("end", 0.0)), 2)
-                    if e_time - s_time >= 0.2:
-                        caption_blocks.append((s_time, e_time, text_str))
+            seg_text = (seg.get("text") or "").strip()
+            if not seg_text:
+                continue
+            seg_start = round(float(seg.get("start", 0.0)), 2)
+            seg_end = round(float(seg.get("end", 0.0)), 2)
+            words = []
+            for w in seg.get("words", []):
+                w_txt = (w.get("word") or "").strip()
+                if w_txt:
+                    words.append({
+                        "word": w_txt,
+                        "start": round(float(w.get("start", seg_start)), 2),
+                        "end": round(float(w.get("end", seg_end)), 2),
+                    })
+            parsed_segments.append({
+                "start": seg_start,
+                "end": seg_end,
+                "text": seg_text,
+                "words": words,
+            })
 
-        return caption_blocks
+        return parsed_segments
     except Exception as e:
         print(f"  [Whisper] Transcription execution failed: {e}")
         return []
@@ -387,57 +469,74 @@ def transcribe_clip_audio(video_path: Path):
 def build_ass(srt_entries, segments, keywords, out_path, on_screen_cfg=None, on_screen_text=None, subtitle_cfg=None, joined_path=None):
     """segments: list of dicts in PLAYBACK order, with start/end (source sec)."""
     events, offset, used = [], 0.0, 0
-    for seg in segments:
-        s, e = seg["start"], seg["end"]
-        for (cs, ce, text) in srt_entries:
-            if ce <= s or cs >= e:
-                continue
-            ns = offset + max(0.0, cs - s)
-            ne = offset + min(e - s, ce - s)
-            if ne - ns >= 0.15:
-                events.append((ns, ne, highlight(text, keywords)))
-                used += 1
-        offset += (e - s)
 
-    total_dur = max(1.0, offset if offset > 0 else 60.0)
-
-    # Subtitle font & color options
+    # Subtitle configuration parameters from campaign settings
     sub_cfg = subtitle_cfg or {}
-    sub_font = sub_cfg.get("font") or "Arial"
-    sub_size = int(sub_cfg.get("font_size", 54))
-    sub_color = to_ass_bgr(sub_cfg.get("color", "white"))
-    sub_outline = to_ass_bgr(sub_cfg.get("outline_color", "black"))
-    sub_pos_pct = float(sub_cfg.get("placement_height_percent", 80))
-    sub_margin_v = max(20, min(1800, int(round(HEIGHT * (1.0 - (sub_pos_pct / 100))))))
+    sub_font = normalize_font_name(sub_cfg.get("font") or "Arial")
+    sub_size = int(sub_cfg.get("font_size") or 100)
+    sub_color = to_ass_bgr(sub_cfg.get("color") or "white")
+    sub_outline = to_ass_bgr(sub_cfg.get("outline_color") or "black")
+    sub_hl = to_ass_bgr(sub_cfg.get("speaking_word_highlight") or "yellow")
+    sub_pos_pct = float(sub_cfg.get("placement_height_percent") or 80)
+    sub_margin_v = max(20, min(1800, int(round(HEIGHT * (1.0 - (sub_pos_pct / 100.0))))))
+    outline_px = max(3, min(15, int(round(sub_size * 0.08))))
+    max_words = max(1, min(20, int(sub_cfg.get("max_words_per_screen") or 5)))
+    text_cases = sub_cfg.get("text_cases") or ["Normal Text"]
 
     subs_cfg_enable = sub_cfg.get("enable")
     subs_enabled = subs_cfg_enable is not False and str(subs_cfg_enable).lower() not in ("false", "0", "disabled")
 
-    # If subtitles are disabled, clear any parsed events
-    if not subs_enabled:
-        events = []
-    elif len(events) == 0 and joined_path and Path(joined_path).is_file():
-        # Fallback: No captions matched the segment slices or no SRT was found.
-        # Transcribe the joined clip audio directly using local Whisper (takes ~1-2s for a 15-60s clip).
+    # 1. Map srt_entries into playback segments if available
+    matched_srt_segments = []
+    if subs_enabled and srt_entries:
+        for seg in segments:
+            s, e = seg["start"], seg["end"]
+            for (cs, ce, text) in srt_entries:
+                if ce <= s or cs >= e:
+                    continue
+                ns = round(offset + max(0.0, cs - s), 2)
+                ne = round(offset + min(e - s, ce - s), 2)
+                if ne - ns >= 0.15:
+                    matched_srt_segments.append({
+                        "start": ns,
+                        "end": ne,
+                        "text": text,
+                    })
+            offset += (e - s)
+
+    total_dur = max(1.0, offset if offset > 0 else 60.0)
+
+    # If srt_entries matched, generate karaoke events
+    if matched_srt_segments:
+        k_events = build_subtitle_karaoke_events(matched_srt_segments, max_words=max_words, hl_color=sub_hl, txt_color=sub_color, text_cases=text_cases)
+        events.extend(k_events)
+        used += len(k_events)
+
+    # 2. If no matching events from srt, transcribe joined clip audio directly with Whisper!
+    if subs_enabled and len(events) == 0 and joined_path and Path(joined_path).is_file():
         try:
-            print("  [Subtitles] No pre-existing captions matched segments. Transcribing clip directly with Whisper...")
-            clip_subs = transcribe_clip_audio(Path(joined_path))
-            if clip_subs:
-                print(f"  [Subtitles] ✅ Transcribed {len(clip_subs)} spoken dialogue lines directly from clip!")
-                for cs, ce, ctext in clip_subs:
-                    events.append((cs, ce, highlight(ctext, keywords)))
-                    used += 1
+            print("  [Subtitles] Transcribing clip directly with Whisper for accurate word timestamps...")
+            clip_segs = transcribe_clip_audio(Path(joined_path))
+            if clip_segs:
+                print(f"  [Subtitles] ✅ Transcribed {len(clip_segs)} spoken dialogue segments directly from clip!")
+                k_events = build_subtitle_karaoke_events(clip_segs, max_words=max_words, hl_color=sub_hl, txt_color=sub_color, text_cases=text_cases)
+                events.extend(k_events)
+                used += len(k_events)
             else:
-                print("  [Subtitles] No dialogue detected in this video snippet.")
+                print("  [Subtitles] No speech detected in this video snippet.")
         except Exception as e:
             print(f"  [Subtitles] Clip audio transcription warning: {e}")
+
+    # If subtitles are disabled, clear parsed events
+    if not subs_enabled:
+        events = []
 
     # On-Screen Hook style & event
     extra_styles = ""
     extra_events = []
     if on_screen_text and str(on_screen_text).strip():
         osc = on_screen_cfg or {}
-        os_font = osc.get("font") or "Arial"
+        os_font = normalize_font_name(osc.get("font") or "Arial")
         os_size = int(osc.get("size_px", 52))
         os_color = to_ass_bgr(osc.get("text_color", "white"))
         os_bg = parse_bg_to_ass(osc.get("background", "black@0.5"))
@@ -471,7 +570,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{sub_font},{sub_size},{sc_clean},{sc_clean},{so_clean},&H64000000,-1,0,0,0,100,100,0,0,1,4,0,2,80,80,{sub_margin_v},1
+Style: Default,{sub_font},{sub_size},{sc_clean},{sc_clean},{so_clean},&H64000000,-1,0,0,0,100,100,0,0,1,{outline_px},0,2,60,60,{sub_margin_v},1
 {extra_styles}
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
