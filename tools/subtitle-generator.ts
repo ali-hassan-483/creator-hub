@@ -129,34 +129,44 @@ Return ONLY a JSON array of segments like:
 No markdown, no explanation. Pure JSON only.`
 
     return await executeGeminiWithFailover(async (apiKey) => {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              { inlineData: { mimeType: 'audio/mpeg', data: audioData } },
-              { text: prompt },
-            ],
-          }],
-          generationConfig: { temperature: 0.1 },
-        }),
-      })
+      const candidateModels = ['gemini-3.8-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
+      let lastErr = ''
+      for (const model of candidateModels) {
+        try {
+          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{
+                parts: [
+                  { inlineData: { mimeType: 'audio/mpeg', data: audioData } },
+                  { text: prompt },
+                ],
+              }],
+              generationConfig: { temperature: 0.1 },
+            }),
+          })
 
-      if (!response.ok) {
-        const err = await response.text()
-        throw new Error(`Gemini Transcribe API error ${response.status}: ${err}`)
+          if (!response.ok) {
+            lastErr = await response.text()
+            continue
+          }
+
+          const data = await response.json() as any
+          const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+          const jsonMatch = text.match(/\[[\s\S]*\]/)
+          if (jsonMatch) {
+            const segments: TranscriptSegment[] = JSON.parse(jsonMatch[0])
+            if (segments.length > 0) {
+              console.log(`[Gemini-Transcribe] ✅ ${segments.length} segments via ${model}`)
+              return segments
+            }
+          }
+        } catch (e: any) {
+          lastErr = e.message
+        }
       }
-
-      const data = await response.json() as any
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
-
-      const jsonMatch = text.match(/\[[\s\S]*\]/)
-      if (!jsonMatch) throw new Error('No JSON found in Gemini response')
-
-      const segments: TranscriptSegment[] = JSON.parse(jsonMatch[0])
-      console.log(`[Gemini-Transcribe] ✅ ${segments.length} segments`)
-      return segments
+      throw new Error(`Gemini transcription failed across models: ${lastErr}`)
     })
 
   } catch (error: any) {

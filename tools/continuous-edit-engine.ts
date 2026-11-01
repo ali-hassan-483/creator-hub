@@ -213,7 +213,7 @@ export async function maintainCampaignClipPool(
         styled_words_color: cfg.onScreenStyledWordsColor || 'yellow',
       },
       subtitlesConfig: {
-        enable: cfg.enableSubtitles !== 'Disabled (Fallback to AI Captions)',
+        enable: cfg.enableSubtitles !== 'Disabled (Fallback to AI Captions)' && cfg.enableSubtitles !== false && cfg.enableSubtitles !== 'disabled',
         font: cfg.subtitleFonts || 'Arial',
         color: cfg.subtitleColors || 'white',
         outline_color: cfg.outlineColors || 'black',

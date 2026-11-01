@@ -90,7 +90,7 @@ async function executeSandboxRender(jobId: string, campaignId: string) {
     let srtPath = loadTranscriptSrt(sourceVideo, campaignId)
 
     // If subtitles are enabled and transcript/SRT is missing, generate on demand
-    const subsEnabled = cfg.enableSubtitles !== 'Disabled (Fallback to AI Captions)' && !!cfg.enableSubtitles
+    const subsEnabled = cfg.enableSubtitles !== 'Disabled (Fallback to AI Captions)' && cfg.enableSubtitles !== false && cfg.enableSubtitles !== 'disabled'
     if (subsEnabled && (!srtPath || transcript.length === 0)) {
       update('rendering', 'Generating speech-to-text transcript for subtitles...')
       try {
@@ -194,7 +194,7 @@ async function executeSandboxRender(jobId: string, campaignId: string) {
         styled_words_color: cfg.onScreenStyledWordsColor || 'yellow',
       },
       subtitlesConfig: {
-        enable: cfg.enableSubtitles !== 'Disabled (Fallback to AI Captions)',
+        enable: cfg.enableSubtitles !== 'Disabled (Fallback to AI Captions)' && cfg.enableSubtitles !== false && cfg.enableSubtitles !== 'disabled',
         font: cfg.subtitleFonts || 'Arial',
         color: cfg.subtitleColors || 'white',
         outline_color: cfg.outlineColors || 'black',

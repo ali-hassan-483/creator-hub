@@ -334,6 +334,34 @@ def build_ass(srt_entries, segments, keywords, out_path, on_screen_cfg=None, on_
     sub_pos_pct = float(sub_cfg.get("placement_height_percent", 80))
     sub_margin_v = max(20, min(1800, int(round(HEIGHT * (1.0 - (sub_pos_pct / 100))))))
 
+    subs_cfg_enable = sub_cfg.get("enable")
+    subs_enabled = subs_cfg_enable is not False and str(subs_cfg_enable).lower() not in ("false", "0", "disabled")
+
+    # If user enabled subtitles, but no speech transcript matched the segments:
+    # Synthesize clean keyword punch captions across the duration so subtitles always show!
+    if len(events) == 0 and subs_enabled:
+        cap_pool = []
+        if keywords:
+            cap_pool = [k.upper() for k in keywords if len(k) >= 3]
+        if not cap_pool and on_screen_text:
+            cap_pool = [w.upper() for w in str(on_screen_text).split() if len(w) >= 3]
+        if not cap_pool:
+            cap_pool = ["VIRAL", "MOMENT", "WATCH", "CLOSELY", "WAIT FOR IT"]
+
+        step = max(2.0, total_dur / min(4, max(2, len(cap_pool))))
+        curr_t = 0.3
+        idx = 0
+        while curr_t + 1.2 <= total_dur and idx < len(cap_pool):
+            cap_text = cap_pool[idx]
+            if idx + 1 < len(cap_pool) and len(cap_text) <= 6:
+                cap_text += " " + cap_pool[idx + 1]
+                idx += 1
+            idx += 1
+            end_t = min(total_dur - 0.2, curr_t + step - 0.3)
+            events.append((round(curr_t, 2), round(end_t, 2), f"{{\\c&H00D7FF&}}{cap_text}{{\\c&HFFFFFF&}}"))
+            used += 1
+            curr_t += step
+
     # On-Screen Hook style & event
     extra_styles = ""
     extra_events = []
@@ -510,12 +538,13 @@ def render_clip(src, clip, srt_entries, out_dir, tmp, cfg, tighten=False):
     on_screen_cfg = cfg.get("on_screen_text") or {}
     subtitle_cfg = cfg.get("subtitles") or {}
 
-    # Check if subtitles are enabled — if disabled, don't pass srt_entries to build_ass
-    subs_enabled = subtitle_cfg.get("enable", False)
+    # Check if subtitles are enabled — enabled by default unless explicitly disabled
+    subs_cfg_enable = subtitle_cfg.get("enable")
+    subs_enabled = subs_cfg_enable is not False and str(subs_cfg_enable).lower() not in ("false", "0", "disabled")
     active_srt = srt_entries if subs_enabled else []
 
     ass_path = None
-    if active_srt or (clip_text and str(clip_text).strip()):
+    if subs_enabled or (clip_text and str(clip_text).strip()):
         try:
             ass = tmp / f"{cid}.ass"
             n = build_ass(active_srt, segments, keywords, ass, on_screen_cfg=on_screen_cfg, on_screen_text=clip_text, subtitle_cfg=subtitle_cfg)
@@ -621,9 +650,29 @@ def main():
 
     srt_entries = []
     srt_path = cfg.get("captions_srt")
-    if srt_path:
+    if not srt_path or not Path(srt_path).is_file():
+        # Fallback 1: same name in transcripts dir
+        cand1 = src.parent.parent / "transcripts" / f"{src.stem}.srt"
+        if cand1.is_file():
+            srt_path = str(cand1)
+        else:
+            # Fallback 2: next to source
+            cand2 = src.with_suffix(".srt")
+            if cand2.is_file():
+                srt_path = str(cand2)
+            else:
+                # Fallback 3: any .srt in transcripts dir
+                tr_dir = src.parent.parent / "transcripts"
+                if tr_dir.is_dir():
+                    srts = list(tr_dir.glob("*.srt"))
+                    if srts:
+                        srt_path = str(srts[0])
+
+    if srt_path and Path(srt_path).is_file():
         srt_entries = load_srt(srt_path)
         print(f"Loaded {len(srt_entries)} caption lines from {srt_path}")
+    else:
+        print(f"No SRT captions file found for {src.name}")
 
     src_dur = probe_duration(src)
     out_dir = Path(args.out); out_dir.mkdir(parents=True, exist_ok=True)

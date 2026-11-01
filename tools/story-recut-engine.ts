@@ -155,30 +155,33 @@ export function buildStoryRecutMap(
   const clips: StoryRecutClipDef[] = []
   const dur = Math.max(60, videoDuration)
 
-  // Calculate safe window size for each story block
-  const storyBlockDur = Math.min(targetDuration * 1.5, Math.max(40, dur / (clipCount + 2)))
-  const maxStart = Math.max(0, dur - storyBlockDur - 10)
+  // Target durations for each segment strictly summing up to targetDuration
+  const T = Math.max(5, targetDuration)
+  const H = Math.max(1, Math.min(hookDuration, Math.round(T * 0.35 * 10) / 10))
+  const remaining = Math.round((T - H) * 10) / 10
+  // Setup takes ~58% of remaining, Payoff takes the rest
+  const S = Math.round(remaining * 0.58 * 10) / 10
+  const P = Math.round((remaining - S) * 10) / 10
+
+  // Safe window size in source video to sample setup and payoff
+  const windowDur = Math.max(T * 1.6, 35)
+  const maxStart = Math.max(0, dur - windowDur - 10)
 
   for (let i = 0; i < clipCount; i++) {
     const clipNum = startIndex + i
     const clipId = `final_${String(clipNum).padStart(4, '0')}_${Date.now()}`
 
-    // Distribute clips evenly across the video timeline to get different angles
-    const blockStart = (maxStart * ((clipNum * 0.61803398875) % 1)) // golden ratio distribution
-    const blockEnd = Math.min(dur - 2, blockStart + storyBlockDur)
+    // Distribute clips across source timeline using golden ratio
+    const blockStart = Math.round((maxStart * ((clipNum * 0.61803398875) % 1)) * 10) / 10
+    const blockEnd = Math.min(dur - 2, Math.round((blockStart + windowDur) * 10) / 10)
 
-    // Segment boundaries
-    // Payoff is near the end of the block
-    const payoffStart = Math.max(blockStart + 10, blockEnd - 12)
-    const payoffEnd = blockEnd
-
-    // Hook is the most punchy part of the payoff (last 3-4s)
-    const hookStart = Math.max(blockStart, payoffEnd - hookDuration)
+    // Payoff at the end of window, Hook as climax snippet, Setup from beginning
+    const payoffEnd = blockEnd - 1
+    const payoffStart = Math.max(blockStart + 1, Math.round((payoffEnd - P) * 10) / 10)
     const hookEnd = payoffEnd
-
-    // Setup is the beginning of the block up to the payoff
+    const hookStart = Math.max(blockStart, Math.round((hookEnd - H) * 10) / 10)
     const setupStart = blockStart
-    const setupEnd = payoffStart
+    const setupEnd = Math.round((setupStart + S) * 10) / 10
 
     // Extract spoken words in this range to get smart keywords
     let spokenKeywords: string[] = []
@@ -202,21 +205,21 @@ export function buildStoryRecutMap(
       keywords: spokenKeywords,
       on_screen_text: clipText,
       segments: [
-        // 1. COLD-OPEN PAYOFF HOOK (Payoff first!)
+        // 1. COLD-OPEN PAYOFF HOOK (Payoff first, exactly H seconds!)
         {
           start: Math.round(hookStart * 10) / 10,
           end: Math.round(hookEnd * 10) / 10,
           role: 'hook',
           zoom: 1.2,
         },
-        // 2. SETUP (Context leading to the moment)
+        // 2. SETUP (Context, exactly S seconds!)
         {
           start: Math.round(setupStart * 10) / 10,
           end: Math.round(setupEnd * 10) / 10,
           role: 'setup',
           zoom: 1.0,
         },
-        // 3. PAYOFF IN CONTEXT
+        // 3. PAYOFF IN CONTEXT (Climax, exactly P seconds!)
         {
           start: Math.round(payoffStart * 10) / 10,
           end: Math.round(payoffEnd * 10) / 10,
