@@ -434,17 +434,12 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
     }
   }
 
-  // Subtitle case helper
+  // Subtitle case helper (single-select selection)
   function toggleSubtitleCase(c: string) {
-    setFormData((prev) => {
-      const exists = prev.subtitleTextCases.includes(c)
-      if (exists) {
-        if (prev.subtitleTextCases.length === 1) return prev
-        return { ...prev, subtitleTextCases: prev.subtitleTextCases.filter((x) => x !== c) }
-      } else {
-        return { ...prev, subtitleTextCases: [...prev.subtitleTextCases, c] }
-      }
-    })
+    setFormData((prev) => ({
+      ...prev,
+      subtitleTextCases: [c],
+    }))
   }
 
   // Create Campaign
@@ -625,7 +620,14 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
       subtitlesPlacementHeightPercent: cfg.subtitlesPlacementHeightPercent ?? 80,
       maxWordsPerScreen: cfg.maxWordsPerScreen ?? 5,
       speakingWordHighlight: cfg.speakingWordHighlight || 'yellow',
-      subtitleTextCases: Array.isArray(cfg.subtitleTextCases) ? cfg.subtitleTextCases : ['ALL UPPERCASE'],
+      subtitleTextCases: (() => {
+        if (!Array.isArray(cfg.subtitleTextCases) || cfg.subtitleTextCases.length === 0) {
+          return ['ALL UPPERCASE']
+        }
+        if (cfg.subtitleTextCases.includes('Normal Text')) return ['Normal Text']
+        if (cfg.subtitleTextCases.includes('all lowercase')) return ['all lowercase']
+        return [cfg.subtitleTextCases[0]]
+      })(),
       onScreenFontName: cfg.onScreenFontName || 'Montenegrin Gothic One',
       useSameFontForBannersAndSubs: cfg.useSameFontForBannersAndSubs ?? false,
       onScreenTextColor: cfg.onScreenTextColor || 'white',
@@ -2025,7 +2027,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
 
                 <div>
                   <label className="block text-xs font-medium text-foreground mb-2">
-                    Subtitle Text Case (Multi-Select)
+                    Subtitle Text Case
                   </label>
                   <div className="flex flex-wrap gap-2.5">
                     {['ALL UPPERCASE', 'all lowercase', 'Normal Text'].map((c) => (
@@ -2038,10 +2040,11 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                         }`}
                       >
                         <input
-                          type="checkbox"
+                          type="radio"
+                          name="subtitleTextCase"
                           checked={formData.subtitleTextCases.includes(c)}
                           onChange={() => toggleSubtitleCase(c)}
-                          className="rounded border-input text-primary"
+                          className="rounded-full border-input text-primary"
                         />
                         <span>{c}</span>
                       </label>

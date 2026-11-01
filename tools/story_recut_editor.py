@@ -343,7 +343,12 @@ def apply_text_case(text, cases):
         return ""
     if not cases:
         return text
-    cases_lower = [str(c).lower() for c in cases]
+    if isinstance(cases, str):
+        cases = [cases]
+    cases_lower = [str(c).lower().strip() for c in cases]
+    # "Normal Text" takes highest precedence - preserve natural Whisper/source casing
+    if any("normal" in c or "orig" in c for c in cases_lower):
+        return text
     if any("upper" in c for c in cases_lower):
         return text.upper()
     if any("lower" in c for c in cases_lower):
@@ -478,7 +483,10 @@ def build_ass(srt_entries, segments, keywords, out_path, on_screen_cfg=None, on_
     sub_outline = to_ass_bgr(sub_cfg.get("outline_color") or "black")
     sub_hl = to_ass_bgr(sub_cfg.get("speaking_word_highlight") or "yellow")
     sub_pos_pct = float(sub_cfg.get("placement_height_percent") or 80)
-    sub_margin_v = max(20, min(1800, int(round(HEIGHT * (1.0 - (sub_pos_pct / 100.0))))))
+    # Align vertical center of subtitle text at sub_pos_pct% of canvas height
+    sub_target_y = HEIGHT * (sub_pos_pct / 100.0)
+    # With ASS Alignment 2 (Bottom-Center), the baseline/bottom is ~ sub_size*0.4 below center
+    sub_margin_v = max(20, min(1800, int(round(HEIGHT - (sub_target_y + (sub_size * 0.4))))))
     outline_px = max(3, min(15, int(round(sub_size * 0.08))))
     max_words = max(1, min(20, int(sub_cfg.get("max_words_per_screen") or 5)))
     text_cases = sub_cfg.get("text_cases") or ["Normal Text"]
@@ -633,15 +641,30 @@ def render_segment(src, seg, out_path, aspect_ratio="9:16", bg_color="black"):
     elif not pad_color:
         pad_color = "black"
 
-    # Crop with target aspect ratio and zoom from center of source (iw, ih)
-    # Scale to box_w:box_h, then pad to 1080x1920 centered
-    crop_vf = (
-        f"crop='trunc(min(iw,ih*{box_w}/{box_h})/{zoom}/2)*2':"
-        f"'trunc(min(ih,iw*{box_h}/{box_w})/{zoom}/2)*2'"
-    )
-    scale_vf = f"scale={box_w}:{box_h}:flags=bicubic"
-    pad_vf = f"pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2:color={pad_color}"
-    vf = f"{crop_vf},{scale_vf},{pad_vf},fps={FPS},setsar=1,format=yuv420p"
+    if ar == "9:16":
+        # Full-frame 9:16 vertical crop with center zoom
+        crop_vf = (
+            f"crop='trunc(min(iw,ih*{box_w}/{box_h})/{zoom}/2)*2':"
+            f"'trunc(min(ih,iw*{box_h}/{box_w})/{zoom}/2)*2'"
+        )
+        scale_vf = f"scale={box_w}:{box_h}:flags=bicubic"
+        pad_vf = f"pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2:color={pad_color}"
+        vf = f"{crop_vf},{scale_vf},{pad_vf},fps={FPS},setsar=1,format=yuv420p"
+    else:
+        # Boxed aspect ratio (4:3, 1:1, 16:9) inside 9:16 vertical canvas:
+        # Fit video cleanly inside target box_w:box_h without clipping characters,
+        # then pad to canvas HEIGHT (1920) centered with pad_color
+        if zoom > 1.0:
+            zoom_crop = f"crop='trunc(iw/{zoom}/2)*2':'trunc(ih/{zoom}/2)*2',"
+        else:
+            zoom_crop = ""
+        vf = (
+            f"{zoom_crop}"
+            f"scale={box_w}:{box_h}:force_original_aspect_ratio=decrease:flags=bicubic,"
+            f"pad={box_w}:{box_h}:(ow-iw)/2:(oh-ih)/2:color={pad_color},"
+            f"pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2:color={pad_color},"
+            f"fps={FPS},setsar=1,format=yuv420p"
+        )
 
     preset = os.environ.get("FFMPEG_PRESET", "ultrafast")
     crf = os.environ.get("FFMPEG_CRF", "22")

@@ -231,7 +231,7 @@ const worker = new Worker(
         placementHeight: parseFloat(cfg.subtitlePlacementHeight || '80'),
         maxWordsPerScreen: parseInt(cfg.maxWordsPerScreen || '5', 10),
         speakingWordHighlight: cfg.speakingWordHighlight || 'yellow',
-        textCase: cfg.subtitleTextCases || ['UPPERCASE'],
+        textCase: cfg.subtitleTextCases || ['Normal Text'],
       }
 
       // ── 7. Generate clips ─────────────────────────────────────────────────

@@ -39,6 +39,8 @@ export interface CampaignPreviewMockupProps {
     outlineColors?: string
     speakingWordHighlight?: string
     subtitleTextCases?: string[]
+    useSameFontForBannersAndSubs?: boolean
+    useSameForSpeakingWordHighlight?: boolean
   }
 }
 
@@ -145,7 +147,23 @@ export function CampaignPreviewMockup({ formData }: CampaignPreviewMockupProps) 
   const subsEnabled = formData.enableSubtitles !== 'Disabled (Fallback to AI Captions)'
   const subsPos = Number(formData.subtitlesPlacementHeightPercent) || 80
   const subColor = parseTextColor(formData.subtitleColors || 'white')
-  const speakingHighlight = parseTextColor(formData.speakingWordHighlight || 'yellow')
+  const resolvedSubFont = (formData.useSameFontForBannersAndSubs ? formData.onScreenFontName : formData.subtitleFonts) || 'inherit'
+  const resolvedHighlight = parseTextColor((formData.useSameForSpeakingWordHighlight ? formData.onScreenStyledWordsColor : formData.speakingWordHighlight) || 'yellow')
+
+  // Text Case handling for preview
+  const textCaseList = Array.isArray(formData.subtitleTextCases)
+    ? formData.subtitleTextCases
+    : [formData.subtitleTextCases || 'Normal Text']
+  const isNormal = textCaseList.some(
+    (c) => String(c).toLowerCase().includes('normal') || String(c).toLowerCase().includes('orig')
+  )
+  const isLower = !isNormal && textCaseList.some((c) => String(c).toLowerCase().includes('lower'))
+  const isUpper = !isNormal && !isLower && textCaseList.some((c) => String(c).toLowerCase().includes('upper'))
+
+  const sampleLead = isUpper ? 'THIS IS THE' : isLower ? 'this is the' : 'This is the'
+  const sampleHighlight = isUpper ? 'VIRAL' : isLower ? 'viral' : 'viral'
+  const sampleTrail = isUpper ? 'MOMENT' : isLower ? 'moment' : 'moment'
+  const textTransformStyle: React.CSSProperties['textTransform'] = isUpper ? 'uppercase' : isLower ? 'lowercase' : 'none'
 
   // Logo position calculation
   const getLogoStyle = () => {
@@ -311,22 +329,23 @@ export function CampaignPreviewMockup({ formData }: CampaignPreviewMockupProps) 
           {/* SUBTITLES / CAPTIONS */}
           {subsEnabled ? (
             <div
-              className="absolute left-3 right-3 z-30 flex justify-center pointer-events-none"
+              className="absolute left-3 right-3 z-30 flex justify-center pointer-events-none -translate-y-1/2"
               style={{ top: `${subsPos}%` }}
             >
               <div className="text-center px-2 py-1 bg-black/80 rounded-md border border-white/10 shadow-lg backdrop-blur-xs">
                 <p
-                  className="text-[11px] font-extrabold tracking-wide uppercase leading-tight drop-shadow"
+                  className="text-[11px] font-extrabold tracking-wide leading-tight drop-shadow"
                   style={{
                     color: subColor,
-                    fontFamily: formData.subtitleFonts || 'inherit',
+                    fontFamily: resolvedSubFont,
+                    textTransform: textTransformStyle,
                   }}
                 >
-                  THIS IS THE{' '}
-                  <span style={{ color: speakingHighlight }} className="underline decoration-2">
-                    VIRAL
+                  {sampleLead}{' '}
+                  <span style={{ color: resolvedHighlight }} className="underline decoration-2">
+                    {sampleHighlight}
                   </span>{' '}
-                  MOMENT
+                  {sampleTrail}
                 </p>
               </div>
             </div>
