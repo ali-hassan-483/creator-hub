@@ -162,6 +162,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
     clipStatus: 'generating' | 'queued' | 'ready' | 'error' | 'pending'
     clipProgress: string | null
     clipError: string | null
+    editingApproved?: boolean
   }>>({})
 
   // Poll setup statuses every 5 seconds
@@ -184,6 +185,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
               clipStatus: s.clipStatus || 'pending',
               clipProgress: s.clipProgress,
               clipError: s.clipError,
+              editingApproved: s.editingApproved === true,
             }
           }
           setSetupStatuses(map)
@@ -230,8 +232,29 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
         ...prev,
         [campaignId]: {
           ...prev[campaignId],
+          editingApproved: true,
           clipStatus: 'generating',
-          clipProgress: '⚙️ Starting clip generation...',
+          clipProgress: '⚙️ Starting auto-editing (Target: 300 clips)...',
+          clipError: null,
+        },
+      }))
+    } catch {}
+  }
+
+  async function handlePauseEditing(campaignId: string) {
+    try {
+      await fetch('/api/admin/campaigns/setup-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaignId, action: 'pause_editing' }),
+      })
+      setSetupStatuses((prev) => ({
+        ...prev,
+        [campaignId]: {
+          ...prev[campaignId],
+          editingApproved: false,
+          clipStatus: 'pending',
+          clipProgress: 'Auto-editing paused by admin',
           clipError: null,
         },
       }))
@@ -976,33 +999,79 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                               {/* Row 2: Clip Generation Status */}
                               <div className="pt-1.5 border-t border-border/50">
                                 <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-0.5">
-                                  <span className="font-semibold uppercase tracking-wider text-[9px]">Clips</span>
-                                  <span className="font-mono text-[10px]">{ss.clipCount ?? c.availableClips ?? 0} ready</span>
+                                  <span className="font-semibold uppercase tracking-wider text-[9px]">Clips Pool</span>
+                                  <span className="font-mono text-[10px] font-bold">
+                                    {ss.clipCount ?? c.availableClips ?? 0}/300
+                                  </span>
                                 </div>
                                 {ss.clipStatus === 'generating' && (
-                                  <div className="space-y-0.5">
-                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 animate-pulse">
-                                      <Loader2 size={10} className="animate-spin" />
-                                      <span>Generating...</span>
-                                    </span>
+                                  <div className="space-y-1">
+                                    <div className="flex items-center justify-between">
+                                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 animate-pulse">
+                                        <Loader2 size={10} className="animate-spin" />
+                                        <span>Auto-Editing...</span>
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handlePauseEditing(c.id)}
+                                        className="text-[10px] text-amber-600 hover:text-amber-700 dark:text-amber-400 font-semibold hover:underline"
+                                        title="Pause auto-editing"
+                                      >
+                                        ⏸ Pause
+                                      </button>
+                                    </div>
                                     {ss.clipProgress && (
-                                      <p className="text-[10px] text-muted-foreground truncate max-w-[170px]" title={ss.clipProgress}>
+                                      <p className="text-[9px] text-muted-foreground truncate max-w-[180px]" title={ss.clipProgress}>
                                         {ss.clipProgress}
                                       </p>
                                     )}
                                   </div>
                                 )}
                                 {ss.clipStatus === 'queued' && (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                                    <Clock size={10} />
-                                    <span>Queued</span>
-                                  </span>
+                                  <div className="flex items-center justify-between">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                                      <Clock size={10} />
+                                      <span>Queued</span>
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handlePauseEditing(c.id)}
+                                      className="text-[10px] text-amber-600 hover:text-amber-700 dark:text-amber-400 font-semibold hover:underline"
+                                    >
+                                      ⏸ Pause
+                                    </button>
+                                  </div>
                                 )}
                                 {ss.clipStatus === 'ready' && (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                                    <CheckCircle2 size={10} />
-                                    <span>Ready ({ss.clipCount ?? c.availableClips ?? 0})</span>
-                                  </span>
+                                  <div className="space-y-1">
+                                    <div className="flex items-center justify-between">
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                        <CheckCircle2 size={10} />
+                                        <span>
+                                          {ss.editingApproved ? 'Auto-Editing Active' : 'Ready'} ({ss.clipCount ?? c.availableClips ?? 0})
+                                        </span>
+                                      </span>
+                                      {ss.editingApproved ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => handlePauseEditing(c.id)}
+                                          className="text-[9px] text-amber-600 hover:text-amber-700 dark:text-amber-400 font-semibold hover:underline"
+                                          title="Pause auto-editing"
+                                        >
+                                          ⏸ Pause
+                                        </button>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleGenerateClips(c.id)}
+                                          className="text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2 py-0.5 rounded shadow-xs transition-colors"
+                                          title="Start auto-editing (Target: 300 clips)"
+                                        >
+                                          ▶ Auto-300
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
                                 )}
                                 {ss.clipStatus === 'error' && (
                                   <div className="space-y-0.5">
@@ -1020,25 +1089,31 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                                       onClick={() => handleGenerateClips(c.id)}
                                       className="text-[10px] text-primary font-semibold hover:underline block"
                                     >
-                                      ↻ Retry Clips
+                                      ↻ Retry Editing
                                     </button>
                                   </div>
                                 )}
                                 {ss.clipStatus === 'pending' && (
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-muted text-muted-foreground border border-border">
-                                      <Clock size={10} />
-                                      <span>Pending</span>
-                                    </span>
-                                    {ss.sourceCount > 0 && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleGenerateClips(c.id)}
-                                        className="text-[10px] text-primary font-semibold hover:underline"
-                                      >
-                                        ▶ Generate
-                                      </button>
-                                    )}
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                                        <Clock size={10} />
+                                        <span>Style Pending</span>
+                                      </span>
+                                      {ss.sourceCount > 0 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleGenerateClips(c.id)}
+                                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold shadow-xs transition-colors"
+                                          title="Confirm style in Sandbox, then click to auto-generate 300 clips."
+                                        >
+                                          ▶ Start Auto-Editing
+                                        </button>
+                                      )}
+                                    </div>
+                                    <p className="text-[9px] text-muted-foreground">
+                                      Sandbox mein test karein, phir yahan se auto-editing start karein.
+                                    </p>
                                   </div>
                                 )}
 

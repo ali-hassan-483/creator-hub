@@ -36,6 +36,12 @@ async function runContinuousEditorLoop() {
         const count = countEditedClips(campaign.id)
         const cfg = (campaign.config || {}) as Record<string, any>
 
+        // Only auto-generate if admin has explicitly approved/started editing for this campaign
+        if (cfg.editingApproved !== true) {
+          console.log(`[Continuous Editor] Campaign "${campaign.name}" (${campaign.id}): Style confirmation pending (waiting for admin to start auto-editing). Skipping.`)
+          continue
+        }
+
         console.log(`[Continuous Editor] Campaign "${campaign.name}" (${campaign.id}): ${count}/${TARGET_EDITED_CLIPS} clips ready.`)
 
         if (count < TARGET_EDITED_CLIPS) {

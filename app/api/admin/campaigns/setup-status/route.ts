@@ -33,6 +33,8 @@ async function getClipStatus(
   campaignName?: string,
   isActive = false
 ) {
+  const editingApproved = campaignCfg?.editingApproved === true
+
   // Check active in-memory clip generation first
   const activeGen = activeClipGenerations.get(campaignId)
   if (activeGen && activeGen.status === 'generating') {
@@ -40,12 +42,12 @@ async function getClipStatus(
       clipStatus: 'generating' as const,
       clipProgress: activeGen.progress || `⚙️ Generating clips... (${clipCount} ready so far)`,
       clipError: null,
+      editingApproved: true,
     }
   }
 
-  // 🚀 AUTO-RESUME: If campaign is active, sources are ready, and clips < 300:
-  // Automatically trigger clip generation!
-  if (isActive && campaignCfg && clipCount < TARGET_EDITED_CLIPS) {
+  // 🚀 AUTO-RESUME: Only if campaign is active, sources are ready, AND admin has approved/started editing:
+  if (isActive && campaignCfg && editingApproved && clipCount < TARGET_EDITED_CLIPS) {
     const sourcesDir = getSourcesDir(campaignId)
     const hasSources = fs.existsSync(sourcesDir) && fs.readdirSync(sourcesDir).some(f => !f.startsWith('.'))
     if (hasSources && (!activeGen || activeGen.status !== 'error')) {
@@ -58,6 +60,7 @@ async function getClipStatus(
         clipStatus: 'generating' as const,
         clipProgress: `⚙️ Generating clips... (${clipCount}/${TARGET_EDITED_CLIPS} ready)`,
         clipError: null,
+        editingApproved: true,
       }
     }
   }
@@ -67,6 +70,7 @@ async function getClipStatus(
       clipStatus: 'error' as const,
       clipProgress: null,
       clipError: activeGen.error || 'Clip generation failed',
+      editingApproved,
     }
   }
 
@@ -107,24 +111,27 @@ async function getClipStatus(
 
   if (clipCount > 0) {
     return {
-      clipStatus: 'ready',
+      clipStatus: 'ready' as const,
       clipProgress: `✅ ${clipCount} clip(s) ready`,
       clipError: null,
+      editingApproved,
     }
   }
 
   if (lastAutomation?.status === 'completed') {
     return {
-      clipStatus: 'ready',
+      clipStatus: 'ready' as const,
       clipProgress: '✅ Last run completed (0 new clips)',
       clipError: null,
+      editingApproved,
     }
   }
 
   return {
-    clipStatus: 'pending',
-    clipProgress: null,
+    clipStatus: 'pending' as const,
+    clipProgress: editingApproved ? 'Queued for auto-editing' : 'Style Confirmation Pending (Click Start Auto-Editing when ready)',
     clipError: null,
+    editingApproved,
   }
 }
 
@@ -272,8 +279,8 @@ export async function POST(req: NextRequest) {
 
     const cfg = (campaign.config || {}) as Record<string, any>
 
-    // ── ACTION: Generate Clips Directly ──────────────────────────────────────
-    if (action === 'generate_clips') {
+    // ── ACTION: Generate Clips / Start Auto-Editing ─────────────────────────
+    if (action === 'generate_clips' || action === 'start_editing') {
       const sourcesDir = getSourcesDir(campaignId)
       const sourceCount = fs.existsSync(sourcesDir)
         ? fs.readdirSync(sourcesDir).filter(f => !f.startsWith('.')).length
@@ -285,16 +292,41 @@ export async function POST(req: NextRequest) {
         }, { status: 400 })
       }
 
+      // Mark editing as approved by admin so background worker can maintain 300 clips
+      const updatedCfg: Record<string, any> = { ...cfg, editingApproved: true }
+      await prisma.campaign.update({
+        where: { id: campaignId },
+        data: { config: updatedCfg },
+      })
+
       triggerClipGeneration(campaignId, {
-        ...cfg,
+        ...updatedCfg,
         campaignName: campaign.name,
-        niche: cfg.niche || 'general',
+        niche: (updatedCfg.niche as string) || 'general',
       })
 
       return NextResponse.json({
-        message: 'Clip generation started in background!',
+        message: 'Auto-editing started! The system will now automatically maintain the 300 clips pool.',
         status: 'generating',
         campaignId,
+        editingApproved: true,
+      })
+    }
+
+    // ── ACTION: Pause Auto-Editing ──────────────────────────────────────────
+    if (action === 'pause_editing') {
+      const updatedCfg: Record<string, any> = { ...cfg, editingApproved: false }
+      await prisma.campaign.update({
+        where: { id: campaignId },
+        data: { config: updatedCfg },
+      })
+      activeClipGenerations.delete(campaignId)
+
+      return NextResponse.json({
+        message: 'Auto-editing paused. Background clip generation stopped.',
+        status: 'paused',
+        campaignId,
+        editingApproved: false,
       })
     }
 
@@ -321,12 +353,20 @@ export async function POST(req: NextRequest) {
       activeSetups.delete(campaignId)
       activeClipGenerations.delete(campaignId)
 
+      // Reset editingApproved so worker doesn't restart until admin starts it
+      const updatedCfg: Record<string, any> = { ...cfg, editingApproved: false }
+      await prisma.campaign.update({
+        where: { id: campaignId },
+        data: { config: updatedCfg },
+      })
+
       return NextResponse.json({
         success: true,
         message: 'All campaign clips, transcripts, and source videos have been completely deleted from the VPS!',
         campaignId,
         sourceCount: 0,
         clipCount: 0,
+        editingApproved: false,
       })
     }
 
@@ -342,10 +382,19 @@ export async function POST(req: NextRequest) {
         }
       }
       activeClipGenerations.delete(campaignId)
+
+      // Reset editingApproved so worker doesn't restart until admin starts it
+      const updatedCfg: Record<string, any> = { ...cfg, editingApproved: false }
+      await prisma.campaign.update({
+        where: { id: campaignId },
+        data: { config: updatedCfg },
+      })
+
       return NextResponse.json({
         message: 'All generated clips deleted successfully!',
         campaignId,
         clipCount: 0,
+        editingApproved: false,
       })
     }
 
@@ -400,12 +449,16 @@ export async function POST(req: NextRequest) {
         })
         console.log(`[CampaignSetup] ✅ ${campaign.name} (${campaignId}) setup complete`)
 
-        // 🚀 Auto-trigger clip generation once sources & transcripts are ready!
-        triggerClipGeneration(campaignId, {
-          ...cfg,
-          campaignName: campaign.name,
-          niche: cfg.niche || 'general',
-        })
+        // If admin has already approved auto-editing, auto-trigger; otherwise wait for admin confirmation
+        if (cfg.editingApproved === true) {
+          triggerClipGeneration(campaignId, {
+            ...cfg,
+            campaignName: campaign.name,
+            niche: cfg.niche || 'general',
+          })
+        } else {
+          console.log(`[CampaignSetup] ✅ Sources & transcripts ready for "${campaign.name}". Auto-editing is waiting for admin style confirmation.`)
+        }
       })
       .catch((err) => {
         activeSetups.set(campaignId, {
