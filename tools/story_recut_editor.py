@@ -308,7 +308,83 @@ def highlight(text, keywords):
     return text
 
 
-def build_ass(srt_entries, segments, keywords, out_path, on_screen_cfg=None, on_screen_text=None, subtitle_cfg=None):
+_WHISPER_MODEL = None
+
+def get_whisper_model():
+    global _WHISPER_MODEL
+    if _WHISPER_MODEL is None:
+        try:
+            import whisper
+            model_name = os.environ.get("WHISPER_MODEL", "tiny")
+            print(f"  [Whisper] Loading '{model_name}' model on CPU...")
+            _WHISPER_MODEL = whisper.load_model(model_name)
+        except Exception as e:
+            print(f"  [Whisper] Failed to load whisper: {e}")
+            _WHISPER_MODEL = False
+    return _WHISPER_MODEL if _WHISPER_MODEL is not False else None
+
+
+def transcribe_clip_audio(video_path: Path):
+    """Transcribe a rendered clip (15-60s) in 2-3 seconds using Whisper on CPU."""
+    model = get_whisper_model()
+    if not model:
+        return []
+
+    wav_path = video_path.with_suffix(".whisper_clip.wav")
+    try:
+        cmd = [
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+            "-i", str(video_path),
+            "-vn", "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le",
+            str(wav_path)
+        ]
+        subprocess.run(cmd, check=True)
+        res = model.transcribe(str(wav_path), word_timestamps=True, fp16=False, verbose=False)
+
+        raw_segments = res.get("segments", [])
+        caption_blocks = []
+
+        for seg in raw_segments:
+            words = seg.get("words", [])
+            if words:
+                chunk = []
+                for w in words:
+                    w_txt = (w.get("word") or "").strip()
+                    if not w_txt:
+                        continue
+                    chunk.append((float(w.get("start", 0.0)), float(w.get("end", 0.0)), w_txt))
+                    if len(chunk) >= 4:
+                        s_time = round(chunk[0][0], 2)
+                        e_time = round(chunk[-1][1], 2)
+                        text_str = " ".join(x[2] for x in chunk)
+                        if e_time - s_time >= 0.2:
+                            caption_blocks.append((s_time, e_time, text_str))
+                        chunk = []
+                if chunk:
+                    s_time = round(chunk[0][0], 2)
+                    e_time = round(chunk[-1][1], 2)
+                    text_str = " ".join(x[2] for x in chunk)
+                    if e_time - s_time >= 0.2:
+                        caption_blocks.append((s_time, e_time, text_str))
+            else:
+                text_str = (seg.get("text") or "").strip()
+                if text_str:
+                    s_time = round(float(seg.get("start", 0.0)), 2)
+                    e_time = round(float(seg.get("end", 0.0)), 2)
+                    if e_time - s_time >= 0.2:
+                        caption_blocks.append((s_time, e_time, text_str))
+
+        return caption_blocks
+    except Exception as e:
+        print(f"  [Whisper] Transcription execution failed: {e}")
+        return []
+    finally:
+        if wav_path.is_file():
+            try: wav_path.unlink()
+            except: pass
+
+
+def build_ass(srt_entries, segments, keywords, out_path, on_screen_cfg=None, on_screen_text=None, subtitle_cfg=None, joined_path=None):
     """segments: list of dicts in PLAYBACK order, with start/end (source sec)."""
     events, offset, used = [], 0.0, 0
     for seg in segments:
@@ -340,6 +416,21 @@ def build_ass(srt_entries, segments, keywords, out_path, on_screen_cfg=None, on_
     # If subtitles are disabled, clear any parsed events
     if not subs_enabled:
         events = []
+    elif len(events) == 0 and joined_path and Path(joined_path).is_file():
+        # Fallback: No captions matched the segment slices or no SRT was found.
+        # Transcribe the joined clip audio directly using local Whisper (takes ~1-2s for a 15-60s clip).
+        try:
+            print("  [Subtitles] No pre-existing captions matched segments. Transcribing clip directly with Whisper...")
+            clip_subs = transcribe_clip_audio(Path(joined_path))
+            if clip_subs:
+                print(f"  [Subtitles] ✅ Transcribed {len(clip_subs)} spoken dialogue lines directly from clip!")
+                for cs, ce, ctext in clip_subs:
+                    events.append((cs, ce, highlight(ctext, keywords)))
+                    used += 1
+            else:
+                print("  [Subtitles] No dialogue detected in this video snippet.")
+        except Exception as e:
+            print(f"  [Subtitles] Clip audio transcription warning: {e}")
 
     # On-Screen Hook style & event
     extra_styles = ""
@@ -370,6 +461,8 @@ def build_ass(srt_entries, segments, keywords, out_path, on_screen_cfg=None, on_
         extra_events.append(f"Dialogue: 1,0:00:00.00,{fmt_ass_time(total_dur)},OnScreenHook,,0,0,{os_margin_v},,{styled_hook}")
         used += 1
 
+    sc_clean = sub_color.rstrip("&")
+    so_clean = sub_outline.rstrip("&")
     header = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: {WIDTH}
@@ -378,7 +471,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{sub_font},{sub_size},{sub_color},{sub_color},{sub_outline},&H64000000,-1,0,0,0,100,100,0,0,1,4,0,2,80,80,{sub_margin_v},1
+Style: Default,{sub_font},{sub_size},{sc_clean},{sc_clean},{so_clean},&H64000000,-1,0,0,0,100,100,0,0,1,4,0,2,80,80,{sub_margin_v},1
 {extra_styles}
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -526,7 +619,7 @@ def render_clip(src, clip, srt_entries, out_dir, tmp, cfg, tighten=False):
     if subs_enabled or (clip_text and str(clip_text).strip()):
         try:
             ass = tmp / f"{cid}.ass"
-            n = build_ass(active_srt, segments, keywords, ass, on_screen_cfg=on_screen_cfg, on_screen_text=clip_text, subtitle_cfg=subtitle_cfg)
+            n = build_ass(active_srt, segments, keywords, ass, on_screen_cfg=on_screen_cfg, on_screen_text=clip_text, subtitle_cfg=subtitle_cfg, joined_path=joined)
             if n > 0:
                 ass_path = ass
                 print(f"  captions/on-screen hook: {n} element(s) burned")
