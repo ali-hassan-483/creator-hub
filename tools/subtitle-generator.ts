@@ -18,6 +18,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import { resolveToolScript } from './story-recut-engine'
 
 const execAsync = promisify(exec)
 
@@ -52,56 +53,65 @@ export interface SubtitleConfig {
 // ─── Transcription ─────────────────────────────────────────────────────────
 
 /**
- * Transcribe audio using Whisper CLI (must be installed on VPS).
- * Returns word-level timestamps.
+ * Transcribe audio using local Whisper Python engine (openai-whisper).
+ * Extracts 16kHz mono audio and computes word-level timestamps.
  */
 export async function transcribeWithWhisper(videoPath: string, outputDir: string): Promise<TranscriptSegment[]> {
-  const whisperBin = process.env.WHISPER_BIN || 'whisper'
-  const jsonOut = path.join(outputDir, 'whisper_out')
-  
+  fs.mkdirSync(outputDir, { recursive: true })
+  const baseName = path.basename(videoPath, path.extname(videoPath))
+  const jsonOut = path.join(outputDir, `${baseName}.json`)
+  const scriptPath = resolveToolScript('transcribe_whisper.py')
+  const pythonBin = process.platform === 'win32' ? 'python' : 'python3'
+  const whisperModel = process.env.WHISPER_MODEL || 'tiny'
+
   try {
-    // Extract audio first
-    const audioPath = path.join(outputDir, 'audio_temp.wav')
-    console.log(`[Subtitles] 🎵 Extracting audio for Whisper...`)
-    await execAsync(`ffmpeg -i "${videoPath}" -vn -ar 16000 -ac 1 -y "${audioPath}"`, {
-      maxBuffer: 5 * 1024 * 1024,
-      timeout: 60000, // 1 min timeout for audio extraction
+    const cmd = `${pythonBin} "${scriptPath}" "${videoPath}" "${jsonOut}" "${whisperModel}"`
+    console.log(`[Whisper] 🎙️ Running Whisper Python engine: ${cmd}`)
+    await execAsync(cmd, {
+      maxBuffer: 25 * 1024 * 1024,
+      timeout: 10 * 60 * 1000, // 10 minutes timeout for audio extraction & whisper inference
     })
 
-    // Run Whisper with word timestamps (tiny model = 3x faster than base, good enough for subtitles)
-    const whisperModel = process.env.WHISPER_MODEL || 'tiny'
-    const cmd = `${whisperBin} "${audioPath}" --output_dir "${outputDir}" --output_format json --word_timestamps True --model ${whisperModel}`
-    console.log(`[Whisper] 🏃 Running Whisper ${whisperModel} model...`)
-    await execAsync(cmd, { maxBuffer: 20 * 1024 * 1024, timeout: 180000 }) // 3 min timeout
-
-    // Read output JSON
-    const jsonFiles = fs.readdirSync(outputDir).filter(f => f.endsWith('.json') && f.includes('audio_temp'))
-    if (jsonFiles.length === 0) throw new Error('Whisper output JSON not found')
-
-    const whisperOut = JSON.parse(fs.readFileSync(path.join(outputDir, jsonFiles[0]), 'utf8'))
-    
-    // Cleanup
-    if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath)
-
-    // Parse segments
-    const segments: TranscriptSegment[] = (whisperOut.segments || []).map((seg: any) => ({
-      text: seg.text.trim(),
-      start: seg.start,
-      end: seg.end,
-      words: (seg.words || []).map((w: any) => ({
-        word: w.word.trim(),
-        start: w.start,
-        end: w.end,
-      })),
-    }))
-
-    console.log(`[Whisper] ✅ Transcribed ${segments.length} segments`)
-    return segments
-
+    if (fs.existsSync(jsonOut)) {
+      const parsed = JSON.parse(fs.readFileSync(jsonOut, 'utf8'))
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        console.log(`[Whisper] ✅ Successfully transcribed ${parsed.length} segments with local Whisper!`)
+        return parsed as TranscriptSegment[]
+      }
+    }
   } catch (error: any) {
-    console.error(`[Whisper] ❌ ${error.message}`)
-    return []
+    console.warn(`[Whisper] ⚠️ Python Whisper execution failed: ${error.message}`)
   }
+
+  // Fallback: If openai-whisper CLI is installed in PATH
+  try {
+    const whisperBin = process.env.WHISPER_BIN || 'whisper'
+    const audioPath = path.join(outputDir, `${baseName}_temp.wav`)
+    await execAsync(`ffmpeg -i "${videoPath}" -vn -ar 16000 -ac 1 -y "${audioPath}"`, {
+      maxBuffer: 5 * 1024 * 1024,
+      timeout: 60000,
+    })
+    const cmd = `${whisperBin} "${audioPath}" --output_dir "${outputDir}" --output_format json --word_timestamps True --model ${whisperModel}`
+    await execAsync(cmd, { maxBuffer: 20 * 1024 * 1024, timeout: 180000 })
+    const jsonFiles = fs.readdirSync(outputDir).filter(f => f.endsWith('.json') && f.includes(baseName))
+    if (jsonFiles.length > 0) {
+      const whisperOut = JSON.parse(fs.readFileSync(path.join(outputDir, jsonFiles[0]), 'utf8'))
+      if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath)
+      const segments: TranscriptSegment[] = (whisperOut.segments || []).map((seg: any) => ({
+        text: seg.text.trim(),
+        start: seg.start,
+        end: seg.end,
+        words: (seg.words || []).map((w: any) => ({
+          word: w.word.trim(),
+          start: w.start,
+          end: w.end,
+        })),
+      }))
+      return segments
+    }
+  } catch {}
+
+  return []
 }
 
 import { executeGeminiWithFailover } from '../lib/gemini-pool'
@@ -177,22 +187,23 @@ No markdown, no explanation. Pure JSON only.`
 
 /**
  * Auto-select transcription method.
- * Tries Whisper first, then falls back to Gemini.
+ * Tries local Whisper first, then falls back to Gemini multi-model failover.
  */
 export async function transcribeVideo(videoPath: string, outputDir: string): Promise<TranscriptSegment[]> {
   fs.mkdirSync(outputDir, { recursive: true })
 
-  // Check if Whisper is available
+  // 1. Try Whisper
   try {
-    const whisperBin = process.env.WHISPER_BIN || 'whisper'
-    await execAsync(`${whisperBin} --help`, { timeout: 5000 })
-    console.log('[Transcribe] Using Whisper')
     const result = await transcribeWithWhisper(videoPath, outputDir)
-    if (result.length > 0) return result
-  } catch {
-    console.log('[Transcribe] Whisper not available, trying Gemini...')
+    if (result && result.length > 0) {
+      return result
+    }
+  } catch (err: any) {
+    console.warn('[Transcribe] Whisper attempt failed, falling back to Gemini...', err.message)
   }
 
+  // 2. Fall back to Gemini multi-model failover
+  console.log('[Transcribe] 🎙️ Calling Gemini API transcribe fallback...')
   return transcribeWithGemini(videoPath)
 }
 

@@ -241,11 +241,42 @@ export function buildStoryRecutMap(
     clips,
   }
 
-  if (srtPath && fs.existsSync(srtPath)) {
+  if (srtPath) {
     result.captions_srt = srtPath
   }
 
   return result
+}
+
+/**
+ * Resolve a tool Python script path reliably across Docker containers,
+ * standalone worker processes, and Next.js webpack-bundled server API routes.
+ */
+export function resolveToolScript(scriptName: string): string {
+  const candidates = [
+    // 1. Primary path in Docker container on VPS (/app/tools/...)
+    path.join('/app', 'tools', scriptName),
+    // 2. Local development or worker process working directory (process.cwd()/tools/...)
+    path.join(process.cwd(), 'tools', scriptName),
+    path.resolve(process.cwd(), scriptName),
+    // 3. Source relative paths
+    path.resolve(__dirname, '..', 'tools', scriptName),
+    path.resolve(__dirname, '..', '..', 'tools', scriptName),
+  ]
+
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        return candidate
+      }
+    } catch {}
+  }
+
+  // Safe fallback: never point to .next/server/chunks
+  if (process.platform !== 'win32') {
+    return `/app/tools/${scriptName}`
+  }
+  return path.join(process.cwd(), 'tools', scriptName)
 }
 
 /**
@@ -266,14 +297,7 @@ export async function renderStoryRecutBatch(
   const cutmapPath = path.join(outputDir, `cutmap_batch_${Date.now()}.json`)
   fs.writeFileSync(cutmapPath, JSON.stringify(cutmap, null, 2), 'utf8')
 
-  // Resolve script path reliably across both standalone worker and Next.js webpack-bundled API routes
-  let scriptPath = path.join(process.cwd(), 'tools', 'story_recut_editor.py')
-  if (!fs.existsSync(scriptPath)) {
-    scriptPath = path.join(__dirname, 'story_recut_editor.py')
-  }
-  if (!fs.existsSync(scriptPath)) {
-    scriptPath = '/app/tools/story_recut_editor.py'
-  }
+  const scriptPath = resolveToolScript('story_recut_editor.py')
 
   const pythonBin = process.platform === 'win32' ? 'python' : 'python3'
 

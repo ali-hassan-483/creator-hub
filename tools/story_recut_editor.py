@@ -337,30 +337,9 @@ def build_ass(srt_entries, segments, keywords, out_path, on_screen_cfg=None, on_
     subs_cfg_enable = sub_cfg.get("enable")
     subs_enabled = subs_cfg_enable is not False and str(subs_cfg_enable).lower() not in ("false", "0", "disabled")
 
-    # If user enabled subtitles, but no speech transcript matched the segments:
-    # Synthesize clean keyword punch captions across the duration so subtitles always show!
-    if len(events) == 0 and subs_enabled:
-        cap_pool = []
-        if keywords:
-            cap_pool = [k.upper() for k in keywords if len(k) >= 3]
-        if not cap_pool and on_screen_text:
-            cap_pool = [w.upper() for w in str(on_screen_text).split() if len(w) >= 3]
-        if not cap_pool:
-            cap_pool = ["VIRAL", "MOMENT", "WATCH", "CLOSELY", "WAIT FOR IT"]
-
-        step = max(2.0, total_dur / min(4, max(2, len(cap_pool))))
-        curr_t = 0.3
-        idx = 0
-        while curr_t + 1.2 <= total_dur and idx < len(cap_pool):
-            cap_text = cap_pool[idx]
-            if idx + 1 < len(cap_pool) and len(cap_text) <= 6:
-                cap_text += " " + cap_pool[idx + 1]
-                idx += 1
-            idx += 1
-            end_t = min(total_dur - 0.2, curr_t + step - 0.3)
-            events.append((round(curr_t, 2), round(end_t, 2), f"{{\\c&H00D7FF&}}{cap_text}{{\\c&HFFFFFF&}}"))
-            used += 1
-            curr_t += step
+    # If subtitles are disabled, clear any parsed events
+    if not subs_enabled:
+        events = []
 
     # On-Screen Hook style & event
     extra_styles = ""
