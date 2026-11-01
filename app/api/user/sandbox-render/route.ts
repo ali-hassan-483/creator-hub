@@ -168,44 +168,47 @@ async function executeSandboxRender(jobId: string, campaignId: string) {
 
     const onScreenTextVal = metadata.onScreenText || (cfg.onScreenTextPool ? cfg.onScreenTextPool.split('\n')[0] : '')
 
-    update('rendering', 'Building Story Re-Cut plan (Aspect Ratio, Hook & Captions)...')
-    const cutmap = buildStoryRecutMap(videoDuration, transcript, srtPath, {
-      clipCount: 1,
-      startIndex: 1,
-      targetDuration: shortDuration,
-      hookDuration: hookDuration,
-      campaignName: campaign.name,
-      videoAspectRatio: cfg.videoAspectRatio || '9:16',
-      frameBackgroundColor: cfg.frameBackgroundColor || '#000000',
-      logo: logoPath ? {
-        path: logoPath,
-        position: cfg.overlayPosition || 'Bottom Center',
-        width_percent: Number(cfg.overlayWidthPercent) || 40,
-        height_percent: cfg.overlayHeightPercent !== undefined && cfg.overlayHeightPercent !== '' ? Number(cfg.overlayHeightPercent) : undefined,
-      } : undefined,
-      onScreenConfig: {
-        text: onScreenTextVal,
-        font: cfg.onScreenFontName || 'Arial',
-        text_color: cfg.onScreenTextColor || 'white',
-        position_height_percent: cfg.onScreenPositionHeightPercent !== undefined && cfg.onScreenPositionHeightPercent !== '' ? Number(cfg.onScreenPositionHeightPercent) : 27,
-        size_px: Number(cfg.onScreenSizePx) || 52,
-        background: cfg.onScreenBackground || 'black@0.5',
-        styled_word_count: Number(cfg.onScreenStyledWordCount) || 0,
-        styled_words_color: cfg.onScreenStyledWordsColor || 'yellow',
-      },
-      subtitlesConfig: {
-        enable: cfg.enableSubtitles !== 'Disabled (Fallback to AI Captions)' && cfg.enableSubtitles !== false && cfg.enableSubtitles !== 'disabled',
-        font: cfg.subtitleFonts || 'Arial',
-        color: cfg.subtitleColors || 'white',
-        outline_color: cfg.outlineColors || 'black',
-        font_size: Number(cfg.subtitleWordSize) || 54,
-        placement_height_percent: cfg.subtitlesPlacementHeightPercent !== undefined && cfg.subtitlesPlacementHeightPercent !== '' ? Number(cfg.subtitlesPlacementHeightPercent) : 80,
-        max_words_per_screen: Number(cfg.maxWordsPerScreen) || 5,
-        speaking_word_highlight: cfg.speakingWordHighlight || 'yellow',
-        text_cases: Array.isArray(cfg.subtitleTextCases) ? cfg.subtitleTextCases : ['Normal Text'],
-      },
-      onScreenTextList: onScreenTextVal ? [onScreenTextVal] : [],
-    })
+      const resolvedSubFont = (cfg.useSameFontForBannersAndSubs ? cfg.onScreenFontName : cfg.subtitleFonts) || 'Arial'
+      const resolvedSubHighlight = (cfg.useSameForSpeakingWordHighlight ? cfg.onScreenStyledWordsColor : cfg.speakingWordHighlight) || 'yellow'
+
+      update('rendering', 'Building Story Re-Cut plan (Aspect Ratio, Hook & Captions)...')
+      const cutmap = buildStoryRecutMap(videoDuration, transcript, srtPath, {
+        clipCount: 1,
+        startIndex: 1,
+        targetDuration: shortDuration,
+        hookDuration: hookDuration,
+        campaignName: campaign.name,
+        videoAspectRatio: cfg.videoAspectRatio || '9:16',
+        frameBackgroundColor: cfg.frameBackgroundColor || '#000000',
+        logo: logoPath ? {
+          path: logoPath,
+          position: cfg.overlayPosition || 'Bottom Center',
+          width_percent: Number(cfg.overlayWidthPercent) || 40,
+          height_percent: cfg.overlayHeightPercent !== undefined && cfg.overlayHeightPercent !== '' ? Number(cfg.overlayHeightPercent) : undefined,
+        } : undefined,
+        onScreenConfig: {
+          text: onScreenTextVal,
+          font: cfg.onScreenFontName || 'Arial',
+          text_color: cfg.onScreenTextColor || 'white',
+          position_height_percent: cfg.onScreenPositionHeightPercent !== undefined && cfg.onScreenPositionHeightPercent !== '' ? Number(cfg.onScreenPositionHeightPercent) : 27,
+          size_px: Number(cfg.onScreenSizePx) || 52,
+          background: cfg.onScreenBackground || 'black@0.5',
+          styled_word_count: Number(cfg.onScreenStyledWordCount) || 0,
+          styled_words_color: cfg.onScreenStyledWordsColor || 'yellow',
+        },
+        subtitlesConfig: {
+          enable: cfg.enableSubtitles !== 'Disabled (Fallback to AI Captions)' && cfg.enableSubtitles !== false && cfg.enableSubtitles !== 'disabled',
+          font: resolvedSubFont,
+          color: cfg.subtitleColors || 'white',
+          outline_color: cfg.outlineColors || 'black',
+          font_size: Number(cfg.subtitleWordSize) || 54,
+          placement_height_percent: cfg.subtitlesPlacementHeightPercent !== undefined && cfg.subtitlesPlacementHeightPercent !== '' ? Number(cfg.subtitlesPlacementHeightPercent) : 80,
+          max_words_per_screen: Number(cfg.maxWordsPerScreen) || 5,
+          speaking_word_highlight: resolvedSubHighlight,
+          text_cases: Array.isArray(cfg.subtitleTextCases) ? cfg.subtitleTextCases : ['Normal Text'],
+        },
+        onScreenTextList: onScreenTextVal ? [onScreenTextVal] : [],
+      })
 
     update('rendering', 'Rendering 9:16 vertical video with FFMPEG (ultrafast)...')
     const manifest = await renderStoryRecutBatch(sourceVideo, cutmap, clipsDir, {

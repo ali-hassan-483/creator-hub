@@ -188,6 +188,9 @@ export async function maintainCampaignClipPool(
     // Extract on-screen texts from pre-fetched pool for this batch
     const onScreenList = batchMetadataPool.slice(batchMetadataIndex, batchMetadataIndex + batchSize).map(m => m.onScreenText).filter(Boolean)
 
+    const resolvedSubFont = (cfg.useSameFontForBannersAndSubs ? cfg.onScreenFontName : cfg.subtitleFonts) || 'Arial'
+    const resolvedSubHighlight = (cfg.useSameForSpeakingWordHighlight ? cfg.onScreenStyledWordsColor : cfg.speakingWordHighlight) || 'yellow'
+
     // Build cutmap for this batch
     const cutmap = buildStoryRecutMap(videoDuration, transcript, srtPath, {
       clipCount: batchSize,
@@ -214,13 +217,13 @@ export async function maintainCampaignClipPool(
       },
       subtitlesConfig: {
         enable: cfg.enableSubtitles !== 'Disabled (Fallback to AI Captions)' && cfg.enableSubtitles !== false && cfg.enableSubtitles !== 'disabled',
-        font: cfg.subtitleFonts || 'Arial',
+        font: resolvedSubFont,
         color: cfg.subtitleColors || 'white',
         outline_color: cfg.outlineColors || 'black',
         font_size: Number(cfg.subtitleWordSize) || 54,
         placement_height_percent: cfg.subtitlesPlacementHeightPercent !== undefined && cfg.subtitlesPlacementHeightPercent !== '' ? Number(cfg.subtitlesPlacementHeightPercent) : 80,
         max_words_per_screen: Number(cfg.maxWordsPerScreen) || 5,
-        speaking_word_highlight: cfg.speakingWordHighlight || 'yellow',
+        speaking_word_highlight: resolvedSubHighlight,
         text_cases: Array.isArray(cfg.subtitleTextCases) ? cfg.subtitleTextCases : ['Normal Text'],
       },
       onScreenTextList: onScreenList,
