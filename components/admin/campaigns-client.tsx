@@ -73,6 +73,10 @@ const defaultFormState = {
   hookVideoUrls: '',
   ctaVideoUrls: '',
 
+  // Video Aspect Ratio & Frame Canvas
+  videoAspectRatio: '9:16' as '9:16' | '4:3' | '1:1' | '16:9',
+  frameBackgroundColor: '#000000',
+
   // On-Screen Text & Content AI (Screenshot 3 & 4)
   onScreenTextPool: '',
   singleOnScreenTextOnly: 'no' as 'no' | 'yes',
@@ -465,6 +469,8 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
       minEngagementRate: Number(formData.minEngagementRate) || 0,
       audioNotes: formData.audioNotes.trim(),
       editingEngine: 'story_recut',
+      videoAspectRatio: formData.videoAspectRatio,
+      frameBackgroundColor: formData.frameBackgroundColor.trim() || '#000000',
       shortDuration: Number(formData.shortDuration) || 45,
       hookDuration: Number(formData.hookDuration) || 3.5,
       punchZoom: Number(formData.punchZoom) || 1.2,
@@ -593,6 +599,8 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
       shortDuration: cfg.shortDuration ?? 45,
       hookDuration: cfg.hookDuration ?? 3.5,
       punchZoom: cfg.punchZoom ?? 1.2,
+      videoAspectRatio: cfg.videoAspectRatio || '9:16',
+      frameBackgroundColor: cfg.frameBackgroundColor || '#000000',
       tightenSilence: cfg.tightenSilence ?? true,
       startOffset: cfg.startOffset ?? 0,
       volumeMultiplier: cfg.volumeMultiplier ?? 1.0,
@@ -1529,6 +1537,71 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                     />
                   </div>
                 </div>
+
+                {/* Video Aspect Ratio & Frame Canvas Background Color */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 p-3.5 rounded-xl border border-primary/25 bg-primary/5">
+                  <div>
+                    <label className="block text-xs font-semibold text-foreground mb-1">
+                      Video Aspect Ratio (Inside 9:16 Canvas)
+                    </label>
+                    <select
+                      value={formData.videoAspectRatio}
+                      onChange={(e: any) => setFormData({ ...formData, videoAspectRatio: e.target.value })}
+                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="9:16">9:16 (Full Frame Vertical - Standard Shorts)</option>
+                      <option value="4:3">4:3 (Standard Aspect Ratio - Centered)</option>
+                      <option value="1:1">1:1 (Square Aspect Ratio - Centered)</option>
+                      <option value="16:9">16:9 (Widescreen Landscape - Centered)</option>
+                    </select>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Prevents over-zooming on 9:16 or wide videos so characters stay completely in view.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-foreground mb-1">
+                      Frame Background Color
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={formData.frameBackgroundColor.startsWith('#') && formData.frameBackgroundColor.length === 7 ? formData.frameBackgroundColor : '#000000'}
+                        onChange={(e) => setFormData({ ...formData, frameBackgroundColor: e.target.value })}
+                        className="w-9 h-9 p-0.5 rounded-lg border border-input cursor-pointer bg-background shrink-0"
+                      />
+                      <input
+                        type="text"
+                        placeholder="#000000"
+                        value={formData.frameBackgroundColor}
+                        onChange={(e) => setFormData({ ...formData, frameBackgroundColor: e.target.value })}
+                        className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                      <span className="text-[10px] text-muted-foreground">Presets:</span>
+                      {[
+                        { label: 'Black', val: '#000000' },
+                        { label: 'White', val: '#ffffff' },
+                        { label: 'Dark Gray', val: '#1e1e1e' },
+                        { label: 'Navy', val: '#0f172a' },
+                      ].map((p) => (
+                        <button
+                          key={p.val}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, frameBackgroundColor: p.val })}
+                          className={`px-1.5 py-0.5 rounded text-[10px] border font-mono transition-colors ${
+                            formData.frameBackgroundColor.toLowerCase() === p.val.toLowerCase()
+                              ? 'bg-primary/20 border-primary text-primary font-bold'
+                              : 'border-border bg-background hover:bg-muted text-muted-foreground'
+                          }`}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {/* SECTION 4: ON-SCREEN TEXT, TITLES & DESCRIPTIONS */}
@@ -1666,7 +1739,318 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                 </div>
               </div>
 
-              {/* SECTION 5: ADMIN GUIDE LINKS */}
+              {/* SECTION 5: VISUAL OVERLAY & LOGO */}
+              <div className="space-y-3 pt-3 border-t border-border">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <Image size={14} /> Visual Overlay & Logo
+                </h4>
+
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">Logo / Overlay URL</label>
+                  <input
+                    type="text"
+                    placeholder="Google Drive image link or direct URL"
+                    value={formData.logoOverlayUrl}
+                    onChange={(e) => setFormData({ ...formData, logoOverlayUrl: e.target.value })}
+                    className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <span className="text-[11px] text-muted-foreground block mt-1">
+                    Direct image link or Google Drive view link to transparent PNG brand watermark.
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Overlay Position</label>
+                    <select
+                      value={formData.overlayPosition}
+                      onChange={(e) => setFormData({ ...formData, overlayPosition: e.target.value })}
+                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="Top Left">Top Left</option>
+                      <option value="Top Center">Top Center</option>
+                      <option value="Top Right">Top Right</option>
+                      <option value="Middle Left">Middle Left</option>
+                      <option value="Center">Center</option>
+                      <option value="Middle Right">Middle Right</option>
+                      <option value="Bottom Left">Bottom Left</option>
+                      <option value="Bottom Center">Bottom Center</option>
+                      <option value="Bottom Right">Bottom Right</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Overlay Width (%)</label>
+                    <input
+                      type="number"
+                      min={5}
+                      max={100}
+                      placeholder="60"
+                      value={formData.overlayWidthPercent}
+                      onChange={(e) => setFormData({ ...formData, overlayWidthPercent: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Placement Height (%)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      placeholder="50"
+                      value={formData.overlayHeightPercent}
+                      onChange={(e) => setFormData({ ...formData, overlayHeightPercent: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 6: ON-SCREEN TEXT STYLING */}
+              <div className="space-y-3 pt-3 border-t border-border">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <Type size={14} /> On-Screen Text Styling
+                </h4>
+
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">On-Screen Text Font Name</label>
+                  <input
+                    type="text"
+                    placeholder="Montenegrin Gothic One"
+                    value={formData.onScreenFontName}
+                    onChange={(e) => setFormData({ ...formData, onScreenFontName: e.target.value })}
+                    className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="useSameFont"
+                    checked={formData.useSameFontForBannersAndSubs}
+                    onChange={(e) => setFormData({ ...formData, useSameFontForBannersAndSubs: e.target.checked })}
+                    className="rounded border-input text-primary focus:ring-ring"
+                  />
+                  <label htmlFor="useSameFont" className="text-xs text-foreground cursor-pointer font-medium">
+                    Use same font for on-screen text and subtitles
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Text Color</label>
+                    <input
+                      type="text"
+                      placeholder="white"
+                      value={formData.onScreenTextColor}
+                      onChange={(e) => setFormData({ ...formData, onScreenTextColor: e.target.value })}
+                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Placement Height (%)</label>
+                    <input
+                      type="number"
+                      placeholder="27"
+                      value={formData.onScreenPositionHeightPercent}
+                      onChange={(e) => setFormData({ ...formData, onScreenPositionHeightPercent: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Font Size (px)</label>
+                    <input
+                      type="number"
+                      placeholder="64"
+                      value={formData.onScreenSizePx}
+                      onChange={(e) => setFormData({ ...formData, onScreenSizePx: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Background Style</label>
+                    <input
+                      type="text"
+                      placeholder="black@0.5, red@0.8, etc."
+                      value={formData.onScreenBackground}
+                      onChange={(e) => setFormData({ ...formData, onScreenBackground: e.target.value })}
+                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Styled Word Count</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={10}
+                      placeholder="0"
+                      value={formData.onScreenStyledWordCount}
+                      onChange={(e) => setFormData({ ...formData, onScreenStyledWordCount: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Styled Words Color</label>
+                    <input
+                      type="text"
+                      placeholder="yellow"
+                      value={formData.onScreenStyledWordsColor}
+                      onChange={(e) => setFormData({ ...formData, onScreenStyledWordsColor: e.target.value })}
+                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="useSameSpeakingHighlight"
+                    checked={formData.useSameForSpeakingWordHighlight}
+                    onChange={(e) => setFormData({ ...formData, useSameForSpeakingWordHighlight: e.target.checked })}
+                    className="rounded border-input text-primary focus:ring-ring"
+                  />
+                  <label htmlFor="useSameSpeakingHighlight" className="text-xs text-foreground cursor-pointer font-medium">
+                    Use same color for speaking word highlight
+                  </label>
+                </div>
+              </div>
+
+              {/* SECTION 7: SUBTITLES & CAPTIONS */}
+              <div className="space-y-3 pt-3 border-t border-border">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <Captions size={14} /> Subtitles & Captions Styling
+                </h4>
+
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">Enable Subtitles</label>
+                  <select
+                    value={formData.enableSubtitles}
+                    onChange={(e) => setFormData({ ...formData, enableSubtitles: e.target.value })}
+                    className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    <option value="Disabled (Fallback to AI Captions)">Disabled (Fallback to AI Captions)</option>
+                    <option value="Always Burn Subtitles">Always Burn Subtitles</option>
+                    <option value="Only if Available">Only if Available</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">Subtitle Font(s)</label>
+                  <input
+                    type="text"
+                    placeholder="Montenegrin Gothic One"
+                    value={formData.subtitleFonts}
+                    onChange={(e) => setFormData({ ...formData, subtitleFonts: e.target.value })}
+                    className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Subtitle Color(s)</label>
+                    <input
+                      type="text"
+                      placeholder="white"
+                      value={formData.subtitleColors}
+                      onChange={(e) => setFormData({ ...formData, subtitleColors: e.target.value })}
+                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Outline Colors</label>
+                    <input
+                      type="text"
+                      placeholder="black"
+                      value={formData.outlineColors}
+                      onChange={(e) => setFormData({ ...formData, outlineColors: e.target.value })}
+                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Subtitle Word Size(s)</label>
+                    <input
+                      type="number"
+                      placeholder="100"
+                      value={formData.subtitleWordSize}
+                      onChange={(e) => setFormData({ ...formData, subtitleWordSize: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Placement Height (%)</label>
+                    <input
+                      type="number"
+                      placeholder="80"
+                      value={formData.subtitlesPlacementHeightPercent}
+                      onChange={(e) => setFormData({ ...formData, subtitlesPlacementHeightPercent: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Max Words Per Screen</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={20}
+                      placeholder="5"
+                      value={formData.maxWordsPerScreen}
+                      onChange={(e) => setFormData({ ...formData, maxWordsPerScreen: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Speaking Word Highlight</label>
+                    <input
+                      type="text"
+                      placeholder="yellow"
+                      value={formData.speakingWordHighlight}
+                      onChange={(e) => setFormData({ ...formData, speakingWordHighlight: e.target.value })}
+                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-2">
+                    Subtitle Text Case (Multi-Select)
+                  </label>
+                  <div className="flex flex-wrap gap-2.5">
+                    {['ALL UPPERCASE', 'all lowercase', 'Normal Text'].map((c) => (
+                      <label
+                        key={c}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer transition-colors ${
+                          formData.subtitleTextCases.includes(c)
+                            ? 'bg-primary/10 border-primary text-primary'
+                            : 'bg-card border-border text-foreground hover:bg-muted'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={formData.subtitleTextCases.includes(c)}
+                          onChange={() => toggleSubtitleCase(c)}
+                          className="rounded border-input text-primary"
+                        />
+                        <span>{c}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 8: ADMIN GUIDE LINKS */}
               <div className="space-y-3 pt-3 border-t border-border">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                   <LinkIcon size={14} /> Admin Guidelines

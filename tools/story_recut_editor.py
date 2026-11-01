@@ -95,6 +95,98 @@ def fmt_ass_time(sec):
     return f"{h}:{m:02d}:{s:05.2f}"
 
 
+def to_ass_bgr(color_str, alpha=0):
+    """Convert hex (#RRGGBB) or named color to ASS &H[AA][BB][GG][RR] format."""
+    c = str(color_str or "").strip().lower()
+    named = {
+        "white": "FFFFFF",
+        "black": "000000",
+        "yellow": "00D7FF",  # BGR for yellow
+        "gold": "00D7FF",
+        "red": "4444EF",     # BGR for red
+        "blue": "F6823B",    # BGR for blue
+        "green": "22C55E",
+        "cyan": "F8BD38",
+    }
+    if c in named:
+        return f"&H{alpha:02X}{named[c]}"
+    if c.startswith("#"):
+        hex_c = c[1:]
+        if len(hex_c) == 3:
+            hex_c = "".join(ch * 2 for ch in hex_c)
+        if len(hex_c) == 6:
+            r = hex_c[0:2]
+            g = hex_c[2:4]
+            b = hex_c[4:6]
+            return f"&H{alpha:02X}{b}{g}{r}"
+    return f"&H{alpha:02X}FFFFFF"
+
+
+def parse_bg_to_ass(bg_str):
+    """Convert 'black@0.5' or '#000000' to ASS BGR color and alpha."""
+    s = str(bg_str or "black@0.5").strip()
+    color_part = s
+    alpha_val = 0.5
+    if "@" in s:
+        parts = s.split("@")
+        color_part = parts[0]
+        try:
+            alpha_val = float(parts[1])
+        except ValueError:
+            alpha_val = 0.5
+    # ASS alpha: 0 is opaque, 255 is transparent
+    ass_alpha = int(round((1.0 - min(max(alpha_val, 0.0), 1.0)) * 255))
+    return to_ass_bgr(color_part, alpha=ass_alpha)
+
+
+def style_on_screen_text(text, count, highlight_color):
+    """Highlight last `count` words in on-screen text with highlight_color in ASS."""
+    if not text:
+        return ""
+    words = text.split()
+    if not words or count <= 0:
+        return text
+    highlight_start = max(0, len(words) - count)
+    ass_color = to_ass_bgr(highlight_color)
+    res = []
+    for i, w in enumerate(words):
+        if i >= highlight_start:
+            res.append(f"{{\\c{ass_color}&}}{w}{{\\c&H00FFFFFF&}}")
+        else:
+            res.append(w)
+    return " ".join(res)
+
+
+def calc_logo_overlay_xy(pos_str, height_pct=None):
+    """Calculate FFMPEG overlay x and y expressions for logo."""
+    pos = str(pos_str or "Bottom Center").lower().replace(" ", "_")
+    x = "(W-w)/2"
+    if "left" in pos:
+        x = "40"
+    elif "right" in pos:
+        x = "W-w-40"
+    elif "center" in pos:
+        x = "(W-w)/2"
+
+    if height_pct is not None and str(height_pct).strip() != "":
+        try:
+            hp = float(height_pct)
+            # Center logo vertically at height_pct%
+            y = f"trunc(H*{hp/100:.3f})-(h/2)"
+            return x, y
+        except ValueError:
+            pass
+
+    y = "H-h-40"
+    if "top" in pos:
+        y = "40"
+    elif "bottom" in pos:
+        y = "H-h-40"
+    elif "center" in pos or "middle" in pos:
+        y = "(H-h)/2"
+    return x, y
+
+
 # --------------------------------------------------------------------------
 # SRT -> re-timed, keyword-highlighted ASS for ONE clip
 # --------------------------------------------------------------------------
@@ -128,7 +220,7 @@ def highlight(text, keywords):
     return text
 
 
-def build_ass(srt_entries, segments, keywords, out_path):
+def build_ass(srt_entries, segments, keywords, out_path, on_screen_cfg=None, on_screen_text=None, subtitle_cfg=None):
     """segments: list of dicts in PLAYBACK order, with start/end (source sec)."""
     events, offset, used = [], 0.0, 0
     for seg in segments:
@@ -142,6 +234,41 @@ def build_ass(srt_entries, segments, keywords, out_path):
                 events.append((ns, ne, highlight(text, keywords)))
                 used += 1
         offset += (e - s)
+
+    total_dur = max(1.0, offset if offset > 0 else 60.0)
+
+    # Subtitle font & color options
+    sub_cfg = subtitle_cfg or {}
+    sub_font = sub_cfg.get("font") or "Arial"
+    sub_size = int(sub_cfg.get("font_size", 54))
+    sub_color = to_ass_bgr(sub_cfg.get("color", "white"))
+    sub_outline = to_ass_bgr(sub_cfg.get("outline_color", "black"))
+    sub_pos_pct = float(sub_cfg.get("placement_height_percent", 80))
+    sub_margin_v = max(20, min(1800, int(round(HEIGHT * (1.0 - (sub_pos_pct / 100))))))
+
+    # On-Screen Hook style & event
+    extra_styles = ""
+    extra_events = []
+    if on_screen_text and str(on_screen_text).strip():
+        osc = on_screen_cfg or {}
+        os_font = osc.get("font") or "Arial"
+        os_size = int(osc.get("size_px", 52))
+        os_color = to_ass_bgr(osc.get("text_color", "white"))
+        os_bg = parse_bg_to_ass(osc.get("background", "black@0.5"))
+        styled_cnt = int(osc.get("styled_word_count", 0))
+        styled_col = osc.get("styled_words_color", "yellow")
+        os_height_pct = float(osc.get("position_height_percent", 27))
+        # Top-center alignment uses MarginV from the TOP
+        os_margin_v = max(20, min(1800, int(round(HEIGHT * (os_height_pct / 100)))))
+
+        extra_styles += (
+            f"Style: OnScreenHook,{os_font},{os_size},{os_color},{os_color},&H00000000,{os_bg},"
+            f"-1,0,0,0,100,100,0,0,3,10,0,8,60,60,{os_margin_v},1\n"
+        )
+        styled_hook = style_on_screen_text(str(on_screen_text).strip(), styled_cnt, styled_col)
+        extra_events.append(f"Dialogue: 1,0:00:00.00,{fmt_ass_time(total_dur)},OnScreenHook,,0,0,0,,{styled_hook}")
+        used += 1
+
     header = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: {WIDTH}
@@ -150,14 +277,16 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,54,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,4,0,2,60,60,260,1
-
+Style: Default,{sub_font},{sub_size},{sub_color},{sub_color},{sub_outline},&H64000000,-1,0,0,0,100,100,0,0,1,4,0,2,60,60,{sub_margin_v},1
+{extra_styles}
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
-    body = "\n".join(
+    body_lines = extra_events + [
         f"Dialogue: 0,{fmt_ass_time(a)},{fmt_ass_time(b)},Default,,0,0,0,,{t}"
-        for a, b, t in events)
+        for a, b, t in events
+    ]
+    body = "\n".join(body_lines)
     Path(out_path).write_text(header + body + "\n", encoding="utf-8")
     return used
 
@@ -185,19 +314,42 @@ def tighten_bounds(src, start, end, noise="-38dB", min_sil=0.35):
 
 
 # --------------------------------------------------------------------------
-# render one segment (vertical crop + punch zoom + per-segment loudnorm)
+# render one segment (custom aspect ratio + punch zoom + centered pad)
 # --------------------------------------------------------------------------
-def render_segment(src, seg, out_path):
+def render_segment(src, seg, out_path, aspect_ratio="9:16", bg_color="black"):
     start, end = seg["start"], seg["end"]
     dur = end - start
     zoom = float(seg.get("zoom", 1.0))
     zoom = min(max(zoom, 1.0), 1.6)
-    # Crop a 9:16 window, enlarged by `zoom`, from the centre of the frame.
-    # bicubic scaling is 3x faster than lanczos on CPU with crisp quality
-    vf = (
-        f"crop='trunc(ih*9/16/{zoom}/2)*2':'trunc(ih/{zoom}/2)*2',"
-        f"scale={WIDTH}:{HEIGHT}:flags=bicubic,fps={FPS},setsar=1,format=yuv420p"
+
+    # Box sizes inside 1080x1920 canvas
+    ar = str(aspect_ratio).strip().lower()
+    if ar == "4:3":
+        box_w, box_h = 1080, 810
+    elif ar == "1:1":
+        box_w, box_h = 1080, 1080
+    elif ar == "16:9":
+        box_w, box_h = 1080, 608
+    else:  # default 9:16
+        box_w, box_h = 1080, 1920
+
+    # Format pad color (e.g. #000000 -> 0x000000, or black)
+    pad_color = str(bg_color or "black").strip()
+    if pad_color.startswith("#"):
+        pad_color = f"0x{pad_color[1:]}"
+    elif not pad_color:
+        pad_color = "black"
+
+    # Crop with target aspect ratio and zoom from center of source (iw, ih)
+    # Scale to box_w:box_h, then pad to 1080x1920 centered
+    crop_vf = (
+        f"crop='trunc(min(iw,ih*{box_w}/{box_h})/{zoom}/2)*2':"
+        f"'trunc(min(ih,iw*{box_h}/{box_w})/{zoom}/2)*2'"
     )
+    scale_vf = f"scale={box_w}:{box_h}:flags=bicubic"
+    pad_vf = f"pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2:color={pad_color}"
+    vf = f"{crop_vf},{scale_vf},{pad_vf},fps={FPS},setsar=1,format=yuv420p"
+
     preset = os.environ.get("FFMPEG_PRESET", "ultrafast")
     crf = os.environ.get("FFMPEG_CRF", "22")
     # -ss before -i for fast keyframe seek, -t after -i for exact duration cut
@@ -211,10 +363,13 @@ def render_segment(src, seg, out_path):
 
 
 # --------------------------------------------------------------------------
-# render one clip = ordered segments + optional burned-in clean captions
+# render one clip = ordered segments + optional burned-in clean captions & logo
 # --------------------------------------------------------------------------
-def render_clip(src, clip, srt_entries, out_dir, tmp, tighten=False):
+def render_clip(src, clip, srt_entries, out_dir, tmp, cfg, tighten=False):
     cid = re.sub(r"[^A-Za-z0-9_-]+", "_", clip["id"])
+    aspect_ratio = cfg.get("video_aspect_ratio", "9:16")
+    bg_color = cfg.get("frame_background_color", "black")
+
     segments = []
     for raw in clip["segments"]:
         s, e = parse_ts(raw["start"]), parse_ts(raw["end"])
@@ -239,7 +394,7 @@ def render_clip(src, clip, srt_entries, out_dir, tmp, tighten=False):
         p = tmp / f"{cid}_seg{i}.mp4"
         print(f"  segment {i} [{seg['role'] or 'body'}] "
               f"source {seg['start']:.1f}-{seg['end']:.1f} zoom={seg['zoom']}")
-        render_segment(src, seg, p)
+        render_segment(src, seg, p, aspect_ratio=aspect_ratio, bg_color=bg_color)
         seg_files.append(p)
 
     # Use forward slashes in concat file for cross-platform compatibility
@@ -256,23 +411,74 @@ def render_clip(src, clip, srt_entries, out_dir, tmp, tighten=False):
     preset = os.environ.get("FFMPEG_PRESET", "ultrafast")
     crf = os.environ.get("FFMPEG_CRF", "22")
 
-    if srt_entries:
+    # On-screen text & subtitles
+    clip_text = clip.get("on_screen_text") or (cfg.get("on_screen_text") or {}).get("text", "")
+    on_screen_cfg = cfg.get("on_screen_text") or {}
+    subtitle_cfg = cfg.get("subtitles") or {}
+
+    ass_path = None
+    if srt_entries or (clip_text and str(clip_text).strip()):
         try:
             ass = tmp / f"{cid}.ass"
-            n = build_ass(srt_entries, segments, keywords, ass)
-            print(f"  captions: {n} lines re-timed to playback order")
-            ass_esc = str(ass).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
-            run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-                 "-i", str(joined), "-vf", f"ass='{ass_esc}'",
-                 "-c:v", "libx264", "-preset", preset, "-crf", crf, "-threads", "0",
-                 "-c:a", "copy", str(final)])
+            n = build_ass(srt_entries, segments, keywords, ass, on_screen_cfg=on_screen_cfg, on_screen_text=clip_text, subtitle_cfg=subtitle_cfg)
+            if n > 0:
+                ass_path = ass
+                print(f"  captions/on-screen hook: {n} element(s) burned")
         except Exception as ass_err:
-            print(f"  ⚠️ Subtitle burn failed ({ass_err}), using video without subtitles")
+            print(f"  ⚠️ Subtitle / on-screen text build failed ({ass_err})")
+
+    # Logo overlay
+    logo_cfg = cfg.get("logo") or {}
+    logo_file = logo_cfg.get("path")
+    has_logo = logo_file and Path(logo_file).is_file()
+
+    try:
+        if ass_path and has_logo:
+            ass_esc = str(ass_path).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+            logo_w = max(20, min(1000, int(round(WIDTH * (float(logo_cfg.get("width_percent", 40)) / 100)))))
+            lx, ly = calc_logo_overlay_xy(logo_cfg.get("position", "Bottom Center"), logo_cfg.get("height_percent"))
             run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-                 "-i", str(joined), "-c", "copy", str(final)])
-    else:
+                 "-i", str(joined),
+                 "-i", str(logo_file),
+                 "-filter_complex", f"[1:v]scale={logo_w}:-1[logo];[0:v]ass='{ass_esc}'[v_ass];[v_ass][logo]overlay={lx}:{ly}[final_v]",
+                 "-map", "[final_v]",
+                 "-c:v", "libx264", "-preset", preset, "-crf", crf, "-threads", "0",
+                 "-map", "0:a?", "-c:a", "copy",
+                 str(final)])
+        elif ass_path:
+            ass_esc = str(ass_path).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+            run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                 "-i", str(joined),
+                 "-vf", f"ass='{ass_esc}'",
+                 "-c:v", "libx264", "-preset", preset, "-crf", crf, "-threads", "0",
+                 "-c:a", "copy",
+                 str(final)])
+        elif has_logo:
+            logo_w = max(20, min(1000, int(round(WIDTH * (float(logo_cfg.get("width_percent", 40)) / 100)))))
+            lx, ly = calc_logo_overlay_xy(logo_cfg.get("position", "Bottom Center"), logo_cfg.get("height_percent"))
+            run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                 "-i", str(joined),
+                 "-i", str(logo_file),
+                 "-filter_complex", f"[1:v]scale={logo_w}:-1[logo];[0:v][logo]overlay={lx}:{ly}[final_v]",
+                 "-map", "[final_v]",
+                 "-c:v", "libx264", "-preset", preset, "-crf", crf, "-threads", "0",
+                 "-map", "0:a?", "-c:a", "copy",
+                 str(final)])
+        else:
+            run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                 "-i", str(joined),
+                 "-c", "copy",
+                 str(final)])
+    except Exception as render_err:
+        print(f"  ⚠️ Advanced overlay failed ({render_err}), falling back to direct copy")
         run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
              "-i", str(joined), "-c", "copy", str(final)])
+
+    return {"id": cid, "file": str(final),
+            "duration_sec": round(probe_duration(final), 2),
+            "playback_order_source_ranges": [
+                [round(sg["start"], 2), round(sg["end"], 2)] for sg in segments],
+            "roles": [sg["role"] for sg in segments]}
 
     return {"id": cid, "file": str(final),
             "duration_sec": round(probe_duration(final), 2),
@@ -338,7 +544,7 @@ def main():
                 if skip_clip:
                     continue
                 print(f"\nRendering clip: {clip['id']}")
-                res = render_clip(src, clip, srt_entries, out_dir, tmp, tighten=args.tighten)
+                res = render_clip(src, clip, srt_entries, out_dir, tmp, cfg, tighten=args.tighten)
                 if res:
                     manifest.append(res)
             except Exception as clip_err:

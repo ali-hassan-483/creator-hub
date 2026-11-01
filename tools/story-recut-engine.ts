@@ -30,12 +30,44 @@ export interface StoryRecutSegment {
 export interface StoryRecutClipDef {
   id: string
   keywords: string[]
+  on_screen_text?: string
   segments: StoryRecutSegment[]
+}
+
+export interface StoryRecutLogoConfig {
+  path?: string
+  position?: string
+  width_percent?: number
+  height_percent?: number
+}
+
+export interface StoryRecutOnScreenTextConfig {
+  text?: string
+  font?: string
+  text_color?: string
+  position_height_percent?: number
+  size_px?: number
+  background?: string
+  styled_word_count?: number
+  styled_words_color?: string
+}
+
+export interface StoryRecutSubtitleConfig {
+  font?: string
+  color?: string
+  outline_color?: string
+  font_size?: number
+  placement_height_percent?: number
 }
 
 export interface StoryRecutMap {
   _how_it_works: string
   captions_srt?: string
+  video_aspect_ratio?: string
+  frame_background_color?: string
+  logo?: StoryRecutLogoConfig
+  on_screen_text?: StoryRecutOnScreenTextConfig
+  subtitles?: StoryRecutSubtitleConfig
   clips: StoryRecutClipDef[]
 }
 
@@ -98,6 +130,12 @@ export function buildStoryRecutMap(
     targetDuration?: number
     hookDuration?: number
     campaignName?: string
+    videoAspectRatio?: string
+    frameBackgroundColor?: string
+    logo?: StoryRecutLogoConfig
+    onScreenConfig?: StoryRecutOnScreenTextConfig
+    subtitlesConfig?: StoryRecutSubtitleConfig
+    onScreenTextList?: string[]
   }
 ): StoryRecutMap {
   const {
@@ -105,6 +143,12 @@ export function buildStoryRecutMap(
     startIndex,
     targetDuration = 45,
     hookDuration = 3.5,
+    videoAspectRatio = '9:16',
+    frameBackgroundColor = '#000000',
+    logo,
+    onScreenConfig,
+    subtitlesConfig,
+    onScreenTextList = [],
   } = options
 
   const clips: StoryRecutClipDef[] = []
@@ -149,9 +193,13 @@ export function buildStoryRecutMap(
       spokenKeywords = ['viral', 'secret', 'money', 'truth']
     }
 
+    // Determine on-screen text for this clip
+    const clipText = onScreenTextList[i % onScreenTextList.length] || onScreenConfig?.text || ''
+
     clips.push({
       id: clipId,
       keywords: spokenKeywords,
+      on_screen_text: clipText,
       segments: [
         // 1. COLD-OPEN PAYOFF HOOK (Payoff first!)
         {
@@ -180,7 +228,12 @@ export function buildStoryRecutMap(
 
   const result: StoryRecutMap = {
     _how_it_works:
-      'segments are played in the ORDER LISTED, not source order. List the hook (payoff) first, then the setup, then the payoff in context. Brand-safe full 9:16 vertical crop with punch zooms and clean keyword captions.',
+      'segments are played in the ORDER LISTED, not source order. List the hook (payoff) first, then the setup, then the payoff in context. Brand-safe vertical crop with punch zooms and clean keyword captions.',
+    video_aspect_ratio: videoAspectRatio,
+    frame_background_color: frameBackgroundColor,
+    logo,
+    on_screen_text: onScreenConfig,
+    subtitles: subtitlesConfig,
     clips,
   }
 

@@ -5,12 +5,15 @@ import * as fs from 'fs'
 import * as path from 'path'
 import {
   getClipsDir,
+  getCampaignDir,
+  getAssetsDir,
   loadTranscript,
   loadTranscriptSrt,
   runCampaignSetup,
   isSetupComplete,
   getExistingSourceVideos,
 } from '@/tools/campaign-processor'
+import { downloadLogoOverlay } from '@/tools/drive-downloader'
 import { getVideoInfo } from '@/tools/video-editor'
 import {
   buildStoryRecutMap,
@@ -89,16 +92,7 @@ async function executeSandboxRender(jobId: string, campaignId: string) {
     const shortDuration = parseFloat(cfg.shortDuration || '45')
     const hookDuration = parseFloat(cfg.hookDuration || '3.5')
 
-    update('rendering', 'Building Story Re-Cut plan (Cold-Open Hook + Punch Zoom)...')
-    const cutmap = buildStoryRecutMap(videoDuration, transcript, srtPath, {
-      clipCount: 1,
-      startIndex: 1,
-      targetDuration: shortDuration,
-      hookDuration: hookDuration,
-      campaignName: campaign.name,
-    })
-
-    // Generate metadata for the test clip
+    // Generate metadata for the test clip first so on-screen text hook is available
     update('rendering', 'Generating title & descriptions with AI...')
     const metaConfig: AiMetadataConfig = {
       titlesGuide: cfg.titlesGuide,
@@ -132,6 +126,57 @@ async function executeSandboxRender(jobId: string, campaignId: string) {
         hashtags: ['shorts', 'viral'],
       }
     }
+
+    // Check for logo
+    const assetsDir = getAssetsDir(campaignId)
+    let logoPath: string | undefined = undefined
+    if (cfg.logoOverlayUrl) {
+      try {
+        const dl = await downloadLogoOverlay(cfg.logoOverlayUrl, assetsDir)
+        if (dl) logoPath = dl
+      } catch {}
+    }
+    if (!logoPath && fs.existsSync(assetsDir)) {
+      const existing = fs.readdirSync(assetsDir).filter(f => !f.startsWith('.') && !f.endsWith('.part'))
+      if (existing.length > 0) logoPath = path.join(assetsDir, existing[0])
+    }
+
+    const onScreenTextVal = metadata.onScreenText || (cfg.onScreenTextPool ? cfg.onScreenTextPool.split('\n')[0] : '')
+
+    update('rendering', 'Building Story Re-Cut plan (Aspect Ratio, Hook & Captions)...')
+    const cutmap = buildStoryRecutMap(videoDuration, transcript, srtPath, {
+      clipCount: 1,
+      startIndex: 1,
+      targetDuration: shortDuration,
+      hookDuration: hookDuration,
+      campaignName: campaign.name,
+      videoAspectRatio: cfg.videoAspectRatio || '9:16',
+      frameBackgroundColor: cfg.frameBackgroundColor || '#000000',
+      logo: logoPath ? {
+        path: logoPath,
+        position: cfg.overlayPosition || 'Bottom Center',
+        width_percent: Number(cfg.overlayWidthPercent) || 40,
+        height_percent: cfg.overlayHeightPercent !== undefined && cfg.overlayHeightPercent !== '' ? Number(cfg.overlayHeightPercent) : undefined,
+      } : undefined,
+      onScreenConfig: {
+        text: onScreenTextVal,
+        font: cfg.onScreenFontName || 'Arial',
+        text_color: cfg.onScreenTextColor || 'white',
+        position_height_percent: Number(cfg.onScreenPositionHeightPercent) || 27,
+        size_px: Number(cfg.onScreenSizePx) || 52,
+        background: cfg.onScreenBackground || 'black@0.5',
+        styled_word_count: Number(cfg.onScreenStyledWordCount) || 0,
+        styled_words_color: cfg.onScreenStyledWordsColor || 'yellow',
+      },
+      subtitlesConfig: {
+        font: cfg.subtitleFonts || 'Arial',
+        color: cfg.subtitleColors || 'white',
+        outline_color: cfg.outlineColors || 'black',
+        font_size: Number(cfg.subtitleWordSize) || 54,
+        placement_height_percent: Number(cfg.subtitlesPlacementHeightPercent) || 80,
+      },
+      onScreenTextList: onScreenTextVal ? [onScreenTextVal] : [],
+    })
 
     update('rendering', 'Rendering 9:16 vertical video with FFMPEG (ultrafast)...')
     const manifest = await renderStoryRecutBatch(sourceVideo, cutmap, clipsDir, {

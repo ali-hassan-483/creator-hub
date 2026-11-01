@@ -15,6 +15,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import {
   getCampaignDir,
+  getAssetsDir,
   getClipsDir,
   loadTranscript,
   loadTranscriptSrt,
@@ -24,6 +25,7 @@ import {
   runCampaignSetup,
   getExistingSourceVideos,
 } from './campaign-processor'
+import { downloadLogoOverlay } from './drive-downloader'
 import { getVideoInfo } from './video-editor'
 import {
   buildStoryRecutMap,
@@ -169,6 +171,23 @@ export async function maintainCampaignClipPool(
     const transcript = loadTranscript(sourceVideo, campaignId)
     const srtPath = loadTranscriptSrt(sourceVideo, campaignId)
 
+    // Check for logo
+    const assetsDir = getAssetsDir(campaignId)
+    let logoPath: string | undefined = undefined
+    if (cfg.logoOverlayUrl) {
+      try {
+        const dl = await downloadLogoOverlay(cfg.logoOverlayUrl, assetsDir)
+        if (dl) logoPath = dl
+      } catch {}
+    }
+    if (!logoPath && fs.existsSync(assetsDir)) {
+      const existing = fs.readdirSync(assetsDir).filter(f => !f.startsWith('.') && !f.endsWith('.part'))
+      if (existing.length > 0) logoPath = path.join(assetsDir, existing[0])
+    }
+
+    // Extract on-screen texts from pre-fetched pool for this batch
+    const onScreenList = batchMetadataPool.slice(batchMetadataIndex, batchMetadataIndex + batchSize).map(m => m.onScreenText).filter(Boolean)
+
     // Build cutmap for this batch
     const cutmap = buildStoryRecutMap(videoDuration, transcript, srtPath, {
       clipCount: batchSize,
@@ -176,6 +195,31 @@ export async function maintainCampaignClipPool(
       targetDuration: shortDuration,
       hookDuration: hookDuration,
       campaignName: cfg.campaignName,
+      videoAspectRatio: cfg.videoAspectRatio || '9:16',
+      frameBackgroundColor: cfg.frameBackgroundColor || '#000000',
+      logo: logoPath ? {
+        path: logoPath,
+        position: cfg.overlayPosition || 'Bottom Center',
+        width_percent: Number(cfg.overlayWidthPercent) || 40,
+        height_percent: cfg.overlayHeightPercent !== undefined && cfg.overlayHeightPercent !== '' ? Number(cfg.overlayHeightPercent) : undefined,
+      } : undefined,
+      onScreenConfig: {
+        font: cfg.onScreenFontName || 'Arial',
+        text_color: cfg.onScreenTextColor || 'white',
+        position_height_percent: Number(cfg.onScreenPositionHeightPercent) || 27,
+        size_px: Number(cfg.onScreenSizePx) || 52,
+        background: cfg.onScreenBackground || 'black@0.5',
+        styled_word_count: Number(cfg.onScreenStyledWordCount) || 0,
+        styled_words_color: cfg.onScreenStyledWordsColor || 'yellow',
+      },
+      subtitlesConfig: {
+        font: cfg.subtitleFonts || 'Arial',
+        color: cfg.subtitleColors || 'white',
+        outline_color: cfg.outlineColors || 'black',
+        font_size: Number(cfg.subtitleWordSize) || 54,
+        placement_height_percent: Number(cfg.subtitlesPlacementHeightPercent) || 80,
+      },
+      onScreenTextList: onScreenList,
     })
 
     log(`🎬 Rendering Story Re-Cut batch of ${batchSize} clips from ${path.basename(sourceVideo)}...`)

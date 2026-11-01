@@ -6,21 +6,120 @@ import {
   MessageCircle,
   Bookmark,
   Sparkles,
-  Eye,
   Film,
   ZoomIn,
-  Volume2,
+  Image as ImageIcon,
 } from 'lucide-react'
 
-interface CampaignPreviewMockupProps {
+export interface CampaignPreviewMockupProps {
   formData: {
     name?: string
     shortDuration?: number | string
     hookDuration?: number | string
     punchZoom?: number | string
+    videoAspectRatio?: '9:16' | '4:3' | '1:1' | '16:9' | string
+    frameBackgroundColor?: string
     tightenSilence?: boolean
     audioNotes?: string
+    logoOverlayUrl?: string
+    overlayPosition?: string
+    overlayWidthPercent?: number | string
+    overlayHeightPercent?: number | string
+    onScreenTextPool?: string
+    onScreenPositionHeightPercent?: number | string
+    onScreenTextColor?: string
+    onScreenBackground?: string
+    onScreenFontName?: string
+    onScreenStyledWordCount?: number | string
+    onScreenStyledWordsColor?: string
+    enableSubtitles?: string
+    subtitlesPlacementHeightPercent?: number | string
+    subtitleFonts?: string
+    subtitleColors?: string
+    outlineColors?: string
+    speakingWordHighlight?: string
+    subtitleTextCases?: string[]
   }
+}
+
+// Convert background strings like 'red@0.8', 'black@0.5', '#000000' to CSS background
+function parseBgColor(bgStr?: string): string {
+  if (!bgStr) return 'rgba(0, 0, 0, 0.7)'
+  const str = bgStr.trim().toLowerCase()
+
+  if (str.includes('@')) {
+    const [color, alphaStr] = str.split('@')
+    const alpha = parseFloat(alphaStr) || 0.8
+    if (color === 'red') return `rgba(220, 38, 38, ${alpha})`
+    if (color === 'black') return `rgba(0, 0, 0, ${alpha})`
+    if (color === 'blue') return `rgba(37, 99, 235, ${alpha})`
+    if (color === 'green') return `rgba(22, 163, 74, ${alpha})`
+    if (color === 'purple') return `rgba(147, 51, 234, ${alpha})`
+    if (color === 'yellow') return `rgba(234, 179, 8, ${alpha})`
+    if (color === 'white') return `rgba(255, 255, 255, ${alpha})`
+    return `rgba(0, 0, 0, ${alpha})`
+  }
+
+  if (str === 'red') return 'rgba(220, 38, 38, 0.9)'
+  if (str === 'black') return 'rgba(0, 0, 0, 0.9)'
+  if (str === 'blue') return 'rgba(37, 99, 235, 0.9)'
+  if (str === 'green') return 'rgba(22, 163, 74, 0.9)'
+  if (str === 'purple') return 'rgba(147, 51, 234, 0.9)'
+  if (str === 'yellow') return 'rgba(234, 179, 8, 0.9)'
+  if (str === 'white') return 'rgba(255, 255, 255, 0.9)'
+  if (str.startsWith('#')) return str
+
+  return 'rgba(0, 0, 0, 0.7)'
+}
+
+// Map color names to CSS colors
+function parseTextColor(cStr?: string): string {
+  if (!cStr) return '#ffffff'
+  const c = cStr.trim().toLowerCase()
+  if (c === 'yellow') return '#facc15'
+  if (c === 'red') return '#ef4444'
+  if (c === 'green') return '#22c55e'
+  if (c === 'cyan' || c === 'sky') return '#38bdf8'
+  if (c === 'white') return '#ffffff'
+  if (c === 'black') return '#000000'
+  if (c.startsWith('#')) return c
+  return '#ffffff'
+}
+
+// Render words with styled word highlights
+function renderStyledWords(
+  text: string,
+  baseColor: string,
+  highlightColor: string,
+  styledCount: number
+) {
+  if (!text) return null
+  const words = text.split(/\s+/)
+  if (words.length === 0) return null
+  if (!styledCount || styledCount <= 0) {
+    return <span style={{ color: baseColor }}>{text}</span>
+  }
+
+  // Highlight the last N words (or first N words)
+  const highlightStart = Math.max(0, words.length - styledCount)
+
+  return (
+    <>
+      {words.map((word, idx) => {
+        const isHighlight = idx >= highlightStart
+        return (
+          <span
+            key={idx}
+            style={{
+              color: isHighlight ? highlightColor : baseColor,
+            }}
+          >
+            {word}{' '}
+          </span>
+        )
+      })}
+    </>
+  )
 }
 
 export function CampaignPreviewMockup({ formData }: CampaignPreviewMockupProps) {
@@ -29,6 +128,58 @@ export function CampaignPreviewMockup({ formData }: CampaignPreviewMockupProps) 
   const shortDur = Number(formData.shortDuration) || 45
   const hookDur = Number(formData.hookDuration) || 3.5
   const zoom = Number(formData.punchZoom) || 1.2
+  const aspectRatio = formData.videoAspectRatio || '9:16'
+  const frameBg = formData.frameBackgroundColor || '#000000'
+
+  // On-screen text sample
+  const onScreenText =
+    (formData.onScreenTextPool && formData.onScreenTextPool.split('\n')[0].trim()) ||
+    'WAIT UNTIL THE END!'
+  const onScreenPos = Number(formData.onScreenPositionHeightPercent) || 27
+  const onScreenColor = parseTextColor(formData.onScreenTextColor || 'white')
+  const onScreenBg = parseBgColor(formData.onScreenBackground || 'black@0.5')
+  const onScreenStyledColor = parseTextColor(formData.onScreenStyledWordsColor || 'yellow')
+  const onScreenStyledCount = Number(formData.onScreenStyledWordCount) || 0
+
+  // Subtitles
+  const subsEnabled = formData.enableSubtitles !== 'Disabled (Fallback to AI Captions)'
+  const subsPos = Number(formData.subtitlesPlacementHeightPercent) || 80
+  const subColor = parseTextColor(formData.subtitleColors || 'white')
+  const speakingHighlight = parseTextColor(formData.speakingWordHighlight || 'yellow')
+
+  // Logo position calculation
+  const getLogoStyle = () => {
+    const pos = (formData.overlayPosition || 'Bottom Center').toLowerCase()
+    const width = Math.min(Math.max(Number(formData.overlayWidthPercent) || 60, 10), 100)
+    const heightPos = Math.min(Math.max(Number(formData.overlayHeightPercent) || 50, 0), 100)
+
+    const base: React.CSSProperties = {
+      position: 'absolute',
+      width: `${Math.round(width * 0.45)}%`,
+      zIndex: 25,
+      transition: 'all 0.2s ease',
+    }
+
+    if (pos.includes('top')) {
+      base.top = '10%'
+    } else if (pos.includes('bottom')) {
+      base.bottom = `${Math.max(6, 100 - heightPos)}%`
+    } else {
+      base.top = `${heightPos}%`
+      base.transform = 'translateY(-50%)'
+    }
+
+    if (pos.includes('left')) {
+      base.left = '6%'
+    } else if (pos.includes('right')) {
+      base.right = '6%'
+    } else {
+      base.left = '50%'
+      base.transform = base.transform ? `${base.transform} translateX(-50%)` : 'translateX(-50%)'
+    }
+
+    return base
+  }
 
   return (
     <div className="flex flex-col items-center select-none font-sans">
@@ -36,7 +187,7 @@ export function CampaignPreviewMockup({ formData }: CampaignPreviewMockupProps) 
       <div className="w-full flex items-center justify-between px-3 py-2 mb-2 bg-muted/60 border border-border rounded-xl text-xs text-muted-foreground font-medium">
         <span className="flex items-center gap-1.5 font-bold text-foreground">
           <Film size={14} className="text-primary" />
-          <span>Story Re-Cut 9:16 Live Preview</span>
+          <span>Story Re-Cut 9:16 Canvas ({aspectRatio})</span>
         </span>
         <button
           type="button"
@@ -58,81 +209,145 @@ export function CampaignPreviewMockup({ formData }: CampaignPreviewMockupProps) 
           <div className="w-2 h-2 rounded-full bg-neutral-800" />
         </div>
 
-        {/* Screen Glass Canvas */}
-        <div className="relative w-full h-full rounded-[30px] overflow-hidden bg-gradient-to-b from-slate-900 via-neutral-950 to-black border border-white/5 flex flex-col justify-between p-4">
-          {/* Subtle Grid Backdrop */}
-          <div className="absolute inset-0 opacity-15 pointer-events-none bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:16px_16px]" />
+        {/* Screen Glass Canvas with User Frame Background Color */}
+        <div
+          className="relative w-full h-full rounded-[30px] overflow-hidden border border-white/5 flex flex-col justify-between"
+          style={{ backgroundColor: frameBg }}
+        >
+          {/* VIDEO FRAME INSIDE 9:16 CANVAS */}
+          {aspectRatio === '9:16' ? (
+            /* Full-frame 9:16 */
+            <div className="absolute inset-0 w-full h-full bg-gradient-to-b from-slate-900 via-neutral-900 to-slate-950 flex flex-col justify-between p-4">
+              <div className="absolute inset-0 opacity-15 pointer-events-none bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:16px_16px]" />
+            </div>
+          ) : (
+            /* Boxed aspect ratio (4:3, 1:1, 16:9) centered vertically */
+            <div className="w-full my-auto px-1">
+              <div
+                className={`w-full relative rounded-lg overflow-hidden border border-white/10 shadow-2xl bg-gradient-to-b from-slate-900 via-neutral-900 to-slate-950 flex items-center justify-center ${
+                  aspectRatio === '4:3'
+                    ? 'aspect-[4/3]'
+                    : aspectRatio === '1:1'
+                    ? 'aspect-square'
+                    : 'aspect-[16/9]'
+                }`}
+              >
+                <div className="absolute inset-0 opacity-15 pointer-events-none bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:14px_14px]" />
+                <div className="text-center p-2 z-10">
+                  <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-black/60 border border-white/15 text-[9px] font-mono font-bold text-white/90">
+                    <Film size={10} className="text-primary" />
+                    <span>Video Frame ({aspectRatio})</span>
+                  </div>
+                  <p className="text-[8px] text-white/50 mt-1">
+                    Aspect ratio preserved without distortion
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Top Status Badges */}
-          <div className="relative z-30 flex items-center justify-between pt-6">
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/70 border border-emerald-500/30 backdrop-blur-md">
+          <div className="absolute top-4 left-4 right-4 z-30 flex items-center justify-between pt-4 pointer-events-none">
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/75 border border-emerald-500/30 backdrop-blur-md">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               <span className="text-[9px] font-bold tracking-wide text-white/90 uppercase">
-                Brand-Safe 9:16
+                {aspectRatio} Canvas
               </span>
             </div>
 
-            <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-black/70 border border-primary/30 backdrop-blur-md text-[9px] font-mono font-semibold text-primary">
+            <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-black/75 border border-primary/30 backdrop-blur-md text-[9px] font-mono font-semibold text-primary">
               <ZoomIn size={10} />
               <span>{zoom}x Zoom</span>
             </div>
           </div>
 
-          {/* Center Graphic: Cold-Open Story Architecture */}
-          <div className="relative z-20 my-auto text-center space-y-3 px-2">
-            <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-bold uppercase tracking-wider">
-              <Sparkles size={11} />
-              <span>Cold-Open Payoff Reorder</span>
+          {/* ON-SCREEN TEXT (HOOK BANNER) */}
+          <div
+            className="absolute left-3 right-3 z-30 flex justify-center pointer-events-none"
+            style={{ top: `${onScreenPos}%` }}
+          >
+            <div
+              className="px-3 py-1.5 rounded-lg border border-white/20 shadow-xl max-w-[92%] text-center backdrop-blur-xs"
+              style={{
+                backgroundColor: onScreenBg,
+                fontFamily: formData.onScreenFontName || 'inherit',
+              }}
+            >
+              <p className="text-[12px] font-black tracking-wide leading-tight drop-shadow-md">
+                {renderStyledWords(
+                  onScreenText,
+                  onScreenColor,
+                  onScreenStyledColor,
+                  onScreenStyledCount
+                )}
+              </p>
             </div>
-
-            <div className="bg-black/60 border border-white/10 rounded-xl p-3 backdrop-blur-xs text-left space-y-2">
-              <div className="flex items-center justify-between text-[10px]">
-                <span className="font-semibold text-amber-400 flex items-center gap-1">
-                  1. Hook (Payoff First)
-                </span>
-                <span className="font-mono text-white/60">0:00 - 0:0{Math.round(hookDur)}s</span>
-              </div>
-              <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
-                <div
-                  className="bg-amber-400 h-full"
-                  style={{ width: `${Math.min(30, (hookDur / shortDur) * 100)}%` }}
-                />
-              </div>
-
-              <div className="flex items-center justify-between text-[10px] pt-1 border-t border-white/5">
-                <span className="font-semibold text-white/80">2. Setup / Story</span>
-                <span className="font-mono text-white/60">1.0x Normal</span>
-              </div>
-
-              <div className="flex items-center justify-between text-[10px] pt-1 border-t border-white/5">
-                <span className="font-semibold text-white/80">3. Payoff in Context</span>
-                <span className="font-mono text-white/60">1.12x Climax</span>
-              </div>
-            </div>
-
-            <p className="text-[10px] text-white/60 italic leading-snug">
-              Uses ONLY brand source footage. Zero memes, zero stickers, zero mirror blur.
-            </p>
           </div>
 
-          {/* Bottom Captions Simulation */}
-          <div className="relative z-30 space-y-2 pb-2">
-            <div className="text-center">
-              <div className="inline-block py-1.5 px-3 bg-black/75 rounded-lg border border-white/15 backdrop-blur-xs shadow-lg">
-                <p className="text-[12px] font-black tracking-wide text-white leading-tight">
-                  THIS IS THE <span className="text-amber-400">EXACT</span> FORMULA
+          {/* LOGO OVERLAY */}
+          {formData.logoOverlayUrl ? (
+            <div style={getLogoStyle()}>
+              <div className="relative group">
+                <img
+                  src={formData.logoOverlayUrl}
+                  alt="Logo Overlay"
+                  className="w-full h-auto max-h-12 object-contain drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]"
+                  onError={(e) => {
+                    // Fallback to stylized logo badge if external image fails to load in preview
+                    const target = e.currentTarget as HTMLElement
+                    target.style.display = 'none'
+                    const fallback = target.nextElementSibling as HTMLElement
+                    if (fallback) fallback.style.display = 'flex'
+                  }}
+                />
+                <div className="hidden px-2 py-1 bg-black/80 rounded border border-white/20 items-center gap-1 text-[9px] font-bold text-white shadow-lg">
+                  <ImageIcon size={10} className="text-primary" />
+                  <span className="truncate">LOGO</span>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {/* SUBTITLES / CAPTIONS */}
+          {subsEnabled ? (
+            <div
+              className="absolute left-3 right-3 z-30 flex justify-center pointer-events-none"
+              style={{ top: `${subsPos}%` }}
+            >
+              <div className="text-center px-2 py-1 bg-black/80 rounded-md border border-white/10 shadow-lg backdrop-blur-xs">
+                <p
+                  className="text-[11px] font-extrabold tracking-wide uppercase leading-tight drop-shadow"
+                  style={{
+                    color: subColor,
+                    fontFamily: formData.subtitleFonts || 'inherit',
+                  }}
+                >
+                  THIS IS THE{' '}
+                  <span style={{ color: speakingHighlight }} className="underline decoration-2">
+                    VIRAL
+                  </span>{' '}
+                  MOMENT
                 </p>
-                <span className="text-[7.5px] font-mono text-white/50 block mt-0.5">
-                  Clean Keyword Highlight Captions
+              </div>
+            </div>
+          ) : (
+            /* Clean Keyword Captions Default Simulation */
+            <div className="absolute left-3 right-3 bottom-14 z-30 flex justify-center pointer-events-none">
+              <div className="text-center py-1 px-2.5 bg-black/80 rounded-md border border-white/10 shadow-lg backdrop-blur-xs">
+                <p className="text-[11px] font-black tracking-wide text-white leading-tight">
+                  CLEAN KEYWORD <span className="text-amber-400">PUNCH</span>
+                </p>
+                <span className="text-[7px] font-mono text-white/50 block mt-0.5">
+                  AI Keyword Highlights
                 </span>
               </div>
             </div>
+          )}
 
-            {/* Campaign Name Tag */}
-            <div className="flex items-center justify-between text-[9px] text-white/50 px-1 font-mono">
-              <span className="truncate max-w-[150px]">{formData.name || 'Shorts Campaign'}</span>
-              <span>~{shortDur}s</span>
-            </div>
+          {/* Bottom Campaign Tag */}
+          <div className="absolute bottom-3 left-4 right-4 z-30 flex items-center justify-between text-[9px] text-white/60 font-mono pointer-events-none">
+            <span className="truncate max-w-[150px]">{formData.name || 'Shorts Campaign'}</span>
+            <span>~{shortDur}s</span>
           </div>
 
           {/* Simulated YouTube Shorts Right Action Rail */}

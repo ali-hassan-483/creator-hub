@@ -124,8 +124,8 @@ export async function POST(req: NextRequest) {
       // Fire-and-forget background setup
       import('@/tools/campaign-processor').then(async ({ runCampaignSetup, isSetupComplete }) => {
         try {
-          // Import the tracker from setup-status to register progress
-          const { getSetupTracker } = await import('@/app/api/admin/campaigns/setup-status/route')
+          // Import the tracker to register progress
+          const { getSetupTracker } = await import('@/lib/setup-tracker')
           const tracker = getSetupTracker()
           
           tracker.set(campaign.id, {
@@ -152,7 +152,7 @@ export async function POST(req: NextRequest) {
         } catch (err: any) {
           console.error(`[AutoSetup] ❌ Campaign "${data.name}" (${campaign.id}) setup failed:`, err.message)
           try {
-            const { getSetupTracker } = await import('@/app/api/admin/campaigns/setup-status/route')
+            const { getSetupTracker } = await import('@/lib/setup-tracker')
             const tracker = getSetupTracker()
             tracker.set(campaign.id, {
               status: 'error' as const,
