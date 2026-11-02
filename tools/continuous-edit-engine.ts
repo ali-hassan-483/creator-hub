@@ -80,85 +80,127 @@ export async function maintainCampaignClipPool(
     })
   }
 
+  const maxTarget = Number(cfg.targetClipsPool || cfg.maxClipsPool || TARGET_EDITED_CLIPS) || 300
   let currentCount = countEditedClips(campaignId)
-  log(`Current pool count: ${currentCount}/${TARGET_EDITED_CLIPS}`)
+  log(`Current pool count: ${currentCount}/${maxTarget}`)
 
-  if (currentCount >= TARGET_EDITED_CLIPS) {
+  if (currentCount >= maxTarget) {
     onStatusUpdate?.({
       campaignId,
       currentClips: currentCount,
-      targetClips: TARGET_EDITED_CLIPS,
+      targetClips: maxTarget,
       status: 'completed',
-      lastMessage: `Target reached (${currentCount}/${TARGET_EDITED_CLIPS} clips ready).`,
+      lastMessage: `Target reached (${currentCount}/${maxTarget} clips ready).`,
     })
     return currentCount
   }
 
-  const sourceVideos = getExistingSourceVideos(campaignId)
-  if (sourceVideos.length === 0) {
-    const errorMsg = 'No source videos found in storage. Please add source URLs or upload clips.'
-    log(`❌ ${errorMsg}`)
-    onStatusUpdate?.({
-      campaignId,
-      currentClips: currentCount,
-      targetClips: TARGET_EDITED_CLIPS,
-      status: 'error',
-      lastMessage: errorMsg,
-    })
-    return currentCount
-  }
-
-  const clipsDir = getClipsDir(campaignId)
-  const shortDuration = parseFloat(cfg.shortDuration || '45')
-  const hookDuration = parseFloat(cfg.hookDuration || '3.5')
-  const tightenSilence = cfg.tightenSilence === true // disabled by default for 3x render speed
-
-  const metaConfig: AiMetadataConfig = {
-    titlesGuide: cfg.titlesGuide,
-    descriptionsGuide: cfg.descriptionsGuide,
-    onScreenGuide: cfg.onScreenAiGuide,
-    ftcDisclosure: cfg.ftcDisclosure,
-    predefinedDescription: cfg.predefinedDescription,
-    useOnlyPredefinedDescription: cfg.useOnlyPredefinedDescription,
-    linksInDescription: cfg.linksInDescription,
-    maxTitleChars: cfg.maxTitleCharacters ? parseInt(cfg.maxTitleCharacters) : 100,
-    onScreenMaxChars: cfg.onScreenMaxChars ? parseInt(cfg.onScreenMaxChars) : 80,
-    audioNotes: cfg.audioNotes,
-    niche: cfg.niche,
-    campaignName: cfg.campaignName,
-  }
-
-  // Pre-fetch batch metadata from guidelines
-  let batchMetadataPool: ShortMetadata[] = []
-  let batchMetadataIndex = 0
-
-  const refreshBatchMetadata = async () => {
-    log('🤖 Fetching batch of 20 metadata sets from AI (Title/Desc guidelines)...')
+  // File-based lock to prevent duplicate parallel editing processes across containers
+  const lockPath = path.join(getCampaignDir(campaignId), '.editing.lock')
+  if (fs.existsSync(lockPath)) {
     try {
-      batchMetadataPool = await generateBatchMetadataFromGuidelines(20, metaConfig)
-      batchMetadataIndex = 0
-      log(`✅ Batch of ${batchMetadataPool.length} metadata sets received.`)
-    } catch (err: any) {
-      log(`⚠️ Failed to generate batch metadata: ${err.message}`)
-    }
+      const stat = fs.statSync(lockPath)
+      const ageMs = Date.now() - stat.mtimeMs
+      if (ageMs < 10 * 60 * 1000) {
+        log(`⚠️ Another editing process is already active for this campaign (lock active). Skipping to prevent duplicate clips.`)
+        return currentCount
+      }
+    } catch {}
   }
 
-  await refreshBatchMetadata()
+  // Acquire lock
+  try {
+    fs.writeFileSync(lockPath, JSON.stringify({ pid: process.pid, time: new Date().toISOString() }))
+  } catch {}
 
-  log(`🚀 Starting Story Re-Cut Loop: need ${TARGET_EDITED_CLIPS - currentCount} more clips`)
+  try {
+    const sourceVideos = getExistingSourceVideos(campaignId)
+    if (sourceVideos.length === 0) {
+      const errorMsg = 'No source videos found in storage. Please add source URLs or upload clips.'
+      log(`❌ ${errorMsg}`)
+      onStatusUpdate?.({
+        campaignId,
+        currentClips: currentCount,
+        targetClips: maxTarget,
+        status: 'error',
+        lastMessage: errorMsg,
+      })
+      return currentCount
+    }
 
-  // Loop until 300 clips reached, rendering in small batches of 3-5 clips
-  while (currentCount < TARGET_EDITED_CLIPS) {
-    const clipsNeeded = TARGET_EDITED_CLIPS - currentCount
-    const batchSize = Math.min(3, clipsNeeded)
+    const clipsDir = getClipsDir(campaignId)
+    const shortDuration = parseFloat(cfg.shortDuration || '45')
+    const hookDuration = parseFloat(cfg.hookDuration || '3.5')
+    const tightenSilence = cfg.tightenSilence === true // disabled by default for 3x render speed
 
-    onStatusUpdate?.({
-      campaignId,
-      currentClips: currentCount,
-      targetClips: TARGET_EDITED_CLIPS,
-      status: 'editing',
-      lastMessage: `Rendering Story Re-Cut batch (${currentCount + 1} to ${currentCount + batchSize})...`,
-    })
+    const metaConfig: AiMetadataConfig = {
+      titlesGuide: cfg.titlesGuide,
+      descriptionsGuide: cfg.descriptionsGuide,
+      onScreenGuide: cfg.onScreenAiGuide,
+      ftcDisclosure: cfg.ftcDisclosure,
+      predefinedDescription: cfg.predefinedDescription,
+      useOnlyPredefinedDescription: cfg.useOnlyPredefinedDescription,
+      linksInDescription: cfg.linksInDescription,
+      maxTitleChars: cfg.maxTitleCharacters ? parseInt(cfg.maxTitleCharacters) : 100,
+      onScreenMaxChars: cfg.onScreenMaxChars ? parseInt(cfg.onScreenMaxChars) : 80,
+      audioNotes: cfg.audioNotes,
+      niche: cfg.niche,
+      campaignName: cfg.campaignName,
+    }
+
+    // Pre-fetch batch metadata from guidelines
+    let batchMetadataPool: ShortMetadata[] = []
+    let batchMetadataIndex = 0
+
+    const refreshBatchMetadata = async () => {
+      log('🤖 Fetching batch of 20 metadata sets from AI (Title/Desc guidelines)...')
+      try {
+        batchMetadataPool = await generateBatchMetadataFromGuidelines(20, metaConfig)
+        batchMetadataIndex = 0
+        log(`✅ Batch of ${batchMetadataPool.length} metadata sets received.`)
+      } catch (err: any) {
+        log(`⚠️ Failed to generate batch metadata: ${err.message}`)
+      }
+    }
+
+    await refreshBatchMetadata()
+
+    log(`🚀 Starting Story Re-Cut Loop: need ${maxTarget - currentCount} more clips (Target: ${maxTarget})`)
+
+    // Loop until maxTarget clips reached, checking disk on EVERY iteration
+    while (true) {
+      // Re-read exact count from disk to guarantee we NEVER exceed target!
+      currentCount = countEditedClips(campaignId)
+      if (currentCount >= maxTarget) {
+        log(`🎯 Target reached on disk (${currentCount}/${maxTarget} clips). Stopping editing loop.`)
+        break
+      }
+
+      // Check if admin paused editing or deactivated campaign mid-run
+      try {
+        const { prisma } = await import('../lib/db')
+        const cCheck = await prisma.campaign.findUnique({
+          where: { id: campaignId },
+          select: { status: true, config: true },
+        })
+        const cCfg = (cCheck?.config || {}) as Record<string, any>
+        if (cCheck?.status !== 'active' || cCfg.editingApproved === false) {
+          log(`⏸️ Auto-editing paused by admin for campaign ${campaignId}. Stopping editing loop immediately.`)
+          break
+        }
+      } catch {}
+
+      const clipsNeeded = maxTarget - currentCount
+      if (clipsNeeded <= 0) break
+      const batchSize = Math.min(3, clipsNeeded)
+
+      onStatusUpdate?.({
+        campaignId,
+        currentClips: currentCount,
+        targetClips: maxTarget,
+        status: 'editing',
+        lastMessage: `Rendering Story Re-Cut batch (${currentCount + 1} to ${currentCount + batchSize})...`,
+      })
 
     // Pick a source video (round-robin)
     const sourceVideo = sourceVideos[currentCount % sourceVideos.length]
@@ -269,13 +311,13 @@ export async function maintainCampaignClipPool(
           'utf8'
         )
 
-        currentCount++
-        log(`✅ [${currentCount}/${TARGET_EDITED_CLIPS}] Generated: ${path.basename(item.file)} (${item.duration_sec}s)`)
+        currentCount = countEditedClips(campaignId)
+        log(`✅ [${currentCount}/${maxTarget}] Generated: ${path.basename(item.file)} (${item.duration_sec}s)`)
 
         onStatusUpdate?.({
           campaignId,
           currentClips: currentCount,
-          targetClips: TARGET_EDITED_CLIPS,
+          targetClips: maxTarget,
           status: 'editing',
           lastMessage: `Clip #${currentCount} rendered: ${meta.title}`,
         })
@@ -287,14 +329,22 @@ export async function maintainCampaignClipPool(
     }
   }
 
-  log(`🎉 Campaign ${campaignId} reached full pool of ${TARGET_EDITED_CLIPS} clips!`)
-  onStatusUpdate?.({
-    campaignId,
-    currentClips: currentCount,
-    targetClips: TARGET_EDITED_CLIPS,
-    status: 'completed',
-    lastMessage: `All ${TARGET_EDITED_CLIPS} clips ready in pool.`,
-  })
+  const finalOnDisk = countEditedClips(campaignId)
+  if (finalOnDisk >= maxTarget) {
+    log(`🎉 Campaign ${campaignId} reached full pool of ${maxTarget} clips!`)
+    onStatusUpdate?.({
+      campaignId,
+      currentClips: finalOnDisk,
+      targetClips: maxTarget,
+      status: 'completed',
+      lastMessage: `All ${maxTarget} clips ready in pool.`,
+    })
+  }
 
-  return currentCount
+  return finalOnDisk
+  } finally {
+    try {
+      if (fs.existsSync(lockPath)) fs.unlinkSync(lockPath)
+    } catch {}
+  }
 }

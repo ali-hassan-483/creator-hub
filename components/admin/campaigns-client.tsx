@@ -261,6 +261,40 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
     } catch {}
   }
 
+  // Prune excess clips handler
+  const [isPruning, setIsPruning] = useState<Record<string, boolean>>({})
+
+  async function handlePruneExcessClips(campaignId: string) {
+    if (!confirm('Kya aap excess clips delete karke exactly 300 clips rakhna chahte hain?')) return
+    setIsPruning((prev) => ({ ...prev, [campaignId]: true }))
+    try {
+      const res = await fetch('/api/admin/campaigns/setup-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaignId, action: 'prune_excess_clips' }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to prune clips')
+      alert(data.message || 'Pruned to 300 clips successfully!')
+      setSetupStatuses((prev) => ({
+        ...prev,
+        [campaignId]: {
+          ...prev[campaignId],
+          clipCount: data.clipCount || 300,
+        },
+      }))
+      setCampaigns((prev) =>
+        prev.map((c) =>
+          c.id === campaignId ? { ...c, availableClips: data.clipCount || 300 } : c
+        )
+      )
+    } catch (err: any) {
+      alert(err.message || 'Error pruning clips')
+    } finally {
+      setIsPruning((prev) => ({ ...prev, [campaignId]: false }))
+    }
+  }
+
   // Delete Clips & Sources confirmation modal state & handler
   const [deleteDataModalCampaign, setDeleteDataModalCampaign] = useState<CampaignItem | null>(null)
   const [isDeletingData, setIsDeletingData] = useState(false)
@@ -1115,6 +1149,18 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                                       Sandbox mein test karein, phir yahan se auto-editing start karein.
                                     </p>
                                   </div>
+                                )}
+
+                                {(ss.clipCount ?? c.availableClips ?? 0) > 300 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePruneExcessClips(c.id)}
+                                    disabled={isPruning[c.id]}
+                                    className="text-[9px] text-orange-500 hover:text-orange-700 hover:underline pt-1 block font-semibold disabled:opacity-50"
+                                    title={`Prune ${(ss.clipCount ?? c.availableClips ?? 0) - 300} excess clips back to 300`}
+                                  >
+                                    {isPruning[c.id] ? '⏳ Pruning...' : `✂️ Prune to 300 (${(ss.clipCount ?? c.availableClips ?? 0) - 300} excess)`}
+                                  </button>
                                 )}
 
                                 {(ss.sourceCount > 0 || (ss.clipCount ?? c.availableClips ?? 0) > 0) && (

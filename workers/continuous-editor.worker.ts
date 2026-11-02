@@ -42,19 +42,20 @@ async function runContinuousEditorLoop() {
           continue
         }
 
-        console.log(`[Continuous Editor] Campaign "${campaign.name}" (${campaign.id}): ${count}/${TARGET_EDITED_CLIPS} clips ready.`)
+        if (count >= TARGET_EDITED_CLIPS) {
+          console.log(`[Continuous Editor] Campaign "${campaign.name}" (${campaign.id}): Target pool complete (${count}/${TARGET_EDITED_CLIPS} clips ready). Idle.`)
+          continue
+        }
 
-        if (count < TARGET_EDITED_CLIPS) {
-          console.log(`⚡ Pool is below target (${count} < ${TARGET_EDITED_CLIPS}). Generating clips for "${campaign.name}"...`)
-          try {
-            await maintainCampaignClipPool(campaign.id, {
-              ...cfg,
-              campaignName: campaign.name,
-              niche: cfg.niche || 'general',
-            })
-          } catch (err: any) {
-            console.error(`❌ Error rendering clips for campaign ${campaign.id}:`, err.message)
-          }
+        console.log(`⚡ Pool is below target (${count} < ${TARGET_EDITED_CLIPS}). Generating clips for "${campaign.name}"...`)
+        try {
+          await maintainCampaignClipPool(campaign.id, {
+            ...cfg,
+            campaignName: campaign.name,
+            niche: cfg.niche || 'general',
+          })
+        } catch (err: any) {
+          console.error(`❌ Error rendering clips for campaign ${campaign.id}:`, err.message)
         }
       }
     } catch (loopError: any) {

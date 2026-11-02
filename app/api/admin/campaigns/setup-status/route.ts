@@ -292,6 +292,17 @@ export async function POST(req: NextRequest) {
         }, { status: 400 })
       }
 
+      const existingClips = countEditedClips(campaignId)
+      if (existingClips >= TARGET_EDITED_CLIPS) {
+        return NextResponse.json({
+          message: `Campaign already has ${existingClips} clips in pool (target ${TARGET_EDITED_CLIPS} reached).`,
+          status: 'ready',
+          campaignId,
+          clipCount: existingClips,
+          editingApproved: true,
+        })
+      }
+
       // Mark editing as approved by admin so background worker can maintain 300 clips
       const updatedCfg: Record<string, any> = { ...cfg, editingApproved: true }
       await prisma.campaign.update({
@@ -322,11 +333,48 @@ export async function POST(req: NextRequest) {
       })
       activeClipGenerations.delete(campaignId)
 
+      // Remove .editing.lock so active loop stops cleanly
+      try {
+        const lockPath = path.join(getCampaignDir(campaignId), '.editing.lock')
+        if (fs.existsSync(lockPath)) fs.unlinkSync(lockPath)
+      } catch {}
+
       return NextResponse.json({
         message: 'Auto-editing paused. Background clip generation stopped.',
         status: 'paused',
         campaignId,
         editingApproved: false,
+      })
+    }
+
+    // ── ACTION: Prune Excess Clips down to 300 ─────────────────────────────
+    if (action === 'prune_excess_clips') {
+      const clipsDir = getClipsDir(campaignId)
+      let removedCount = 0
+      if (fs.existsSync(clipsDir)) {
+        const allClips = fs.readdirSync(clipsDir)
+          .filter(f => f.endsWith('.mp4') && f.startsWith('final_'))
+          .sort() // chronological by filename
+        
+        if (allClips.length > TARGET_EDITED_CLIPS) {
+          const excess = allClips.slice(TARGET_EDITED_CLIPS)
+          for (const file of excess) {
+            try {
+              fs.unlinkSync(path.join(clipsDir, file))
+              const metaFile = file.replace(/\.mp4$/, '.meta.json')
+              const metaPath = path.join(clipsDir, metaFile)
+              if (fs.existsSync(metaPath)) fs.unlinkSync(metaPath)
+              removedCount++
+            } catch {}
+          }
+        }
+      }
+
+      const finalCount = countEditedClips(campaignId)
+      return NextResponse.json({
+        message: `Pruned ${removedCount} excess clips. ${finalCount} clips remain in pool.`,
+        campaignId,
+        clipCount: finalCount,
       })
     }
 

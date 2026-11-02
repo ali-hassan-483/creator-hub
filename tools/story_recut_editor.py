@@ -601,21 +601,23 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 # --------------------------------------------------------------------------
 def tighten_bounds(src, start, end, noise="-38dB", min_sil=0.35):
     seg_len = end - start
-    r = subprocess.run(
-        ["ffmpeg", "-hide_banner", "-ss", str(start), "-t", str(seg_len),
-         "-i", str(src), "-af",
-         f"silencedetect=noise={noise}:d={min_sil}", "-f", "null", "-"],
-        capture_output=True, text=True)
-    starts = [float(x) for x in re.findall(r"silence_start: ([\d.]+)", r.stderr)]
-    ends = [float(x) for x in re.findall(r"silence_end: ([\d.]+)", r.stderr)]
-    new_start, new_end = start, end
-    # silence that begins at ~0 -> move start to where it ends
-    for s0, e0 in zip(starts, ends):
-        if s0 < 0.05 and e0 < seg_len:
-            new_start = start + min(e0, seg_len * 0.5)
-        if e0 >= seg_len - 0.05 and s0 > 0:
-            new_end = start + max(s0, seg_len * 0.5)
-    return new_start, new_end
+    try:
+        r = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-ss", str(start), "-t", str(seg_len),
+             "-i", str(src), "-af",
+             f"silencedetect=noise={noise}:d={min_sil}", "-f", "null", "-"],
+            capture_output=True, text=True, timeout=15)
+        starts = [float(x) for x in re.findall(r"silence_start: ([\d.]+)", r.stderr)]
+        ends = [float(x) for x in re.findall(r"silence_end: ([\d.]+)", r.stderr)]
+        # If dead silence begins at start of cut (s0 < 0.05), shift window forward into speech
+        # while STRICTLY PRESERVING seg_len so clip duration never shrinks below target!
+        for s0, e0 in zip(starts, ends):
+            if s0 < 0.05 and 0 < e0 < seg_len:
+                shift = min(e0, 0.4)
+                return round(start + shift, 3), round(end + shift, 3)
+    except Exception:
+        pass
+    return start, end
 
 
 # --------------------------------------------------------------------------

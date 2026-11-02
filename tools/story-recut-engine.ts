@@ -175,16 +175,24 @@ export function buildStoryRecutMap(
     const clipId = `final_${String(clipNum).padStart(4, '0')}_${Date.now()}`
 
     // Distribute clips across source timeline using golden ratio
-    const blockStart = Math.round((maxStart * ((clipNum * 0.61803398875) % 1)) * 10) / 10
-    const blockEnd = Math.min(dur - 2, Math.round((blockStart + windowDur) * 10) / 10)
+    const safeMax = Math.max(0, dur - windowDur - 5)
+    const blockStart = safeMax > 0 ? Math.round((safeMax * ((clipNum * 0.61803398875) % 1)) * 10) / 10 : 0
+    const blockEnd = Math.min(dur - 0.5, Math.round((blockStart + windowDur) * 10) / 10)
 
-    // Payoff at the end of window, Hook as climax snippet, Setup from beginning
-    const payoffEnd = blockEnd - 1
-    const payoffStart = Math.max(blockStart + 1, Math.round((payoffEnd - P) * 10) / 10)
-    const hookEnd = payoffEnd
-    const hookStart = Math.max(blockStart, Math.round((hookEnd - H) * 10) / 10)
-    const setupStart = blockStart
+    // 1. Setup segment (Context, exactly S seconds)
+    const setupStart = Math.max(0, Math.min(dur - S - 0.5, blockStart))
     const setupEnd = Math.round((setupStart + S) * 10) / 10
+
+    // 2. Payoff in context (Climax, exactly P seconds)
+    const payoffMaxS = Math.max(0, dur - P - 0.5)
+    const payoffTarget = Math.max(setupEnd + 1, blockEnd - P - 0.5)
+    const payoffStart = Math.round(Math.min(payoffMaxS, Math.max(0, payoffTarget)) * 10) / 10
+    const payoffEnd = Math.round((payoffStart + P) * 10) / 10
+
+    // 3. Cold-open hook (Snippet from payoff, exactly H seconds)
+    const hookMaxS = Math.max(0, dur - H - 0.5)
+    const hookStart = Math.round(Math.min(hookMaxS, payoffStart) * 10) / 10
+    const hookEnd = Math.round((hookStart + H) * 10) / 10
 
     // Extract spoken words in this range to get smart keywords
     let spokenKeywords: string[] = []
