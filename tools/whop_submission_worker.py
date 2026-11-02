@@ -177,12 +177,12 @@ def get_app_frame(page):
 def dismiss_onboarding_popups(page, job_id: str):
     """
     Dismisses the 'Got it' welcome popup and the community-join overlay popup.
-    Checks with responsive polling (up to 8s each) and exits immediately when handled.
+    Waits up to 30s for 'Got it' and up to 30s for community join dismiss popup.
     """
-    print(f"[{job_id}] Checking for 'Got it' welcome popup...")
+    print(f"[{job_id}] Waiting for 'Got it' welcome popup (up to 30s)...")
     got_it_dismissed = False
     start_time = time.time()
-    while time.time() - start_time < 8:
+    while time.time() - start_time < 30:
         try:
             btn = page.locator("button:has-text('Got it')").first
             if btn.is_visible():
@@ -192,17 +192,17 @@ def dismiss_onboarding_popups(page, job_id: str):
                 break
         except Exception:
             pass
-        page.wait_for_timeout(400)
+        page.wait_for_timeout(500)
 
     if got_it_dismissed:
-        page.wait_for_timeout(800)
+        page.wait_for_timeout(1000)
     else:
-        print(f"[{job_id}] No 'Got it' popup (proceeding).")
+        print(f"[{job_id}] No 'Got it' welcome popup appeared within 30s.")
 
-    print(f"[{job_id}] Checking for community join popup...")
+    print(f"[{job_id}] Waiting for community join popup (up to 30s)...")
     dismissed = False
     start_time = time.time()
-    while time.time() - start_time < 8:
+    while time.time() - start_time < 30:
         try:
             btn = page.locator("button[aria-label='Dismiss']").first
             if btn.is_visible():
@@ -226,13 +226,13 @@ def dismiss_onboarding_popups(page, job_id: str):
 
         if dismissed:
             break
-        page.wait_for_timeout(400)
+        page.wait_for_timeout(500)
 
     if dismissed:
         print(f"[{job_id}] Community join popup dismissed.")
-        page.wait_for_timeout(800)
+        page.wait_for_timeout(1000)
     else:
-        print(f"[{job_id}] No community join popup (proceeding).")
+        print(f"[{job_id}] No community join popup appeared within 30s.")
 
 
 def _locate_campaign_card(target, campaign_name: str, timeout: int = 3000):
