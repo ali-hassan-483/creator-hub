@@ -151,19 +151,36 @@ export async function maintainCampaignClipPool(
     // Pre-fetch batch metadata from guidelines
     let batchMetadataPool: ShortMetadata[] = []
     let batchMetadataIndex = 0
+    let metadataFailed = false
 
     const refreshBatchMetadata = async () => {
       log('🤖 Fetching batch of 20 metadata sets from AI (Title/Desc guidelines)...')
       try {
         batchMetadataPool = await generateBatchMetadataFromGuidelines(20, metaConfig)
         batchMetadataIndex = 0
+        metadataFailed = false
         log(`✅ Batch of ${batchMetadataPool.length} metadata sets received.`)
       } catch (err: any) {
-        log(`⚠️ Failed to generate batch metadata: ${err.message}`)
+        metadataFailed = true
+        log(`❌ AI metadata generation failed: ${err.message}`)
+        log(`🛑 Editing stopped — cannot generate clips without proper AI-generated titles/descriptions.`)
+        log(`🔑 Please check your Gemini / OpenRouter API keys in Admin > API Settings.`)
+        throw new Error(`Metadata generation failed — editing stopped: ${err.message}`)
       }
     }
 
-    await refreshBatchMetadata()
+    try {
+      await refreshBatchMetadata()
+    } catch {
+      onStatusUpdate?.({
+        campaignId,
+        currentClips: currentCount,
+        targetClips: maxTarget,
+        status: 'error',
+        lastMessage: 'Editing halted: AI metadata generation failed. Check Gemini/OpenRouter API keys.',
+      })
+      return currentCount
+    }
 
     log(`🚀 Starting Story Re-Cut Loop: need ${maxTarget - currentCount} more clips (Target: ${maxTarget})`)
 
@@ -282,15 +299,22 @@ export async function maintainCampaignClipPool(
       // For each rendered clip, save metadata
       for (const item of manifest) {
         if (batchMetadataIndex >= batchMetadataPool.length) {
-          await refreshBatchMetadata()
+          try {
+            await refreshBatchMetadata()
+          } catch {
+            metadataFailed = true
+            break
+          }
         }
 
-        const meta = batchMetadataPool[batchMetadataIndex] || {
-          title: `${cfg.campaignName || 'Short'} #${currentCount + 1}`,
-          description: cfg.predefinedDescription || '',
-          onScreenText: '',
-          hashtags: ['shorts', 'viral'],
+        // If pool is still empty after refresh, AI failed — stop editing
+        if (batchMetadataPool.length === 0 || metadataFailed) {
+          log(`🛑 Metadata pool empty after refresh attempt — stopping editing loop to prevent generic fallback clips.`)
+          metadataFailed = true
+          break
         }
+
+        const meta = batchMetadataPool[batchMetadataIndex] ?? batchMetadataPool[batchMetadataPool.length - 1]
         batchMetadataIndex++
 
         const metaJsonPath = path.join(clipsDir, `${item.id}.meta.json`)
@@ -322,7 +346,19 @@ export async function maintainCampaignClipPool(
           lastMessage: `Clip #${currentCount} rendered: ${meta.title}`,
         })
       }
+
+      if (metadataFailed) {
+        onStatusUpdate?.({
+          campaignId,
+          currentClips: currentCount,
+          targetClips: maxTarget,
+          status: 'error',
+          lastMessage: 'Editing halted: AI metadata generation failed. Check API keys.',
+        })
+        break
+      }
     } catch (batchErr: any) {
+      if (metadataFailed) break
       log(`❌ Batch render error: ${batchErr.message}`)
       // Brief pause before retry
       await new Promise((r) => setTimeout(r, 5000))

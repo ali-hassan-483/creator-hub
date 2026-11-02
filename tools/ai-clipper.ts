@@ -312,7 +312,7 @@ No explanation, no markdown backticks, pure JSON only.`
     let batch = extractJSON<ShortMetadata[]>(rawResponse, [])
 
     if (!Array.isArray(batch) || batch.length === 0) {
-      throw new Error('Invalid array returned by Gemini')
+      throw new Error('Invalid array returned by AI — empty or non-array response')
     }
 
     // Sanitize lengths and format
@@ -335,18 +335,10 @@ No explanation, no markdown backticks, pure JSON only.`
       }
     })
   } catch (error: any) {
-    console.error(`[Batch-Metadata] ❌ Error generating batch metadata: ${error.message}`)
-    // Fallback generation if API fails
-    const fallbackList: ShortMetadata[] = []
-    for (let i = 1; i <= count; i++) {
-      fallbackList.push({
-        title: `${config.campaignName || 'Video'} #${i} ${config.ftcDisclosure ? `| ${config.ftcDisclosure}` : ''}`.slice(0, maxTitleChars),
-        onScreenText: `Watch till the end! #${i}`.slice(0, onScreenMaxChars),
-        description: predefined ? `${predefined}${links}` : `Check this out! #shorts #viral${links}`,
-        hashtags: ['shorts', 'viral'],
-      })
-    }
-    return fallbackList
+    // ❌ Do NOT use fallback — throw so the editing engine stops
+    // Generic fallback titles like "Campaign #1" are NOT acceptable
+    console.error(`[Batch-Metadata] ❌ AI metadata generation failed (Gemini + OpenRouter both exhausted): ${error.message}`)
+    throw new Error(`AI metadata generation failed: ${error.message}. Please check your Gemini/OpenRouter API keys in Admin > API Settings.`)
   }
 }
 

@@ -7,7 +7,7 @@ import {
   Eye, Settings, Layers, Download, Sparkles, RefreshCw,
   FileSpreadsheet, FileJson, Check, ExternalLink, HelpCircle,
   Type, Palette, Film, Captions, Link as LinkIcon, Image, Sliders, Upload, Edit,
-  Loader2, HardDriveDownload, CircleAlert
+  Loader2, HardDriveDownload, CircleAlert, Wand2
 } from 'lucide-react'
 import { CampaignPreviewMockup } from './campaign-preview-mockup'
 
@@ -298,6 +298,22 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
   // Delete Clips & Sources confirmation modal state & handler
   const [deleteDataModalCampaign, setDeleteDataModalCampaign] = useState<CampaignItem | null>(null)
   const [isDeletingData, setIsDeletingData] = useState(false)
+  const [regeneratingMetaCampaignId, setRegeneratingMetaCampaignId] = useState<string | null>(null)
+
+  async function handleRegenerateMetadata(campaign: CampaignItem) {
+    if (!window.confirm(`"${campaign.name}" campaign ke saare clips ki title, description aur on-screen text AI se regenerate ki jayegi. Continue?`)) return
+    setRegeneratingMetaCampaignId(campaign.id)
+    try {
+      const res = await fetch(`/api/admin/campaigns/${campaign.id}/regenerate-metadata`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to regenerate metadata')
+      alert(`✅ ${data.message}`)
+    } catch (err: any) {
+      alert(`❌ ${err.message || 'Error regenerating metadata'}`)
+    } finally {
+      setRegeneratingMetaCampaignId(null)
+    }
+  }
 
   async function handleDeleteClipsAndSources() {
     if (!deleteDataModalCampaign) return
@@ -1239,6 +1255,20 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                           >
                             <Trash2 size={12} />
                             <span>Delete Clips & Sources</span>
+                          </button>
+
+                          <button
+                            onClick={() => handleRegenerateMetadata(c)}
+                            disabled={regeneratingMetaCampaignId === c.id}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 border border-amber-500/20 transition-colors disabled:opacity-50"
+                            title="AI se saare clips ke title, description aur on-screen text dobara generate karein"
+                          >
+                            {regeneratingMetaCampaignId === c.id ? (
+                              <Loader2 size={12} className="animate-spin" />
+                            ) : (
+                              <Wand2 size={12} />
+                            )}
+                            <span>{regeneratingMetaCampaignId === c.id ? 'Regenerating...' : 'Regen Metadata'}</span>
                           </button>
 
                           <button
