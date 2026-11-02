@@ -20,20 +20,23 @@ export const DEFAULT_OPENROUTER_KEY =
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
 const OPENROUTER_MODELS = [
   'openrouter/free',
-  'google/gemma-2-9b-it:free',
-  'meta-llama/llama-3.2-3b-instruct:free',
-  'meta-llama/llama-3.2-1b-instruct:free',
-  'qwen/qwen-2.5-7b-instruct:free',
+  'deepseek/deepseek-chat:free',
+  'deepseek/deepseek-r1:free',
+  'mistralai/mistral-7b-instruct:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'qwen/qwen-2.5-72b-instruct:free',
+  'google/gemini-2.0-flash-exp:free',
   'google/gemini-2.5-flash-lite',
   'google/gemini-2.5-flash',
 ]
 
 // Native Gemini models to try in order of highest availability & free tier quota
 const GEMINI_MODELS = [
-  'gemini-3.8-flash',
   'gemini-2.0-flash',
   'gemini-1.5-flash',
-  'gemini-3.5-flash',
+  'gemini-2.5-flash',
+  'gemini-1.5-flash-8b',
+  'gemini-3.8-flash',
 ]
 
 /**
@@ -84,8 +87,8 @@ export async function callOpenRouter(
     throw new Error('No OpenRouter API key configured.')
   }
 
-  // Default to 400 tokens for titles, descriptions, on-screen hooks (prevents 402 insufficient credit errors)
-  let maxTokens = options?.maxTokens || 400
+  // Default to 200 tokens for titles, descriptions, on-screen hooks (prevents 402 insufficient credit errors)
+  let maxTokens = options?.maxTokens || 200
   const temperature = options?.temperature ?? 0.7
   const modelsToTry = options?.model ? [options.model, ...OPENROUTER_MODELS] : OPENROUTER_MODELS
 
@@ -188,21 +191,14 @@ async function callGeminiDirect(
         if (output) return output
       } catch (err: any) {
         lastErr = err
-        // If quota, rate limit, or model 404/deprecated, try next model before moving to next key
         const errMsg = String(err?.message || '')
-        const isModelFailover =
-          errMsg.includes('429') ||
-          errMsg.includes('quota') ||
-          errMsg.includes('RESOURCE_EXHAUSTED') ||
-          errMsg.includes('404') ||
-          errMsg.includes('NOT_FOUND') ||
-          errMsg.includes('no longer available') ||
-          errMsg.includes('400')
-        if (isModelFailover) {
-          console.warn(`[GeminiDirect] Model ${model} unavailable (${errMsg.slice(0, 100)}), trying next model...`)
-          continue
+        // If API key is completely invalid, fail key immediately to try next key in pool
+        if (errMsg.includes('API_KEY_INVALID') || errMsg.includes('401') || errMsg.includes('API key not valid')) {
+          throw err
         }
-        throw err
+        // Otherwise (503 high demand, 429 quota, 404 model not found, 500 server error, etc.), try next model
+        console.warn(`[GeminiDirect] Model ${model} failed (${errMsg.slice(0, 120)}), trying next model...`)
+        continue
       }
     }
 
