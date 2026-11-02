@@ -1040,10 +1040,13 @@ export default function RunLogsClient() {
     fetchLogs(1)
   }, [fetchLogs])
 
-  // ── Auto-poll live updates when Details Modal is open for a running/queued run ──
+  // ── Auto-poll live updates when Details Modal is open (for running runs or pending Whop submissions) ──
   useEffect(() => {
     if (!selectedRow) return
-    const isOngoing = selectedRow.status === 'running' || selectedRow.status === 'queued'
+    const hasPendingWhop = selectedRow.whopSubmissions?.some(
+      (s) => s.status === 'pending' || s.status === 'in_progress'
+    )
+    const isOngoing = selectedRow.status === 'running' || selectedRow.status === 'queued' || hasPendingWhop
     if (!isOngoing) return
 
     const interval = setInterval(async () => {
@@ -1063,16 +1066,19 @@ export default function RunLogsClient() {
     }, 2500)
 
     return () => clearInterval(interval)
-  }, [selectedRow?.id, selectedRow?.status])
+  }, [selectedRow?.id, selectedRow?.status, selectedRow?.whopSubmissions])
 
-  // ── Auto-poll run logs table when any row is running or queued ──
+  // ── Auto-poll run logs table when any row is running or queued or has pending whop ──
   useEffect(() => {
-    const hasOngoing = rows.some((r) => r.status === 'running' || r.status === 'queued')
+    const hasOngoing = rows.some((r) => {
+      if (r.status === 'running' || r.status === 'queued') return true
+      return r.whopSubmissions?.some((s) => s.status === 'pending' || s.status === 'in_progress')
+    })
     if (!hasOngoing) return
 
     const interval = setInterval(() => {
       fetchLogs(page, true)
-    }, 4000)
+    }, 3500)
 
     return () => clearInterval(interval)
   }, [rows, page, fetchLogs])

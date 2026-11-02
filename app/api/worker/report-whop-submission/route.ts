@@ -13,7 +13,8 @@ export const dynamic = 'force-dynamic'
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { apiKey, jobId, automationId, status, errorMessage, timeTaken, screenshotBase64 } = body
+    const { jobId, automationId, status, errorMessage, timeTaken, screenshotBase64 } = body
+    const apiKey = body.apiKey || req.headers.get('x-vps-key')
 
     if (!apiKey) {
       return NextResponse.json({ error: 'Missing apiKey' }, { status: 401 })
@@ -57,8 +58,10 @@ export async function POST(req: NextRequest) {
     const whopList: any[] = opts.mockWhopSubmissions || []
 
     let targetItem: any = null
-    const updatedWhopList = whopList.map((item) => {
+    let matched = false
+    let updatedWhopList = whopList.map((item) => {
       if (item.id === jobId) {
+        matched = true
         targetItem = item
         const queuedMs = new Date(item.queuedAt || automation.createdAt).getTime()
         const calculatedTimeTaken = timeTaken || Math.max(1, Math.round((Date.now() - queuedMs) / 60000))
@@ -75,6 +78,30 @@ export async function POST(req: NextRequest) {
       }
       return item
     })
+
+    // Fallback: If not matched by exact id but there is only 1 pending/matching item in the run
+    if (!matched && whopList.length > 0) {
+      const pendingIdx = whopList.findIndex((w) => w.status === 'pending' || w.status === 'in_progress')
+      const targetIdx = pendingIdx >= 0 ? pendingIdx : 0
+      targetItem = whopList[targetIdx]
+      const queuedMs = new Date(targetItem.queuedAt || automation.createdAt).getTime()
+      const calculatedTimeTaken = timeTaken || Math.max(1, Math.round((Date.now() - queuedMs) / 60000))
+      updatedWhopList = whopList.map((item, idx) => {
+        if (idx === targetIdx) {
+          return {
+            ...item,
+            status: status === 'submitted' ? 'submitted' : 'failed',
+            errorMessage: errorMessage || null,
+            screenshotUrl: screenshotUrl || item.screenshotUrl || null,
+            timeTaken: calculatedTimeTaken,
+            submittedAt: status === 'submitted' ? new Date().toISOString() : null,
+            processedByVps: vps.label,
+            completedAt: new Date().toISOString(),
+          }
+        }
+        return item
+      })
+    }
 
     await prisma.automation.update({
       where: { id: automationId },
