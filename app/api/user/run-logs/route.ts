@@ -533,6 +533,34 @@ export async function POST(req: NextRequest) {
       )
       const rerunChannels = failedChannels.length > 0 ? failedChannels : original.channels
 
+      // Check Whop cookies before allowing rerun
+      const rerunChannelRecords = await prisma.channel.findMany({
+        where: { id: { in: rerunChannels.map((c) => c.channelId) }, userId },
+        select: { whopEmail: true },
+      })
+      const whopEmails = Array.from(
+        new Set(
+          rerunChannelRecords
+            .map((c) => c.whopEmail?.trim().toLowerCase())
+            .filter(Boolean) as string[]
+        )
+      )
+      if (whopEmails.length > 0) {
+        const existingWhopCreds = await prisma.credential.findMany({
+          where: { userId, credentialType: 'whop', cookiesEnc: { not: null } },
+          select: { email: true, cookiesEnc: true },
+        })
+        const missingWhopEmails = whopEmails.filter(
+          (we) => !existingWhopCreds.some((c) => c.email?.trim().toLowerCase() === we && !!c.cookiesEnc && c.cookiesEnc.length > 10)
+        )
+        if (missingWhopEmails.length > 0) {
+          return NextResponse.json(
+            { error: `Whop cookies missing for: ${missingWhopEmails.join(', ')}. Please add Whop cookies in Credentials before starting automation.` },
+            { status: 400 }
+          )
+        }
+      }
+
       const newRun = await prisma.automation.create({
         data: {
           userId,

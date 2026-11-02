@@ -1406,11 +1406,14 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                     <label className="block text-xs font-medium text-foreground mb-1">Channel Submission Link (Whop)</label>
                     <input
                       type="text"
-                      placeholder="e.g. https://whop.com/..."
+                      placeholder="e.g. https://whop.com/clip-farm-official/exp_sKCcnfigfcLoSb/app/"
                       value={formData.submissionLink}
                       onChange={(e) => setFormData({ ...formData, submissionLink: e.target.value })}
                       className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
                     />
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      System will navigate to this Whop channel URL, wait for 'Got it' & community popup, then click 'Discover' to find this campaign and submit clips.
+                    </p>
                   </div>
                 </div>
               </div>

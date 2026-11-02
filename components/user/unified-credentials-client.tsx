@@ -112,6 +112,20 @@ export default function UnifiedCredentialsClient() {
   }
 
   // Save Whop Cookies
+  const handleWhopFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const content = event.target?.result as string
+      if (content) {
+        setWhopCookies(content)
+        showFeedback(`📁 Loaded ${file.name} successfully! Click Save below.`, 'success')
+      }
+    }
+    reader.readAsText(file)
+  }
+
   const handleSaveWhopCookies = async () => {
     if (!whopCookies.trim()) {
       showFeedback('Please paste Whop storage JSON first.', 'error')
@@ -608,9 +622,22 @@ export default function UnifiedCredentialsClient() {
               </span>
             </div>
 
+            <div className="flex items-center justify-between text-[11px] pt-1">
+              <span className="text-muted-foreground font-medium">Session Cookies / Storage JSON:</span>
+              <label className="text-[10px] text-purple-600 dark:text-purple-400 font-bold hover:underline cursor-pointer flex items-center gap-1">
+                <span>📁 Upload auth_state.json</span>
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={handleWhopFileChange}
+                  className="hidden"
+                />
+              </label>
+            </div>
+
             <textarea
               rows={5}
-              placeholder={'{"cookies": [...], "origins": [...]}'}
+              placeholder={'{"cookies": [...], "origins": [...]}\nPaste JSON or click Upload auth_state.json above'}
               value={whopCookies}
               onChange={(e) => setWhopCookies(e.target.value)}
               className="neu-pressed w-full rounded-2xl p-3 text-[11px] font-mono text-foreground focus:outline-hidden resize-none"

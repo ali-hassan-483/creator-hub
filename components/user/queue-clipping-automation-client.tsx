@@ -14,6 +14,7 @@ interface ChannelAccount {
   niche: string
   email: string
   whopEmail: string
+  hasWhopCookies?: boolean
   status: string
   usedCount: number
 }
@@ -128,6 +129,11 @@ export default function QueueClippingAutomationClient() {
     }
   }
 
+  // Check if any selected channel is missing Whop cookies
+  const missingCookiesChannels = channels.filter(
+    (c) => selectedChannelIds.includes(c.id) && c.whopEmail && c.hasWhopCookies === false
+  )
+
   // Instant Run Now
   const handleRunNow = async () => {
     if (selectedChannelIds.length === 0) {
@@ -136,6 +142,13 @@ export default function QueueClippingAutomationClient() {
     }
     if (!selectedCampaignId) {
       showFeedback('Please select a campaign to process.', 'error')
+      return
+    }
+    if (missingCookiesChannels.length > 0) {
+      showFeedback(
+        `Cannot start: Whop session cookies are missing for ${missingCookiesChannels.map(c => c.whopEmail).join(', ')}. Please add cookies in Credentials page first.`,
+        'error'
+      )
       return
     }
 
@@ -170,6 +183,13 @@ export default function QueueClippingAutomationClient() {
     }
     if (!selectedCampaignId) {
       showFeedback('Please select a campaign to process before scheduling.', 'error')
+      return
+    }
+    if (missingCookiesChannels.length > 0) {
+      showFeedback(
+        `Cannot schedule: Whop session cookies are missing for ${missingCookiesChannels.map(c => c.whopEmail).join(', ')}. Please add cookies in Credentials page first.`,
+        'error'
+      )
       return
     }
     setIsScheduleModalOpen(true)
@@ -359,16 +379,46 @@ export default function QueueClippingAutomationClient() {
                       className="mt-1 h-3.5 w-3.5 rounded-sm accent-purple-600"
                     />
                     <div className="leading-tight flex-1 text-[11px] font-mono text-[#495470] dark:text-[#cbd5e1]">
-                      <span className="font-bold text-[#2b3345] dark:text-[#f1f5f9]">
-                        {ch.handle || ch.name}
-                      </span>{' '}
-                      (Niche: {ch.niche}, Email: {ch.email}, Whop Email: {ch.whopEmail})
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-bold text-[#2b3345] dark:text-[#f1f5f9]">
+                          {ch.handle || ch.name}
+                        </span>
+                        {ch.whopEmail && (
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-sans font-bold ${
+                              ch.hasWhopCookies
+                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                            }`}
+                          >
+                            {ch.hasWhopCookies ? '✓ Whop Ready' : '⚠ Missing Whop Cookies'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground mt-0.5">
+                        (Niche: {ch.niche}, Email: {ch.email}, Whop: {ch.whopEmail})
+                      </div>
                     </div>
                   </label>
                 )
               })
             )}
           </div>
+
+          {/* Missing Whop Cookies Warning Banner */}
+          {missingCookiesChannels.length > 0 && (
+            <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs flex items-center justify-between gap-2">
+              <span className="font-semibold text-[11px]">
+                ⚠️ Selected channels require Whop session cookies before automation can start.
+              </span>
+              <a
+                href="/credentials"
+                className="underline text-[11px] font-bold shrink-0 hover:text-rose-700 dark:hover:text-rose-300"
+              >
+                Add Cookies →
+              </a>
+            </div>
+          )}
 
           {/* Select Campaign Dropdown */}
           <div className="space-y-1">

@@ -57,17 +57,38 @@ export async function GET() {
       },
     })
 
+    // 4. Fetch Whop credentials status
+    const whopCreds = await prisma.credential.findMany({
+      where: {
+        userId,
+        credentialType: 'whop',
+        cookiesEnc: { not: null },
+      },
+      select: { email: true, cookiesEnc: true },
+    })
+    const configuredWhopEmails = new Set(
+      whopCreds
+        .filter(c => !!c.cookiesEnc && c.cookiesEnc.length > 10)
+        .map(c => c.email?.trim().toLowerCase())
+        .filter(Boolean)
+    )
+
     return NextResponse.json({
-      channels: channels.map(c => ({
-        id: c.id,
-        name: c.channelName || 'YouTube Channel',
-        handle: c.channelHandle || '',
-        niche: c.niche || 'General',
-        email: c.channelEmail || 'No Email',
-        whopEmail: c.whopEmail || 'No Whop Email',
-        status: c.status,
-        usedCount: c._count.automationChannels || 0,
-      })),
+      channels: channels.map(c => {
+        const wEmail = c.whopEmail?.trim().toLowerCase()
+        const hasWhopCookies = wEmail ? configuredWhopEmails.has(wEmail) : false
+        return {
+          id: c.id,
+          name: c.channelName || 'YouTube Channel',
+          handle: c.channelHandle || '',
+          niche: c.niche || 'General',
+          email: c.channelEmail || 'No Email',
+          whopEmail: c.whopEmail || 'No Whop Email',
+          hasWhopCookies,
+          status: c.status,
+          usedCount: c._count.automationChannels || 0,
+        }
+      }),
       campaigns,
       schedules,
     })
@@ -100,6 +121,47 @@ export async function POST(req: NextRequest) {
 
     if (!campaignId) {
       return NextResponse.json({ error: 'Please select a campaign' }, { status: 400 })
+    }
+
+    // ── Check Whop Cookies Requirement for Selected Channels ──
+    const selectedChannels = await prisma.channel.findMany({
+      where: { id: { in: uniqueChannelIds }, userId },
+      select: { id: true, channelName: true, whopEmail: true },
+    })
+
+    const whopEmails = Array.from(
+      new Set(
+        selectedChannels
+          .map((c) => c.whopEmail?.trim().toLowerCase())
+          .filter(Boolean) as string[]
+      )
+    )
+
+    if (whopEmails.length > 0) {
+      const existingWhopCreds = await prisma.credential.findMany({
+        where: {
+          userId,
+          credentialType: 'whop',
+          cookiesEnc: { not: null },
+        },
+        select: { email: true, cookiesEnc: true },
+      })
+
+      const missingWhopEmails = whopEmails.filter((we) => {
+        return !existingWhopCreds.some(
+          (c) => c.email?.trim().toLowerCase() === we && !!c.cookiesEnc && c.cookiesEnc.length > 10
+        )
+      })
+
+      if (missingWhopEmails.length > 0) {
+        return NextResponse.json(
+          {
+            error: `Whop session cookies are missing for account(s): ${missingWhopEmails.join(', ')}. Please add your Whop cookies in Credentials before starting automation.`,
+            missingWhopEmails,
+          },
+          { status: 400 }
+        )
+      }
     }
 
     // Instant Run Now

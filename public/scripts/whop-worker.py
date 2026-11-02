@@ -151,27 +151,38 @@ def get_app_frame(page):
 
 
 def dismiss_onboarding_popups(page, job_id: str):
-    """Dismisses the 'Got it' welcome popup and the community-join overlay popup."""
-    print(f"[{job_id}] Checking for onboarding popups...")
+    """
+    Dismisses the 'Got it' welcome popup and the community-join overlay popup.
+    Waits up to 30s for 'Got it' and up to 30s for community join dismiss popup.
+    """
+    print(f"[{job_id}] Waiting for 'Got it' welcome popup (up to 30s)...")
+    got_it_dismissed = False
     start_time = time.time()
-    while time.time() - start_time < 15:
+    while time.time() - start_time < 30:
         try:
             btn = page.locator("button:has-text('Got it')").first
             if btn.is_visible():
-                print(f"[{job_id}] 'Got it' popup detected. Dismissing...")
+                print(f"[{job_id}] 'Got it' welcome popup detected. Dismissing...")
                 btn.click()
+                got_it_dismissed = True
                 break
         except Exception:
             pass
-        page.wait_for_timeout(400)
+        page.wait_for_timeout(500)
 
+    if got_it_dismissed:
+        page.wait_for_timeout(1000)
+    else:
+        print(f"[{job_id}] No 'Got it' welcome popup appeared within 30s.")
+
+    print(f"[{job_id}] Waiting for community join popup (up to 30s)...")
+    dismissed = False
     start_time = time.time()
-    while time.time() - start_time < 15:
-        dismissed = False
+    while time.time() - start_time < 30:
         try:
             btn = page.locator("button[aria-label='Dismiss']").first
             if btn.is_visible():
-                print(f"[{job_id}] Community join popup detected. Dismissing...")
+                print(f"[{job_id}] Community join popup detected on main page. Dismissing...")
                 btn.click()
                 dismissed = True
                 break
@@ -182,7 +193,7 @@ def dismiss_onboarding_popups(page, job_id: str):
             try:
                 btn = frame.locator("button[aria-label='Dismiss']").first
                 if btn.is_visible():
-                    print(f"[{job_id}] Community join popup in frame dismissed...")
+                    print(f"[{job_id}] Community join popup inside iframe dismissed...")
                     btn.click()
                     dismissed = True
                     break
@@ -191,7 +202,13 @@ def dismiss_onboarding_popups(page, job_id: str):
 
         if dismissed:
             break
-        page.wait_for_timeout(400)
+        page.wait_for_timeout(500)
+
+    if dismissed:
+        print(f"[{job_id}] Community join popup dismissed.")
+        page.wait_for_timeout(1000)
+    else:
+        print(f"[{job_id}] No community join popup appeared within 30s.")
 
 
 def _locate_campaign_card(target, campaign_name: str, timeout: int = 3000):
