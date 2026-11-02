@@ -23,6 +23,8 @@ import {
   Timer,
   FlaskConical,
   ChevronLeft,
+  Camera,
+  X,
 } from 'lucide-react'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -47,8 +49,11 @@ interface WhopSubmission {
   youtubeLink: string | null
   queuedAt: string
   timeTaken: number | null // minutes
-  status: 'pending' | 'submitted' | 'failed'
+  status: 'pending' | 'in_progress' | 'submitted' | 'failed'
   whopEmail: string
+  errorMessage?: string | null
+  screenshotUrl?: string | null
+  processedByVps?: string | null
 }
 
 interface ChannelRef {
@@ -222,13 +227,22 @@ function DetailsModal({
   onClose,
   onMarkWhopSubmitted,
   markingSubId,
+  onRetryWhopSubmission,
+  retryingSubId,
 }: {
   row: RunLogRow
   onClose: () => void
   onMarkWhopSubmitted: (subId: string) => Promise<void>
   markingSubId: string | null
+  onRetryWhopSubmission?: (subId: string) => Promise<void>
+  retryingSubId?: string | null
 }) {
   const [activeTab, setActiveTab] = useState<'video' | 'whop'>('video')
+  const [viewingScreenshot, setViewingScreenshot] = useState<{
+    url: string
+    title: string
+    error?: string | null
+  } | null>(null)
 
   const handleBackdrop = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) onClose()
@@ -511,35 +525,95 @@ function DetailsModal({
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
                                 <CheckCircle2 className="w-3 h-3" /> Submitted
                               </span>
+                            ) : sub.status === 'in_progress' ? (
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 animate-pulse"
+                                title={sub.processedByVps ? `Being submitted right now by ${sub.processedByVps}` : 'Actively processing submission...'}
+                              >
+                                <Loader2 className="w-3 h-3 animate-spin" /> Processing...
+                              </span>
                             ) : sub.status === 'pending' ? (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
                                 <Clock className="w-3 h-3" /> Pending
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">
-                                <XCircle className="w-3 h-3" /> Failed
-                              </span>
+                              <div className="space-y-1">
+                                <span
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
+                                  title={sub.errorMessage || 'Submission failed'}
+                                >
+                                  <XCircle className="w-3 h-3" /> Failed
+                                </span>
+                                {sub.errorMessage && (
+                                  <p
+                                    className="text-[10px] text-red-500 dark:text-red-400 truncate max-w-[170px]"
+                                    title={sub.errorMessage}
+                                  >
+                                    {sub.errorMessage}
+                                  </p>
+                                )}
+                                {sub.screenshotUrl && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setViewingScreenshot({
+                                        url: sub.screenshotUrl!,
+                                        title: sub.videoTitle,
+                                        error: sub.errorMessage,
+                                      })
+                                    }
+                                    className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer block"
+                                  >
+                                    <Camera className="w-3 h-3" /> View Screenshot
+                                  </button>
+                                )}
+                              </div>
                             )}
                           </td>
                           <td className="py-3 pr-4 whitespace-nowrap">
-                            {sub.status === 'pending' ? (
-                              <button
-                                onClick={() => onMarkWhopSubmitted(sub.id)}
-                                disabled={markingSubId === sub.id}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-semibold neu-primary-button disabled:opacity-40"
-                              >
-                                {markingSubId === sub.id ? (
-                                  <Loader2 className="w-3 h-3 animate-spin" />
-                                ) : (
-                                  <Check className="w-3 h-3" />
-                                )}
-                                Mark Submitted
-                              </button>
-                            ) : (
-                              <span className="text-xs text-[var(--text-muted)] flex items-center gap-1">
-                                <Check className="w-3 h-3 text-emerald-500" /> Done
-                              </span>
-                            )}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {sub.status === 'submitted' ? (
+                                <span className="text-xs text-[var(--text-muted)] flex items-center gap-1 font-medium">
+                                  <Check className="w-3.5 h-3.5 text-emerald-500" /> Done
+                                </span>
+                              ) : sub.status === 'in_progress' ? (
+                                <span className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1 font-semibold">
+                                  <Loader2 className="w-3 h-3 animate-spin" /> In Progress
+                                </span>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => onMarkWhopSubmitted(sub.id)}
+                                    disabled={markingSubId === sub.id}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-semibold neu-primary-button disabled:opacity-40"
+                                    title="Manually mark this video as submitted"
+                                  >
+                                    {markingSubId === sub.id ? (
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                    ) : (
+                                      <Check className="w-3 h-3" />
+                                    )}
+                                    Mark Submitted
+                                  </button>
+
+                                  {sub.status === 'failed' && (
+                                    <button
+                                      onClick={() => onRetryWhopSubmission?.(sub.id)}
+                                      disabled={retryingSubId === sub.id}
+                                      className="inline-flex items-center gap-1 px-2 py-1 rounded-xl text-xs font-semibold bg-purple-500/10 text-purple-600 dark:text-purple-400 hover:bg-purple-500/20 transition-colors disabled:opacity-40"
+                                      title="Requeue for automatic retry by VPS worker"
+                                    >
+                                      {retryingSubId === sub.id ? (
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                      ) : (
+                                        <RefreshCw className="w-3 h-3" />
+                                      )}
+                                      Retry
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -551,6 +625,63 @@ function DetailsModal({
           )}
         </div>
       </div>
+
+      {/* Screenshot Preview Modal */}
+      {viewingScreenshot && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
+          onClick={() => setViewingScreenshot(null)}
+        >
+          <div
+            className="neu-flat rounded-3xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden bg-[var(--bg-primary)] border border-[var(--border)] shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
+              <div className="min-w-0 pr-4">
+                <h3 className="font-bold text-sm text-[var(--text-primary)] truncate">
+                  Whop Submission Failure Screenshot
+                </h3>
+                <p className="text-xs text-[var(--text-muted)] truncate">{viewingScreenshot.title}</p>
+              </div>
+              <button
+                onClick={() => setViewingScreenshot(null)}
+                className="w-8 h-8 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] neu-button shrink-0"
+              >
+                ✕
+              </button>
+            </div>
+
+            {viewingScreenshot.error && (
+              <div className="px-4 py-2 bg-rose-500/10 border-b border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span className="font-mono text-[11px] truncate">{viewingScreenshot.error}</span>
+              </div>
+            )}
+
+            <div className="p-4 flex-1 overflow-auto flex items-center justify-center bg-black/40">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={viewingScreenshot.url}
+                alt="Submission failure screenshot"
+                className="max-h-[65vh] w-auto rounded-xl border border-white/10 shadow-lg object-contain"
+              />
+            </div>
+
+            <div className="p-3 border-t border-[var(--border)] flex justify-between items-center text-xs">
+              <span className="text-[var(--text-muted)]">Saved automatically upon worker failure</span>
+              <a
+                href={viewingScreenshot.url}
+                target="_blank"
+                rel="noreferrer"
+                download
+                className="text-purple-600 dark:text-purple-400 hover:underline font-semibold"
+              >
+                Open Original in New Tab &rarr;
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -799,6 +930,7 @@ export default function RunLogsClient() {
   const [selectedRow, setSelectedRow] = useState<RunLogRow | null>(null)
   const [rerunningId, setRerunningId] = useState<string | null>(null)
   const [markingSubId, setMarkingSubId] = useState<string | null>(null)
+  const [retryingSubId, setRetryingSubId] = useState<string | null>(null)
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
 
   const handleMarkWhopSubmitted = async (whopSubmissionId: string) => {
@@ -835,6 +967,44 @@ export default function RunLogsClient() {
       showToast('Error updating Whop status', 'error')
     } finally {
       setMarkingSubId(null)
+    }
+  }
+
+  const handleRetryWhopSubmission = async (whopSubmissionId: string) => {
+    if (!selectedRow) return
+    setRetryingSubId(whopSubmissionId)
+    try {
+      const res = await fetch('/api/user/run-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'retry_whop_submission',
+          automationId: selectedRow.id,
+          whopSubmissionId,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        showToast('Whop submission requeued for retry!')
+        setSelectedRow((prev) => {
+          if (!prev) return null
+          return {
+            ...prev,
+            whopSubmissions: prev.whopSubmissions.map((s) =>
+              s.id === whopSubmissionId
+                ? { ...s, status: 'pending', errorMessage: null }
+                : s
+            ),
+          }
+        })
+        fetchLogs(page)
+      } else {
+        showToast(data.error || 'Failed to retry submission', 'error')
+      }
+    } catch {
+      showToast('Error retrying submission', 'error')
+    } finally {
+      setRetryingSubId(null)
     }
   }
 
@@ -1256,6 +1426,8 @@ export default function RunLogsClient() {
           onClose={() => setSelectedRow(null)}
           onMarkWhopSubmitted={handleMarkWhopSubmitted}
           markingSubId={markingSubId}
+          onRetryWhopSubmission={handleRetryWhopSubmission}
+          retryingSubId={retryingSubId}
         />
       )}
     </div>

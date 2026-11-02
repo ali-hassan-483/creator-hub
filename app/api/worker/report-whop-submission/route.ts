@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { validateVpsApiKey } from '@/lib/vps-service'
+import * as fs from 'fs'
+import * as path from 'path'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,7 +13,7 @@ export const dynamic = 'force-dynamic'
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { apiKey, jobId, automationId, status, errorMessage, timeTaken } = body
+    const { apiKey, jobId, automationId, status, errorMessage, timeTaken, screenshotBase64 } = body
 
     if (!apiKey) {
       return NextResponse.json({ error: 'Missing apiKey' }, { status: 401 })
@@ -24,6 +26,22 @@ export async function POST(req: NextRequest) {
 
     if (!jobId || !automationId) {
       return NextResponse.json({ error: 'jobId and automationId are required' }, { status: 400 })
+    }
+
+    // Save failure screenshot to disk if provided
+    let screenshotUrl: string | null = null
+    if (screenshotBase64) {
+      try {
+        const debugDir = path.join(process.cwd(), 'storage', 'whop-debug')
+        if (!fs.existsSync(debugDir)) fs.mkdirSync(debugDir, { recursive: true })
+        const safeJobId = jobId.replace(/[^a-zA-Z0-9_-]/g, '')
+        const filePath = path.join(debugDir, `fail_${safeJobId}.png`)
+        const buffer = Buffer.from(screenshotBase64, 'base64')
+        fs.writeFileSync(filePath, buffer)
+        screenshotUrl = `/api/user/whop-screenshot/${safeJobId}`
+      } catch (err: any) {
+        console.warn(`[ReportWhopSubmission] Failed to save screenshot: ${err.message}`)
+      }
     }
 
     const automation = await prisma.automation.findUnique({
@@ -48,6 +66,7 @@ export async function POST(req: NextRequest) {
           ...item,
           status: status === 'submitted' ? 'submitted' : 'failed',
           errorMessage: errorMessage || null,
+          screenshotUrl: screenshotUrl || item.screenshotUrl || null,
           timeTaken: calculatedTimeTaken,
           submittedAt: status === 'submitted' ? new Date().toISOString() : null,
           processedByVps: vps.label,

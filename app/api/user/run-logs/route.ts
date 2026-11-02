@@ -691,6 +691,48 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, message: 'Whop submission marked as submitted!', automation: updated })
     }
 
+    if (action === 'retry_whop_submission') {
+      const { automationId, whopSubmissionId } = body
+      if (!automationId || !whopSubmissionId) {
+        return NextResponse.json({ error: 'automationId and whopSubmissionId required' }, { status: 400 })
+      }
+
+      const automation = await prisma.automation.findFirst({
+        where: { id: automationId, userId },
+      })
+      if (!automation) {
+        return NextResponse.json({ error: 'Automation run not found' }, { status: 404 })
+      }
+
+      const opts = (automation.options as any) || {}
+      const whopList: any[] = opts.mockWhopSubmissions || []
+
+      const updatedWhopList = whopList.map((item) => {
+        if (item.id === whopSubmissionId) {
+          return {
+            ...item,
+            status: 'pending',
+            errorMessage: null,
+            inProgressAt: null,
+            queuedAt: new Date().toISOString(),
+          }
+        }
+        return item
+      })
+
+      const updated = await prisma.automation.update({
+        where: { id: automationId },
+        data: {
+          options: {
+            ...opts,
+            mockWhopSubmissions: updatedWhopList,
+          },
+        },
+      })
+
+      return NextResponse.json({ success: true, message: 'Whop submission requeued for automatic retry!', automation: updated })
+    }
+
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Request failed' }, { status: 500 })

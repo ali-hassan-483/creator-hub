@@ -20,6 +20,7 @@ import time
 import random
 import re
 import json
+import base64
 import argparse
 from pathlib import Path
 import requests
@@ -568,8 +569,8 @@ def poll_for_job() -> dict:
     return None
 
 
-def report_job_result(job_id: str, automation_id: str, status: str, error_message: str = None, time_taken: int = None):
-    """Reports submission completion or failure back to Creator Hub."""
+def report_job_result(job_id: str, automation_id: str, status: str, error_message: str = None, time_taken: int = None, screenshot_base64: str = None):
+    """Reports submission completion or failure back to Creator Hub, including screenshot if failed."""
     url = f"{SERVER_URL}/api/worker/report-whop-submission"
     headers = {"Content-Type": "application/json", "x-vps-key": API_KEY}
     payload = {
@@ -579,9 +580,10 @@ def report_job_result(job_id: str, automation_id: str, status: str, error_messag
         "status": status,
         "errorMessage": error_message,
         "timeTaken": time_taken,
+        "screenshotBase64": screenshot_base64,
     }
     try:
-        res = requests.post(url, json=payload, headers=headers, timeout=15)
+        res = requests.post(url, json=payload, headers=headers, timeout=20)
         if res.status_code == 200:
             print(f"📝 [Report] Recorded {job_id} as {status} in Creator Hub.")
         else:
@@ -700,20 +702,32 @@ def main_worker_loop():
                     err_msg = str(sub_err)
                     print(f"❌ [Job {job_id}] Submission error: {err_msg}")
 
-                    # Take debug screenshot
+                    # Take debug screenshot & encode to base64
+                    screenshot_b64 = None
                     try:
                         screenshot_path = DEBUG_DIR / f"fail_{job_id}_{int(time.time())}.png"
                         if current_page:
-                            current_page.screenshot(path=str(screenshot_path))
-                            print(f"📸 [Debug] Screenshot saved to: {screenshot_path}")
-                    except: pass
+                            shot_bytes = current_page.screenshot()
+                            with open(screenshot_path, "wb") as sf:
+                                sf.write(shot_bytes)
+                            screenshot_b64 = base64.b64encode(shot_bytes).decode("utf-8")
+                            print(f"📸 [Debug] Screenshot captured & saved to: {screenshot_path}")
+                    except Exception as s_err:
+                        print(f"⚠️ [Debug] Screenshot capture note: {s_err}")
 
                     # Reset campaign loaded so next attempt doesn't assume we're on the campaign page
                     current_loaded_campaign = None
 
-                    # Report failure
+                    # Report failure with screenshot
                     time_taken_min = max(1, int((time.time() - job_start_time) / 60))
-                    report_job_result(job_id, automation_id, "failed", error_message=err_msg, time_taken=time_taken_min)
+                    report_job_result(
+                        job_id,
+                        automation_id,
+                        "failed",
+                        error_message=err_msg,
+                        time_taken=time_taken_min,
+                        screenshot_base64=screenshot_b64
+                    )
 
                 # Randomized human delay between consecutive submissions
                 time.sleep(random.uniform(2.0, 4.5))
