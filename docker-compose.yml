@@ -211,6 +211,7 @@ services:
       VPS_API_KEY: ${MAIN_VPS_API_KEY:-vps_main_e2f7e25c2569b7f415265baed51d3e8c}
       POLL_INTERVAL_SEC: 15
       HEADLESS: "true"
+      PYTHONUNBUFFERED: "1"
     depends_on:
       - web
 

@@ -28,13 +28,29 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid or unregistered VPS API Key' }, { status: 403 })
     }
 
-    const assignedUserIds = vps.users.map((u) => u.id)
+    let assignedUserIds = vps.users.map((u) => u.id)
     if (assignedUserIds.length === 0) {
-      return NextResponse.json({
-        success: true,
-        hasJob: false,
-        message: 'No users currently assigned to this VPS node.',
-      })
+      if (vps.isMainVps) {
+        // Main VPS serves as default fallback for users without an explicit dedicated VPS
+        const fallbackUsers = await prisma.user.findMany({
+          where: {
+            OR: [
+              { vpsId: null },
+              { vpsId: vps.id },
+            ],
+          },
+          select: { id: true },
+        })
+        assignedUserIds = fallbackUsers.map((u) => u.id)
+      }
+
+      if (assignedUserIds.length === 0) {
+        return NextResponse.json({
+          success: true,
+          hasJob: false,
+          message: 'No users currently assigned to this VPS node.',
+        })
+      }
     }
 
     // ── 1. Find all Automations belonging to assigned users that have pending Whop submissions ──
