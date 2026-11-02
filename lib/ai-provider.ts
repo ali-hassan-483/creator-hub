@@ -19,15 +19,10 @@ export const DEFAULT_OPENROUTER_KEY =
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
 const OPENROUTER_MODELS = [
+  'nvidia/nemotron-3.5-lightning:free',
+  'nvidia/nemotron-3-ultra-550b-a55b:free',
+  'nvidia/nemotron-3.5-super-vl:free',
   'openrouter/free',
-  'deepseek/deepseek-chat:free',
-  'deepseek/deepseek-r1:free',
-  'mistralai/mistral-7b-instruct:free',
-  'meta-llama/llama-3.3-70b-instruct:free',
-  'qwen/qwen-2.5-72b-instruct:free',
-  'google/gemini-2.0-flash-exp:free',
-  'google/gemini-2.5-flash-lite',
-  'google/gemini-2.5-flash',
 ]
 
 // Native Gemini models to try in order of highest availability & free tier quota
