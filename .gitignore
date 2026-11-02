@@ -43,6 +43,13 @@ downloads/
 temp/
 storage/
 
-# Python cache
+# Python cache and environments
 __pycache__/
 *.pyc
+venv/
+.venv/
+whop-submission/venv/
+whop-submission/debug/
+whop-submission/screenshots/
+whop-submission/.env
+whop-submission/*.json

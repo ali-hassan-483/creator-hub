@@ -67,28 +67,46 @@ WORK_DIR="/opt/creator-hub-worker"
 mkdir -p "$WORK_DIR"
 cd "$WORK_DIR"
 
-echo "📥 Downloading worker daemon script..."
+echo "📥 Downloading worker daemon scripts..."
 curl -sSL "${CREATOR_HUB_URL}/scripts/upload-worker.js" -o "$WORK_DIR/upload-worker.js"
+curl -sSL "${CREATOR_HUB_URL}/scripts/whop-worker.py" -o "$WORK_DIR/whop-worker.py"
 
 # Write .env configuration
 cat <<EOF > "$WORK_DIR/.env"
 CREATOR_HUB_URL=$CREATOR_HUB_URL
 VPS_API_KEY=$VPS_API_KEY
-POLL_INTERVAL_SEC=30
+POLL_INTERVAL_SEC=15
+HEADLESS=true
 EOF
 
+# Install Python & Playwright for Whop Submitter if needed
+if ! command -v python3 > /dev/null 2>&1; then
+  apt-get install -y python3 python3-pip > /dev/null 2>&1 || true
+fi
+if command -v pip3 > /dev/null 2>&1; then
+  pip3 install --break-system-packages playwright requests > /dev/null 2>&1 || pip3 install playwright requests > /dev/null 2>&1 || true
+  playwright install --with-deps chromium > /dev/null 2>&1 || true
+fi
+
 # 5. Start / Restart with PM2
-echo "🚀 Starting worker process under PM2..."
+echo "🚀 Starting worker processes under PM2..."
 pm2 stop creator-hub-worker > /dev/null 2>&1 || true
 pm2 delete creator-hub-worker > /dev/null 2>&1 || true
 pm2 start upload-worker.js --name creator-hub-worker --time
+
+pm2 stop whop-worker > /dev/null 2>&1 || true
+pm2 delete whop-worker > /dev/null 2>&1 || true
+if command -v python3 > /dev/null 2>&1; then
+  pm2 start "python3 whop-worker.py" --name whop-worker --time
+fi
 
 # Save PM2 state for automatic boot persistence
 pm2 save > /dev/null 2>&1 || true
 pm2 startup systemd -u root --hp /root > /dev/null 2>&1 || true
 
 echo "=========================================================="
-echo "🎉 SUCCESS: Creator Hub Upload Worker is active!"
+echo "🎉 SUCCESS: Creator Hub Upload & Whop Workers are active!"
 echo "📋 Check status anytime with:  pm2 status"
-echo "📜 View live logs with:         pm2 logs creator-hub-worker"
+echo "📜 View upload logs with:      pm2 logs creator-hub-worker"
+echo "📜 View Whop logs with:        pm2 logs whop-worker"
 echo "=========================================================="

@@ -192,6 +192,28 @@ services:
     depends_on:
       - web
 
+  # Dedicated Whop Submission Worker for Main VPS (Auto-submits clips for assigned users)
+  worker-whop-submitter:
+    container_name: cap_worker_whop_submitter
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    volumes:
+      - ./storage:/app/storage
+      - ./tools:/app/tools
+      - ./workers:/app/workers
+      - ./lib:/app/lib
+      - ./whop-submission:/app/whop-submission
+    command: python3 tools/whop_submission_worker.py
+    environment:
+      CREATOR_HUB_URL: http://web:3000
+      VPS_API_KEY: ${MAIN_VPS_API_KEY:-vps_main_e2f7e25c2569b7f415265baed51d3e8c}
+      POLL_INTERVAL_SEC: 15
+      HEADLESS: "true"
+    depends_on:
+      - web
+
 volumes:
   postgres_data:
   redis_data:
