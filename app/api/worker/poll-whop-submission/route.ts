@@ -31,17 +31,9 @@ export async function GET(req: NextRequest) {
     let assignedUserIds = vps.users.map((u) => u.id)
     if (assignedUserIds.length === 0) {
       if (vps.isMainVps) {
-        // Main VPS serves as default fallback for users without an explicit dedicated VPS
-        const fallbackUsers = await prisma.user.findMany({
-          where: {
-            OR: [
-              { vpsId: null },
-              { vpsId: vps.id },
-            ],
-          },
-          select: { id: true },
-        })
-        assignedUserIds = fallbackUsers.map((u) => u.id)
+        // Main VPS acts as server hub and processes for all users if not strictly restricted
+        const allUsers = await prisma.user.findMany({ select: { id: true } })
+        assignedUserIds = allUsers.map((u) => u.id)
       }
 
       if (assignedUserIds.length === 0) {

@@ -585,6 +585,10 @@ def poll_for_job() -> dict:
             data = res.json()
             if data.get("hasJob") and data.get("job"):
                 return data["job"]
+            msg = data.get("message", "No pending submissions")
+            print(f"⏳ [Poll] {msg}")
+        elif res.status_code == 403:
+            print("⚠️ [Poll] VPS API Key not authorized or invalid.")
         else:
             print(f"⚠️ [Poll] Warning ({res.status_code}): {res.text[:120]}")
     except Exception as e:

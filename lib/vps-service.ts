@@ -90,7 +90,7 @@ export async function getAllVpsNodes() {
 export async function validateVpsApiKey(apiKey: string) {
   if (!apiKey || typeof apiKey !== 'string') return null
 
-  const vps = await prisma.ipAddress.findUnique({
+  let vps = await prisma.ipAddress.findUnique({
     where: { apiKey },
     include: {
       users: {
@@ -103,6 +103,23 @@ export async function validateVpsApiKey(apiKey: string) {
       },
     },
   })
+
+  // Fallback: If key starts with vps_main_ or matches env, map to Main VPS
+  if (!vps && (apiKey.startsWith('vps_main_') || apiKey === process.env.MAIN_VPS_API_KEY)) {
+    vps = await prisma.ipAddress.findFirst({
+      where: { isMainVps: true },
+      include: {
+        users: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            isActive: true,
+          },
+        },
+      },
+    })
+  }
 
   if (!vps) return null
 
