@@ -22,9 +22,13 @@ import re
 import json
 import base64
 import argparse
+import functools
 from pathlib import Path
 import requests
 from playwright.sync_api import sync_playwright
+
+# Force unbuffered output so all docker logs appear instantaneously
+print = functools.partial(print, flush=True)
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent
@@ -455,7 +459,7 @@ def _dismiss_success_confirmation(page, target, job_id: str):
     for attempt in range(1, 4):
         btn = _find_got_it_button(page, target)
         if btn is None:
-            return
+            break
         try:
             print(f"[{job_id}] Clicking 'Done' confirmation (attempt {attempt}/3)...")
             human_wait(page, 600)
@@ -469,7 +473,14 @@ def _dismiss_success_confirmation(page, target, job_id: str):
             if _find_got_it_button(page, target) is None:
                 human_wait(page, 800)
                 print(f"[{job_id}] 'Done' confirmation dismissed.")
-                return
+                break
+
+    # Dismiss any lingering backdrop or modal dialog with Escape
+    try:
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(400)
+    except Exception:
+        pass
 
 
 def _submit_for_approval(page, target, job_id: str, max_retries: int = 5):
@@ -564,7 +575,16 @@ def process_submission(page, job_id: str, campaign_name: str, video_link: str, i
     submit_clip_btn = target.locator("button:has-text('Submit clip'):visible").first
     submit_clip_btn.wait_for(state="visible", timeout=20000)
     human_wait(page, 400)
-    submit_clip_btn.click()
+    try:
+        submit_clip_btn.click(timeout=5000)
+    except Exception as click_err:
+        print(f"[{job_id}] Note: Submit clip click intercepted, clearing backdrop with Escape and forcing click...")
+        try:
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(400)
+        except Exception:
+            pass
+        submit_clip_btn.click(force=True)
     human_wait(page, 1500)
 
     # Fill modal and submit
@@ -719,12 +739,6 @@ def main_worker_loop():
                     time_taken_min = max(1, int((time.time() - job_start_time) / 60))
                     report_job_result(job_id, automation_id, "submitted", time_taken=time_taken_min)
 
-                    # Update saved storage state on disk to keep session cookies fresh
-                    try:
-                        save_path = get_cookie_file_path(whop_email)
-                        current_context.storage_state(path=str(save_path))
-                    except: pass
-
                 except Exception as sub_err:
                     err_msg = str(sub_err)
                     print(f"❌ [Job {job_id}] Submission error: {err_msg}")
@@ -757,6 +771,7 @@ def main_worker_loop():
                     )
 
                 # Randomized human delay between consecutive submissions
+                print(f"[{job_id}] Submission cycle complete. Polling for next job...")
                 time.sleep(random.uniform(2.0, 4.5))
 
         finally:
