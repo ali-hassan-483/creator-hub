@@ -28,14 +28,37 @@ from playwright.sync_api import sync_playwright
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent
-ROOT_DIR = BASE_DIR.parent
+if (BASE_DIR / "storage").exists() or (BASE_DIR / "package.json").exists() or (BASE_DIR / ".env").exists():
+    ROOT_DIR = BASE_DIR
+else:
+    ROOT_DIR = BASE_DIR.parent
+
 COOKIES_DIR = ROOT_DIR / "storage" / "whop-cookies"
 DEBUG_DIR = ROOT_DIR / "storage" / "whop-debug"
 COOKIES_DIR.mkdir(parents=True, exist_ok=True)
 DEBUG_DIR.mkdir(parents=True, exist_ok=True)
 
+def _load_env_file():
+    for candidate in [Path.cwd() / ".env", BASE_DIR / ".env", ROOT_DIR / ".env"]:
+        if candidate.exists():
+            try:
+                with open(candidate, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#") and "=" in line:
+                            k, v = line.split("=", 1)
+                            k = k.strip()
+                            v = v.strip().strip("'\"")
+                            if k not in os.environ:
+                                os.environ[k] = v
+                break
+            except Exception:
+                pass
+
+_load_env_file()
+
 SERVER_URL = os.environ.get("CREATOR_HUB_URL", "http://web:3000").rstrip("/")
-API_KEY = os.environ.get("VPS_API_KEY", "")
+API_KEY = os.environ.get("VPS_API_KEY") or os.environ.get("MAIN_VPS_API_KEY", "")
 POLL_INTERVAL_SEC = int(os.environ.get("POLL_INTERVAL_SEC", "15"))
 HEADLESS = os.environ.get("HEADLESS", "true").strip().lower() in ("true", "1", "yes", "y")
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
@@ -741,9 +764,22 @@ def main_worker_loop():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Creator Hub Whop Submission Worker")
+    parser.add_argument("--key", type=str, default="", help="VPS API Key")
+    parser.add_argument("--server", type=str, default="", help="Creator Hub Server URL")
+    parser.add_argument("--headless", type=str, default="", help="Run browser in headless mode (true/false)")
+    parser.add_argument("--interval", type=int, default=0, help="Poll interval in seconds")
     parser.add_argument("--login", action="store_true", help="Launch headed browser to log in and save cookies manually")
     parser.add_argument("--email", type=str, default="", help="Whop account email when saving cookies via --login")
     args = parser.parse_args()
+
+    if args.key:
+        API_KEY = args.key
+    if args.server:
+        SERVER_URL = args.server.rstrip("/")
+    if args.headless:
+        HEADLESS = args.headless.strip().lower() in ("true", "1", "yes", "y")
+    if args.interval > 0:
+        POLL_INTERVAL_SEC = args.interval
 
     if args.login:
         email = args.email.strip().lower() or input("Enter Whop Account Email: ").strip().lower()
