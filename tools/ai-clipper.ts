@@ -53,11 +53,53 @@ async function callGemini(prompt: string, systemInstruction?: string): Promise<s
   return result.text
 }
 
+function cleanAndParseJSON<T>(raw: string): T {
+  let cleaned = (raw || '').trim()
+  // Remove markdown code fence if present
+  const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/)
+  if (fenceMatch) cleaned = fenceMatch[1].trim()
+
+  // Find start and end brackets
+  const startBracket = cleaned.indexOf('[')
+  const startBrace = cleaned.indexOf('{')
+  let isArray = false
+
+  if (startBracket !== -1 && (startBrace === -1 || startBracket < startBrace)) {
+    isArray = true
+    const endBracket = cleaned.lastIndexOf(']')
+    if (endBracket > startBracket) {
+      cleaned = cleaned.substring(startBracket, endBracket + 1)
+    }
+  } else if (startBrace !== -1) {
+    const endBrace = cleaned.lastIndexOf('}')
+    if (endBrace > startBrace) {
+      cleaned = cleaned.substring(startBrace, endBrace + 1)
+    }
+  }
+
+  // Remove trailing commas before closing braces/brackets
+  cleaned = cleaned.replace(/,\s*([\]}])/g, '$1')
+
+  try {
+    return JSON.parse(cleaned)
+  } catch (err: any) {
+    // If array was truncated, try salvage completed objects
+    if (isArray) {
+      const lastObjEnd = cleaned.lastIndexOf('}')
+      if (lastObjEnd !== -1) {
+        const truncatedArray = cleaned.substring(0, lastObjEnd + 1).replace(/,\s*$/, '') + ']'
+        try {
+          return JSON.parse(truncatedArray.replace(/,\s*([\]}])/g, '$1'))
+        } catch {}
+      }
+    }
+    throw err
+  }
+}
+
 function extractJSON<T>(text: string, fallback: T): T {
   try {
-    const match = text.match(/```json\s*([\s\S]*?)```/) || text.match(/(\[[\s\S]*\]|\{[\s\S]*\})/)
-    if (match) return JSON.parse(match[1] || match[0])
-    return JSON.parse(text)
+    return cleanAndParseJSON<T>(text)
   } catch {
     return fallback
   }
@@ -268,8 +310,13 @@ export async function generateBatchMetadataFromGuidelines(
   const links = config.linksInDescription ? `\nLinks to include in description: ${config.linksInDescription}` : ''
   const predefined = config.predefinedDescription || ''
 
-  const prompt = `You are a social media viral growth strategist.
-Generate exactly ${count} UNIQUE and DIVERSE sets of metadata for short-form videos (YouTube Shorts / TikTok / Reels) based ONLY on the campaign guidelines below.
+  const subBatchSize = Math.min(count, 10)
+  const allResults: ShortMetadata[] = []
+
+  while (allResults.length < count) {
+    const needed = Math.min(count - allResults.length, subBatchSize)
+    const prompt = `You are a social media viral growth strategist.
+Generate exactly ${needed} UNIQUE and DIVERSE sets of metadata for short-form videos (YouTube Shorts / TikTok / Reels) based ONLY on the campaign guidelines below.
 
 CAMPAIGN DETAILS:
 - Campaign Name: ${config.campaignName || 'Campaign'}
@@ -288,7 +335,7 @@ ${predefined ? `PREDEFINED BASE DESCRIPTION: "${predefined}"` : ''}
 ${links}
 
 REQUIREMENTS:
-- Return an array of exactly ${count} items.
+- Return an array of exactly ${needed} items.
 - Every item MUST have:
   - "title": String (<= ${maxTitleChars} chars)
   - "onScreenText": String (<= ${onScreenMaxChars} chars)
@@ -296,7 +343,7 @@ REQUIREMENTS:
   - "hashtags": Array of strings (e.g. ["shorts", "viral", ...])
 - DO NOT repeat titles or hooks. Make them varied and high-converting.
 
-Return ONLY a valid JSON array of ${count} objects matching this exact schema:
+Return ONLY a valid JSON array of ${needed} objects matching this exact schema:
 [
   {
     "title": "Viral Title Here",
@@ -307,39 +354,46 @@ Return ONLY a valid JSON array of ${count} objects matching this exact schema:
 ]
 No explanation, no markdown backticks, pure JSON only.`
 
-  try {
-    const rawResponse = await callGemini(prompt, 'You are an expert social media viral copywriter. Always output valid JSON array.')
-    let batch = extractJSON<ShortMetadata[]>(rawResponse, [])
+    try {
+      const rawResponse = await callGemini(prompt, 'You are an expert social media viral copywriter. Always output valid JSON array.')
+      let batch = extractJSON<ShortMetadata[]>(rawResponse, [])
 
-    if (!Array.isArray(batch) || batch.length === 0) {
-      throw new Error('Invalid array returned by AI — empty or non-array response')
+      if (!Array.isArray(batch) || batch.length === 0) {
+        if (allResults.length > 0) break // Already collected some items, proceed with them
+        throw new Error('Invalid array returned by AI — empty or non-array response')
+      }
+
+      const formatted = batch.map((item, idx) => {
+        let desc = item.description || predefined || ''
+        if (config.useOnlyPredefinedDescription && predefined) {
+          desc = predefined
+        } else if (predefined && !desc.includes(predefined)) {
+          desc = `${predefined}\n\n${desc}`
+        }
+        if (config.linksInDescription && !desc.includes(config.linksInDescription)) {
+          desc = `${desc}\n\n${config.linksInDescription}`
+        }
+
+        return {
+          title: (item.title || `${config.campaignName || 'Video'} #${allResults.length + idx + 1}`).slice(0, maxTitleChars),
+          onScreenText: (item.onScreenText || 'Watch this!').slice(0, onScreenMaxChars),
+          description: desc,
+          hashtags: Array.isArray(item.hashtags) ? item.hashtags : ['shorts', 'viral'],
+        }
+      })
+
+      allResults.push(...formatted)
+    } catch (error: any) {
+      if (allResults.length > 0) {
+        console.warn(`[Batch-Metadata] Sub-batch failed (${error.message}), but continuing with ${allResults.length} collected items.`)
+        break
+      }
+      console.error(`[Batch-Metadata] ❌ AI metadata generation failed: ${error.message}`)
+      throw new Error(`AI metadata generation failed: ${error.message}. Please check your Gemini/OpenRouter API keys in Admin > API Settings.`)
     }
-
-    // Sanitize lengths and format
-    return batch.slice(0, count).map((item, idx) => {
-      let desc = item.description || predefined || ''
-      if (config.useOnlyPredefinedDescription && predefined) {
-        desc = predefined
-      } else if (predefined && !desc.includes(predefined)) {
-        desc = `${predefined}\n\n${desc}`
-      }
-      if (config.linksInDescription && !desc.includes(config.linksInDescription)) {
-        desc = `${desc}\n\n${config.linksInDescription}`
-      }
-
-      return {
-        title: (item.title || `${config.campaignName || 'Video'} #${idx + 1}`).slice(0, maxTitleChars),
-        onScreenText: (item.onScreenText || 'Watch this!').slice(0, onScreenMaxChars),
-        description: desc,
-        hashtags: Array.isArray(item.hashtags) ? item.hashtags : ['shorts', 'viral'],
-      }
-    })
-  } catch (error: any) {
-    // ❌ Do NOT use fallback — throw so the editing engine stops
-    // Generic fallback titles like "Campaign #1" are NOT acceptable
-    console.error(`[Batch-Metadata] ❌ AI metadata generation failed (Gemini + OpenRouter both exhausted): ${error.message}`)
-    throw new Error(`AI metadata generation failed: ${error.message}. Please check your Gemini/OpenRouter API keys in Admin > API Settings.`)
   }
+
+  return allResults.slice(0, count)
 }
 
 // ─── 6. Campaign Brief Parser ─────────────────────────────────────────────────

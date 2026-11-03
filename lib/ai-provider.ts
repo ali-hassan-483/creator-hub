@@ -256,48 +256,70 @@ export async function callGroq(
     throw new Error('No Groq API key configured.')
   }
 
-  const maxTokens = Math.max(options?.maxTokens || 200, 600)
+  const maxTokens = Math.max(options?.maxTokens || 2500, 2500)
   const temperature = options?.temperature ?? 0.7
   const modelsToTry = options?.model ? [options.model, ...GROQ_MODELS] : GROQ_MODELS
 
   let lastError: any = null
 
   for (const model of modelsToTry) {
-    try {
-      const messages: Array<{ role: string; content: string }> = []
-      if (systemInstruction) {
-        messages.push({ role: 'system', content: systemInstruction })
-      }
-      messages.push({ role: 'user', content: prompt })
+    for (let retryAttempt = 0; retryAttempt < 2; retryAttempt++) {
+      try {
+        const messages: Array<{ role: string; content: string }> = []
+        if (systemInstruction) {
+          messages.push({ role: 'system', content: systemInstruction })
+        }
+        messages.push({ role: 'user', content: prompt })
 
-      const response = await fetch(GROQ_API_URL, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+        const body: any = {
           model,
           messages,
           max_tokens: maxTokens,
           temperature,
-        }),
-      })
+        }
 
-      if (!response.ok) {
-        const errText = await response.text()
-        throw new Error(`Groq error (${model}) [HTTP ${response.status}]: ${errText}`)
-      }
+        // Keep reasoning minimal on gpt-oss models so full token budget goes to output content
+        if (model.includes('gpt-oss')) {
+          body.reasoning_effort = 'low'
+        }
 
-      const data = await response.json()
-      const content = data.choices?.[0]?.message?.content
-      if (typeof content === 'string' && content.trim()) {
-        return content.trim()
+        const response = await fetch(GROQ_API_URL, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        })
+
+        if (!response.ok) {
+          const errText = await response.text()
+          const retrySecMatch = errText.match(/try again in\s+(\d+(?:\.\d+)?)s/i)
+          if (retrySecMatch && parseFloat(retrySecMatch[1]) <= 10 && retryAttempt === 0) {
+            const waitSec = Math.ceil(parseFloat(retrySecMatch[1])) + 1
+            console.log(`⏳ [Groq] Hit short OTPM limit on ${model}. Waiting ${waitSec}s before retrying...`)
+            await new Promise((r) => setTimeout(r, waitSec * 1000))
+            continue
+          }
+          throw new Error(`Groq error (${model}) [HTTP ${response.status}]: ${errText}`)
+        }
+
+        const data = await response.json()
+        let content = data.choices?.[0]?.message?.content
+        if (!content || !content.trim()) {
+          // Fallback to reasoning if content is empty
+          content = data.choices?.[0]?.message?.reasoning
+        }
+
+        if (typeof content === 'string' && content.trim()) {
+          return content.trim()
+        }
+        throw new Error(`Groq returned empty content for ${model}`)
+      } catch (err: any) {
+        lastError = err
+        console.warn(`[Groq] Model ${model} failed: ${err.message}. Trying next fallback...`)
+        break // Try next model in GROQ_MODELS
       }
-      throw new Error(`Groq returned empty content for ${model}`)
-    } catch (err: any) {
-      lastError = err
-      console.warn(`[Groq] Model ${model} failed: ${err.message}. Trying next Groq model...`)
     }
   }
 
