@@ -170,6 +170,19 @@ export default function UnifiedCredentialsClient() {
 
   // Save Gemini Keys
   const handleSaveGeminiKeys = async () => {
+    let keysToSave = [...geminiKeys]
+    const pendingInput = geminiKeyInput.trim()
+    if (pendingInput && !keysToSave.includes(pendingInput)) {
+      keysToSave.push(pendingInput)
+      setGeminiKeys(keysToSave)
+      setGeminiKeyInput('')
+    }
+
+    if (keysToSave.length === 0) {
+      showFeedback('Please paste or add at least one Gemini API Key first.', 'error')
+      return
+    }
+
     setGeminiSaving(true)
     try {
       const res = await fetch('/api/user/credentials-manager', {
@@ -177,7 +190,7 @@ export default function UnifiedCredentialsClient() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'save_gemini',
-          data: geminiKeys,
+          data: keysToSave,
         }),
       })
       const result = await res.json()

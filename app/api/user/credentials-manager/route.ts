@@ -170,7 +170,8 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'save_gemini') {
-      const keysArray = Array.isArray(data) ? data : [data]
+      const rawArray = Array.isArray(data) ? data : [data]
+      const keysArray = rawArray.map((k: any) => String(k || '').trim()).filter((k: string) => k.length > 5)
       const existing = await prisma.credential.findFirst({
         where: { userId, credentialType: 'gemini' },
       })
