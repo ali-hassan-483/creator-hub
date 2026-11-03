@@ -790,7 +790,20 @@ def main_worker_loop():
                     if is_same_email and is_same_campaign:
                         # Case 1: Both email & campaign are SAME -> Fast in-place submit!
                         print(f"⚡ [Fast-Resume] Same Whop email ({whop_email}) & campaign ({campaign_name}). Submitting in-place!")
-                        process_submission(current_page, job_id, campaign_name, video_link, is_same_campaign=True)
+                        try:
+                            process_submission(current_page, job_id, campaign_name, video_link, is_same_campaign=True)
+                        except Exception as fast_err:
+                            # Fast-resume failed (modal not found, page changed etc.)
+                            # Fall back to navigating to campaign again — NO popup wait needed (same session)
+                            print(f"⚠️ [Fast-Resume] In-place submit failed ({fast_err}). Re-navigating to campaign (no popup wait)...")
+                            current_page.goto(channel_link, wait_until="domcontentloaded", timeout=90000)
+                            human_wait(current_page, 3000, variance=0.15)
+                            # Only dismiss if popups actually appear (short timeout, non-blocking)
+                            try:
+                                dismiss_onboarding_popups(current_page, job_id)
+                            except Exception:
+                                pass
+                            process_submission(current_page, job_id, campaign_name, video_link, is_same_campaign=False)
 
                     elif is_same_email and not is_same_campaign:
                         # Case 2: Same email, but DIFFERENT campaign -> Navigate to new channel link
@@ -846,8 +859,11 @@ def main_worker_loop():
                     except Exception as s_err:
                         print(f"⚠️ [Debug] Screenshot capture note: {s_err}")
 
-                    # Reset campaign loaded so next attempt doesn't assume we're on the campaign page
-                    current_loaded_campaign = None
+                    # Keep current_loaded_campaign intact — Fast-Resume fallback will re-navigate
+                    # if the page state is bad (without triggering popup wait again).
+                    # Only reset if the page itself crashed or context is gone.
+                    if current_page is None:
+                        current_loaded_campaign = None
 
                     # Report failure with screenshot
                     time_taken_min = max(1, int((time.time() - job_start_time) / 60))
