@@ -27,11 +27,11 @@ const OPENROUTER_MODELS = [
 
 // Native Gemini models to try in order of highest availability & free tier quota
 const GEMINI_MODELS = [
+  'gemini-3.8-flash',
   'gemini-2.0-flash',
   'gemini-1.5-flash',
   'gemini-2.5-flash',
   'gemini-1.5-flash-8b',
-  'gemini-3.8-flash',
 ]
 
 /**
