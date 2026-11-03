@@ -757,6 +757,7 @@ def main_worker_loop():
         current_loaded_campaign = None
         current_context = None
         current_page = None
+        last_submission_success = False  # Track if last job succeeded
 
         try:
             while True:
@@ -786,27 +787,26 @@ def main_worker_loop():
                 is_same_email = bool(current_loaded_whop_email) and (whop_email == current_loaded_whop_email) and (current_page is not None)
                 is_same_campaign = is_same_email and bool(current_loaded_campaign) and (campaign_name == current_loaded_campaign)
 
+                # Fast path: same email + same campaign + last submission was SUCCESS
+                # → Skip all navigation, directly click Submit clip & paste new link
+                can_fast_submit = is_same_email and is_same_campaign and last_submission_success
+
                 try:
-                    if is_same_email and is_same_campaign:
-                        # Case 1: Both email & campaign are SAME -> Fast in-place submit!
-                        print(f"⚡ [Fast-Resume] Same Whop email ({whop_email}) & campaign ({campaign_name}). Submitting in-place!")
-                        try:
-                            process_submission(current_page, job_id, campaign_name, video_link, is_same_campaign=True)
-                        except Exception as fast_err:
-                            # Fast-resume failed (modal not found, page changed etc.)
-                            # Fall back to navigating to campaign again — NO popup wait needed (same session)
-                            print(f"⚠️ [Fast-Resume] In-place submit failed ({fast_err}). Re-navigating to campaign (no popup wait)...")
-                            current_page.goto(channel_link, wait_until="domcontentloaded", timeout=90000)
-                            human_wait(current_page, 3000, variance=0.15)
-                            # Only dismiss if popups actually appear (short timeout, non-blocking)
-                            try:
-                                dismiss_onboarding_popups(current_page, job_id)
-                            except Exception:
-                                pass
-                            process_submission(current_page, job_id, campaign_name, video_link, is_same_campaign=False)
+                    if can_fast_submit:
+                        # ⚡ FAST PATH: No navigation, no popup wait — just open modal & paste link
+                        print(f"⚡ [Fast-Submit] Last submission succeeded. Same email ({whop_email}) & campaign ({campaign_name}). Clicking Submit clip directly...")
+                        process_submission(current_page, job_id, campaign_name, video_link, is_same_campaign=True)
+
+                    elif is_same_email and is_same_campaign and not last_submission_success:
+                        # ❌ Last job errored — full fresh navigation + popup dismissal
+                        print(f"🔄 [Error-Recovery] Last submission failed. Re-navigating to campaign '{campaign_name}' from scratch...")
+                        current_page.goto(channel_link, wait_until="domcontentloaded", timeout=90000)
+                        human_wait(current_page, 5000, variance=0.15)
+                        dismiss_onboarding_popups(current_page, job_id)
+                        process_submission(current_page, job_id, campaign_name, video_link, is_same_campaign=False)
 
                     elif is_same_email and not is_same_campaign:
-                        # Case 2: Same email, but DIFFERENT campaign -> Navigate to new channel link
+                        # 🔄 Same email, different campaign → Navigate + popup dismissal
                         print(f"🔄 [Campaign-Switch] Same Whop email ({whop_email}), switching to campaign '{campaign_name}'...")
                         current_page.goto(channel_link, wait_until="domcontentloaded", timeout=90000)
                         human_wait(current_page, 4500, variance=0.15)
@@ -815,7 +815,7 @@ def main_worker_loop():
                         current_loaded_campaign = campaign_name
 
                     else:
-                        # Case 3: Different email (or first job) -> Full scratch start with this email's cookies!
+                        # 🚀 Different email (or first job) → Full scratch start with cookies
                         print(f"🚀 [Scratch-Start] Switching to Whop account: {whop_email} (Campaign: {campaign_name})...")
                         if current_context:
                             try: current_context.close()
@@ -838,13 +838,15 @@ def main_worker_loop():
                         current_loaded_whop_email = whop_email
                         current_loaded_campaign = campaign_name
 
-                    # Record success
+                    # ✅ Success
+                    last_submission_success = True
                     time_taken_min = max(1, int((time.time() - job_start_time) / 60))
                     report_job_result(job_id, automation_id, "submitted", time_taken=time_taken_min)
 
                 except Exception as sub_err:
                     err_msg = str(sub_err)
                     print(f"❌ [Job {job_id}] Submission error: {err_msg}")
+                    last_submission_success = False  # ← Next job will do full re-navigation
 
                     # Take debug screenshot & encode to base64
                     screenshot_b64 = None
@@ -858,12 +860,6 @@ def main_worker_loop():
                             print(f"📸 [Debug] Screenshot captured & saved to: {screenshot_path}")
                     except Exception as s_err:
                         print(f"⚠️ [Debug] Screenshot capture note: {s_err}")
-
-                    # Keep current_loaded_campaign intact — Fast-Resume fallback will re-navigate
-                    # if the page state is bad (without triggering popup wait again).
-                    # Only reset if the page itself crashed or context is gone.
-                    if current_page is None:
-                        current_loaded_campaign = None
 
                     # Report failure with screenshot
                     time_taken_min = max(1, int((time.time() - job_start_time) / 60))
