@@ -268,7 +268,7 @@ async function pollAndProcess() {
     if (!data.hasJob || !data.job) {
       if (data.cooldownSeconds) {
         console.log(`⏱️ [Worker] ${data.message || `Waiting ${data.cooldownSeconds}s before next channel upload...`}`)
-        await new Promise((r) => setTimeout(r, Math.min(data.cooldownSeconds * 1000, 45000)))
+        await new Promise((r) => setTimeout(r, Math.min(data.cooldownSeconds * 1000, 120000)))
       }
       return false
     }
@@ -304,8 +304,8 @@ async function pollAndProcess() {
       await reportUploadComplete(job, videoId, youtubeLink)
 
       console.log(`✨ [Worker] Upload complete on @${job.channel.channelHandle || job.channel.channelName}: ${youtubeLink}`)
-      console.log(`⏱️ [Worker] Waiting 45 seconds before uploading to next channel...`)
-      await new Promise((r) => setTimeout(r, 45000))
+      console.log(`⏱️ [Worker] Waiting 2 minutes (120s) before uploading to next channel...`)
+      await new Promise((r) => setTimeout(r, 120000))
       return true
 
     } catch (uploadErr) {
@@ -317,8 +317,8 @@ async function pollAndProcess() {
         console.error(`❌ [Worker] Error processing upload job:`, uploadErr.message)
         await reportUploadFailure(job, 'uploadError', uploadErr.message)
       }
-      console.log(`⏱️ [Worker] Waiting 45 seconds before attempting next channel...`)
-      await new Promise((r) => setTimeout(r, 45000))
+      console.log(`⏱️ [Worker] Waiting 2 minutes (120s) before attempting next channel...`)
+      await new Promise((r) => setTimeout(r, 120000))
       return false
     } finally {
       // Always cleanup local temporary video file

@@ -136,7 +136,7 @@ export async function GET(req: NextRequest) {
         continue
       }
 
-      // ── Enforce 45-Second Wait Between Channel Uploads in Same Automation ──
+      // ── Enforce 2-Minute (120s) Wait Between Channel Uploads in Same Automation ──
       if (mockVideoUploads.length > 0) {
         let latestUploadTime = 0
         for (const u of mockVideoUploads) {
@@ -148,11 +148,11 @@ export async function GET(req: NextRequest) {
 
         if (latestUploadTime > 0) {
           const elapsedMs = Date.now() - latestUploadTime
-          const waitRequiredMs = 45 * 1000 // 45 seconds cooldown
+          const waitRequiredMs = 120 * 1000 // 2 minutes (120 seconds) cooldown
           if (elapsedMs < waitRequiredMs) {
             const remainingSec = Math.ceil((waitRequiredMs - elapsedMs) / 1000)
             console.log(
-              `[Worker Poll] Automation ${automation.id}: waiting ${remainingSec}s before uploading next channel (45s inter-channel cooldown).`
+              `[Worker Poll] Automation ${automation.id}: waiting ${remainingSec}s before uploading next channel (120s inter-channel cooldown).`
             )
             if (minWaitSeconds === null || remainingSec < minWaitSeconds) {
               minWaitSeconds = remainingSec
@@ -492,7 +492,7 @@ export async function GET(req: NextRequest) {
         success: true,
         hasJob: false,
         cooldownSeconds: minWaitSeconds,
-        message: `Waiting 45 seconds between channel uploads (${minWaitSeconds}s remaining).`,
+        message: `Waiting 2 minutes between channel uploads (${minWaitSeconds}s remaining).`,
       })
     }
 
