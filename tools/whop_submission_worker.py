@@ -322,15 +322,89 @@ def _find_and_open_campaign(page, target, job_id: str, campaign_name: str):
 
 
 def _modal_anchor(target):
+    # Try finding modern Whop modal dialog or text
+    for sel in ["div[role='dialog']", "[data-modal]", "label[data-clip-picker-block]"]:
+        try:
+            loc = target.locator(sel).first
+            if loc.is_visible(timeout=800):
+                return loc
+        except Exception:
+            continue
     return target.get_by_text(MODAL_ANCHOR_RE).first
 
 
+def _find_link_input(target):
+    """
+    Locates the video link input in the Whop submission modal.
+    Matches the updated Whop UI:
+    <input aria-label="Clip link" inputmode="url" placeholder="Paste a link" type="url" ...>
+    inside <label data-clip-picker-block ...>
+    """
+    candidates = [
+        "input[aria-label='Clip link']",
+        "label[data-clip-picker-block] input",
+        "input[placeholder*='Paste' i]",
+        "input[placeholder*='link' i]",
+        "input[inputmode='url']",
+        "input[type='url']",
+        "input:visible:not([type='checkbox']):not([type='hidden']):not([type='radio'])",
+    ]
+    for sel in candidates:
+        try:
+            loc = target.locator(sel).first
+            if loc.is_visible(timeout=1000):
+                return loc
+        except Exception:
+            continue
+
+    try:
+        loc = target.get_by_role("textbox", name=re.compile(r"Clip link|Paste.*link", re.I)).first
+        if loc.is_visible(timeout=1000):
+            return loc
+    except Exception:
+        pass
+
+    try:
+        loc = target.get_by_placeholder(re.compile(r"Paste.*link|link", re.I)).first
+        if loc.is_visible(timeout=1000):
+            return loc
+    except Exception:
+        pass
+
+    raise Exception("Could not find video link input field in Whop submission modal")
+
+
+def _is_modal_open(target) -> bool:
+    """Checks if the Whop submission modal is currently visible on screen."""
+    try:
+        loc = _find_link_input(target)
+        if loc.is_visible(timeout=1200):
+            return True
+    except Exception:
+        pass
+
+    try:
+        if target.locator("button:has-text('Submit clip'):visible").count() > 0:
+            return True
+    except Exception:
+        pass
+
+    return False
+
+
 def _modal_submit_btn(target):
-    return _modal_anchor(target).locator("xpath=following::button[contains(., 'Submit clip')][1]")
+    """Returns the 'Submit clip' button inside the active modal."""
+    try:
+        btn = target.locator("div[role='dialog'] button:has-text('Submit clip'), [data-modal] button:has-text('Submit clip')").first
+        if btn.is_visible(timeout=800):
+            return btn
+    except Exception:
+        pass
+    return target.locator("button:has-text('Submit clip'):visible").last
 
 
 def _agree_label(target):
-    return target.locator("label").filter(has_text=re.compile(r"read the requirements", re.IGNORECASE)).first
+    return target.locator("label").filter(has_text=re.compile(r"read the requirements|non-compliant", re.IGNORECASE)).first
 
 
 def _submit_enabled(btn) -> bool:
@@ -374,30 +448,51 @@ def _get_failed_requirement_reasons(target) -> list:
 
 def _fill_submission_form(page, target, job_id: str, video_link: str):
     """Fills video link input and ticks agreement checkbox."""
-    print(f"[{job_id}] Locating video link input...")
-    anchor = _modal_anchor(target)
-    anchor.wait_for(state="visible", timeout=10000)
-
-    link_input = anchor.locator(
-        "xpath=following::input[not(@type='checkbox') and not(@type='hidden') and not(@type='radio')][1]"
-    )
-    try:
-        link_input.wait_for(state="visible", timeout=10000)
-    except Exception:
-        link_input = target.locator("input:visible:not([type='checkbox']):not([type='hidden'])").first
-        link_input.wait_for(state="visible", timeout=5000)
+    print(f"[{job_id}] Locating video link input in modal...")
+    link_input = _find_link_input(target)
+    link_input.wait_for(state="visible", timeout=10000)
 
     print(f"[{job_id}] Pasting video link: '{video_link}'...")
     human_wait(page, 400)
-    link_input.click()
-    link_input.fill("")
+    link_input.scroll_into_view_if_needed()
+    link_input.click(force=True)
+    human_wait(page, 200)
+
+    # 1. Clear existing text
+    link_input.press("Control+A")
+    link_input.press("Backspace")
+    human_wait(page, 200)
+
+    # 2. Fill link
     link_input.fill(video_link)
-    human_wait(page, 800)
+    human_wait(page, 500)
+
+    # 3. Check value and dispatch synthetic events so React hook registers it
+    val = ""
     try:
-        if link_input.input_value().strip() != video_link:
-            human_type(link_input, video_link)
+        val = link_input.input_value().strip()
     except Exception:
         pass
+
+    if val != video_link:
+        # Fallback to realistic keystroke typing
+        link_input.click(force=True)
+        link_input.press("Control+A")
+        link_input.press("Backspace")
+        human_type(link_input, video_link)
+        human_wait(page, 500)
+
+    # Dispatch native React input events to trigger Whop's YouTube link validation
+    try:
+        link_input.evaluate("""(el, val) => {
+            el.value = val;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+        }""", video_link)
+    except Exception:
+        pass
+
+    # Wait for Whop's link validator to check URL
     human_wait(page, 1500)
 
     print(f"[{job_id}] Ticking agreement checkbox...")
@@ -414,18 +509,21 @@ def _fill_submission_form(page, target, job_id: str, video_link: str):
 
     if has_inner:
         if not inner_cb.is_checked():
-            label.click()
+            label.click(force=True)
             human_wait(page, 500)
         if not inner_cb.is_checked():
             inner_cb.check(force=True)
     else:
-        label.click()
+        label.click(force=True)
     human_wait(page, 600)
 
     btn = _modal_submit_btn(target)
     if not _wait_submit_enabled(page, btn, 4):
         print(f"[{job_id}] 'Submit clip' disabled -- retyping link with real keystrokes...")
         try:
+            link_input.click(force=True)
+            link_input.press("Control+A")
+            link_input.press("Backspace")
             human_type(link_input, video_link)
         except Exception:
             pass
@@ -485,7 +583,6 @@ def _dismiss_success_confirmation(page, target, job_id: str):
 
 def _submit_for_approval(page, target, job_id: str, max_retries: int = 5):
     """Submits the modal form and verifies success/Done confirmation."""
-    modal_heading = _modal_anchor(target)
     submit_btn = _modal_submit_btn(target)
     submit_btn.wait_for(state="visible", timeout=10000)
 
@@ -507,10 +604,7 @@ def _submit_for_approval(page, target, job_id: str, max_retries: int = 5):
                 outcome = "closed"
                 break
 
-            try:
-                modal_open = modal_heading.is_visible()
-            except Exception:
-                modal_open = False
+            modal_open = _is_modal_open(target)
             if not modal_open:
                 outcome = "closed"
                 break
@@ -551,11 +645,7 @@ def process_submission(page, job_id: str, campaign_name: str, video_link: str, i
     target = get_app_frame(page)
 
     # Check if submission modal is already open
-    modal_already_open = False
-    try:
-        modal_already_open = _modal_anchor(target).is_visible(timeout=2000)
-    except Exception:
-        modal_already_open = False
+    modal_already_open = _is_modal_open(target)
 
     if is_same_campaign and modal_already_open:
         print(f"[{job_id}] Same campaign & modal already open -- replacing link in-place.")
