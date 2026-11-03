@@ -35,6 +35,27 @@ async function getClipStatus(
 ) {
   const editingApproved = campaignCfg?.editingApproved === true
 
+  // Check if an editing process is already actively running on disk (e.g. in worker-editor)
+  const lockPath = path.join(getCampaignDir(campaignId), '.editing.lock')
+  let isDiskLockActive = false
+  try {
+    if (fs.existsSync(lockPath)) {
+      const stat = fs.statSync(lockPath)
+      if (Date.now() - stat.mtimeMs < 10 * 60 * 1000) {
+        isDiskLockActive = true
+      }
+    }
+  } catch {}
+
+  if (isDiskLockActive) {
+    return {
+      clipStatus: 'generating' as const,
+      clipProgress: `⚙️ Generating clips... (${clipCount}/${TARGET_EDITED_CLIPS} ready)`,
+      clipError: null,
+      editingApproved: true,
+    }
+  }
+
   // Check active in-memory clip generation first
   const activeGen = activeClipGenerations.get(campaignId)
   if (activeGen && activeGen.status === 'generating') {
