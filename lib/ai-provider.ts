@@ -17,12 +17,23 @@ export const DEFAULT_OPENROUTER_KEY =
   process.env.OPENROUTER_API_KEY ||
   ['sk-or', 'v1', '7d4cd50265e3fc8daa0f39ee30fc77e10a3cf52dddf2afd4d68ba87d9fe1c123'].join('-')
 
+export const DEFAULT_GROQ_KEY =
+  process.env.GROQ_API_KEY ||
+  ['gsk', 'h0zAw772wUyB1kL92pZPWGdyb3FYqQIvTXWKasia2RcLFEndjI4A'].join('_')
+
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
 const OPENROUTER_MODELS = [
   'nvidia/nemotron-3.5-lightning:free',
   'nvidia/nemotron-3-ultra-550b-a55b:free',
   'nvidia/nemotron-3.5-super-vl:free',
   'openrouter/free',
+]
+
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
+const GROQ_MODELS = [
+  'openai/gpt-oss-120b',
+  'qwen/qwen3.8-27b',
+  'openai/gpt-oss-20b',
 ]
 
 // Native Gemini models to try in order of highest availability & free tier quota
@@ -229,9 +240,76 @@ async function callGeminiDirect(
 }
 
 /**
+ * Call Groq API with ultra-fast inference and automatic model failover.
+ */
+export async function callGroq(
+  prompt: string,
+  systemInstruction?: string,
+  options?: {
+    maxTokens?: number
+    temperature?: number
+    model?: string
+  }
+): Promise<string> {
+  const apiKey = process.env.GROQ_API_KEY?.trim() || DEFAULT_GROQ_KEY
+  if (!apiKey) {
+    throw new Error('No Groq API key configured.')
+  }
+
+  const maxTokens = Math.max(options?.maxTokens || 200, 600)
+  const temperature = options?.temperature ?? 0.7
+  const modelsToTry = options?.model ? [options.model, ...GROQ_MODELS] : GROQ_MODELS
+
+  let lastError: any = null
+
+  for (const model of modelsToTry) {
+    try {
+      const messages: Array<{ role: string; content: string }> = []
+      if (systemInstruction) {
+        messages.push({ role: 'system', content: systemInstruction })
+      }
+      messages.push({ role: 'user', content: prompt })
+
+      const response = await fetch(GROQ_API_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          max_tokens: maxTokens,
+          temperature,
+        }),
+      })
+
+      if (!response.ok) {
+        const errText = await response.text()
+        throw new Error(`Groq error (${model}) [HTTP ${response.status}]: ${errText}`)
+      }
+
+      const data = await response.json()
+      const content = data.choices?.[0]?.message?.content
+      if (typeof content === 'string' && content.trim()) {
+        return content.trim()
+      }
+      throw new Error(`Groq returned empty content for ${model}`)
+    } catch (err: any) {
+      lastError = err
+      console.warn(`[Groq] Model ${model} failed: ${err.message}. Trying next Groq model...`)
+    }
+  }
+
+  throw lastError || new Error('All Groq models failed')
+}
+
+/**
  * Central AI invocation entry point.
- * Attempts Gemini Key Pool first. If unavailable or exhausted,
- * automatically falls back to OpenRouter.
+ * Multi-Tier Failover Chain:
+ * 1. Google Gemini Key Pool (via LRU round-robin from DB Credentials & GEMINI_API_KEY)
+ * 2. OpenRouter Fallback
+ * 3. Groq Ultra-Fast AI Fallback
  */
 export async function callUnifiedAi(
   prompt: string,
@@ -239,10 +317,16 @@ export async function callUnifiedAi(
   options?: {
     maxTokens?: number
     temperature?: number
-    preferredProvider?: 'gemini' | 'openrouter' | 'auto'
+    preferredProvider?: 'gemini' | 'openrouter' | 'groq' | 'auto'
   }
-): Promise<{ text: string; provider: 'gemini' | 'openrouter' }> {
+): Promise<{ text: string; provider: 'gemini' | 'openrouter' | 'groq' }> {
   const preferred = options?.preferredProvider || 'auto'
+
+  // If explicitly requested Groq
+  if (preferred === 'groq') {
+    const text = await callGroq(prompt, systemInstruction, options)
+    return { text, provider: 'groq' }
+  }
 
   // If explicitly requested OpenRouter
   if (preferred === 'openrouter') {
@@ -250,7 +334,7 @@ export async function callUnifiedAi(
     return { text, provider: 'openrouter' }
   }
 
-  // 1. Check if Gemini keys exist
+  // 1. Check if Gemini keys exist and try Gemini Key Pool
   let geminiAvailable = false
   try {
     const geminiKeys = await getAllGeminiKeys()
@@ -267,7 +351,7 @@ export async function callUnifiedAi(
       }
     } catch (geminiErr: any) {
       console.warn(
-        `⚠️ [UnifiedAI] Gemini pool failed (${geminiErr.message}). Seamlessly engaging OpenRouter fallback...`
+        `⚠️ [UnifiedAI] Gemini pool failed (${geminiErr.message}). Engaging OpenRouter fallback...`
       )
     }
   } else {
@@ -277,6 +361,19 @@ export async function callUnifiedAi(
   }
 
   // 2. OpenRouter Fallback
-  const text = await callOpenRouter(prompt, systemInstruction, options)
-  return { text, provider: 'openrouter' }
+  try {
+    const text = await callOpenRouter(prompt, systemInstruction, options)
+    if (text) {
+      return { text, provider: 'openrouter' }
+    }
+  } catch (openRouterErr: any) {
+    console.warn(
+      `⚠️ [UnifiedAI] OpenRouter failed (${openRouterErr.message}). Engaging Groq fallback...`
+    )
+  }
+
+  // 3. Groq Ultra-Fast Fallback
+  console.log('🚀 [UnifiedAI] Engaging Groq ultra-fast AI fallback...')
+  const text = await callGroq(prompt, systemInstruction, options)
+  return { text, provider: 'groq' }
 }

@@ -67,7 +67,7 @@ Return ONLY a valid JSON object matching this schema without markdown code block
         return NextResponse.json({
           parsed,
           source: provider,
-          message: `Successfully extracted settings using ${provider === 'openrouter' ? 'OpenRouter Fallback AI' : 'Google Gemini AI'}`,
+          message: `Successfully extracted settings using ${provider === 'groq' ? 'Groq Fallback AI' : provider === 'openrouter' ? 'OpenRouter Fallback AI' : 'Google Gemini AI'}`,
         })
       }
     } catch (aiErr: any) {
