@@ -18,6 +18,7 @@ import { decrypt } from './encryption'
 let cachedKeys: string[] = []
 let lastCacheTime = 0
 const CACHE_TTL_MS = 2 * 60 * 1000 // Cache for 2 minutes
+const badKeys = new Set<string>() // Track permanently failing keys (403 invalid project, 401 invalid key)
 
 /**
  * Fetch all available Gemini API keys across all users & environment.
@@ -25,7 +26,7 @@ const CACHE_TTL_MS = 2 * 60 * 1000 // Cache for 2 minutes
 export async function getAllGeminiKeys(): Promise<string[]> {
   const now = Date.now()
   if (cachedKeys.length > 0 && now - lastCacheTime < CACHE_TTL_MS) {
-    return cachedKeys
+    return cachedKeys.filter(k => !badKeys.has(k))
   }
 
   const keysSet = new Set<string>()
@@ -65,7 +66,7 @@ export async function getAllGeminiKeys(): Promise<string[]> {
 
   cachedKeys = Array.from(keysSet).filter(k => k.length > 10)
   lastCacheTime = now
-  return cachedKeys
+  return cachedKeys.filter(k => !badKeys.has(k))
 }
 
 let keyCursor = 0
@@ -80,7 +81,7 @@ export async function executeGeminiWithFailover<T>(
   const keys = await getAllGeminiKeys()
 
   if (keys.length === 0) {
-    throw new Error('No Gemini API keys found. Please add keys in the Credentials tab or set GEMINI_API_KEY in .env.')
+    throw new Error('No valid Gemini API keys found. Please add keys in the Credentials tab or set GEMINI_API_KEY in .env.')
   }
 
   let lastError: any = null
@@ -99,20 +100,31 @@ export async function executeGeminiWithFailover<T>(
       return result
     } catch (err: any) {
       lastError = err
+      const msg = String(err?.message || '')
+
+      // Mark permanently broken keys
+      if (
+        msg.includes('free tier is not available for this project') ||
+        msg.includes('API_KEY_INVALID') ||
+        (msg.includes('403') && msg.includes('PERMISSION_DENIED'))
+      ) {
+        badKeys.add(currentKey)
+        console.warn(`🚫 [GeminiKeyPool] Disabled invalid/unsupported key [${maskedKey}] from pool.`)
+      }
+
       const isQuotaOrRateLimit =
-        err?.message?.includes('429') ||
-        err?.message?.includes('quota') ||
-        err?.message?.includes('RESOURCE_EXHAUSTED') ||
-        err?.message?.includes('rate limit') ||
-        err?.message?.includes('API_KEY_INVALID')
+        msg.includes('429') ||
+        msg.includes('quota') ||
+        msg.includes('RESOURCE_EXHAUSTED') ||
+        msg.includes('rate limit')
 
       console.warn(
-        `⚠️ [GeminiKeyPool] Key [${maskedKey}] failed: ${err.message}. ${
+        `⚠️ [GeminiKeyPool] Key [${maskedKey}] failed: ${msg}. ${
           attempt < keys.length - 1 ? 'Switching to next key...' : 'All keys failed.'
         }`
       )
 
-      if (!isQuotaOrRateLimit && attempt >= 2) {
+      if (!isQuotaOrRateLimit && attempt >= 2 && !badKeys.has(currentKey)) {
         // If it's a prompt syntax or internal error (not quota), don't loop endlessly
         throw err
       }

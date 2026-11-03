@@ -28,10 +28,8 @@ const OPENROUTER_MODELS = [
 // Native Gemini models to try in order of highest availability & free tier quota
 const GEMINI_MODELS = [
   'gemini-3.8-flash',
-  'gemini-2.0-flash',
-  'gemini-1.5-flash',
+  'gemini-2.5-flash-lite',
   'gemini-2.5-flash',
-  'gemini-1.5-flash-8b',
 ]
 
 /**
@@ -156,44 +154,73 @@ async function callGeminiDirect(
     let lastErr: any = null
 
     for (const model of GEMINI_MODELS) {
-      try {
-        const body: any = {
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 2048,
-          },
-        }
+      // Allow up to 3 RPM retry attempts for models hitting short rate limit windows (e.g. 5 RPM, retry in 7s)
+      for (let rpmAttempt = 0; rpmAttempt < 3; rpmAttempt++) {
+        try {
+          const body: any = {
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0.7,
+              maxOutputTokens: 2048,
+            },
+          }
 
-        if (systemInstruction) {
-          body.systemInstruction = { parts: [{ text: systemInstruction }] }
-        }
+          if (systemInstruction) {
+            body.systemInstruction = { parts: [{ text: systemInstruction }] }
+          }
 
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        })
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          })
 
-        if (!response.ok) {
-          const err = await response.text()
-          throw new Error(`Gemini ${model} API error ${response.status}: ${err}`)
-        }
+          if (!response.ok) {
+            const err = await response.text()
+            throw new Error(`Gemini ${model} API error ${response.status}: ${err}`)
+          }
 
-        const data = (await response.json()) as any
-        const output = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
-        if (output) return output
-      } catch (err: any) {
-        lastErr = err
-        const errMsg = String(err?.message || '')
-        // If API key is completely invalid, fail key immediately to try next key in pool
-        if (errMsg.includes('API_KEY_INVALID') || errMsg.includes('401') || errMsg.includes('API key not valid')) {
-          throw err
+          const data = (await response.json()) as any
+          const output = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+          if (output) return output
+        } catch (err: any) {
+          lastErr = err
+          const errMsg = String(err?.message || '')
+
+          // 1. Invalid key / 401: fail this key immediately to let pool try another key
+          if (errMsg.includes('API_KEY_INVALID') || errMsg.includes('401') || errMsg.includes('API key not valid')) {
+            throw err
+          }
+
+          // 2. 403 PERMISSION_DENIED (e.g. Free Tier not available for this project / region):
+          // Fail this key immediately without trying other models
+          if (errMsg.includes('free tier is not available for this project') || (errMsg.includes('403') && errMsg.includes('PERMISSION_DENIED'))) {
+            throw err
+          }
+
+          // 3. Short 429 RPM rate limit (e.g. "Limit: 5 per minute. Please retry in 7s.")
+          // DO NOT fail the key or jump to another model! Wait for the rate-limit window to reset and retry.
+          const retrySecMatch = errMsg.match(/retry in\s+(\d+(?:\.\d+)?)s/i) || errMsg.match(/retryDelay[:\s"]+(\d+)s/i)
+          const isRpmLimit = errMsg.includes('requests per minute limit exceeded') || errMsg.includes('per_minute') || (retrySecMatch && parseFloat(retrySecMatch[1]) <= 30)
+
+          if (isRpmLimit && rpmAttempt < 2) {
+            const delaySec = retrySecMatch ? Math.ceil(parseFloat(retrySecMatch[1])) + 2 : 8
+            console.log(`⏳ [GeminiDirect] Hit RPM limit on ${model}. Waiting ${delaySec}s before retrying request...`)
+            await new Promise((r) => setTimeout(r, delaySec * 1000))
+            continue // Retry the exact same model
+          }
+
+          // 4. Daily quota exhausted (e.g. "requests per day limit exceeded", retry in hours):
+          // Fail this key so executeGeminiWithFailover switches to another key in the pool
+          if (errMsg.includes('per day limit exceeded') || (retrySecMatch && parseFloat(retrySecMatch[1]) > 60)) {
+            throw err
+          }
+
+          // 5. Model not found (404) or server 503: try next model in GEMINI_MODELS
+          console.warn(`[GeminiDirect] Model ${model} failed (${errMsg.slice(0, 120)}), trying next model...`)
+          break // Exit RPM loop, proceed to next model in GEMINI_MODELS
         }
-        // Otherwise (503 high demand, 429 quota, 404 model not found, 500 server error, etc.), try next model
-        console.warn(`[GeminiDirect] Model ${model} failed (${errMsg.slice(0, 120)}), trying next model...`)
-        continue
       }
     }
 
