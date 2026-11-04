@@ -644,24 +644,23 @@ def process_submission(page, job_id: str, campaign_name: str, video_link: str, i
     """Executes the full or fast-resumed submission on the active page."""
     target = get_app_frame(page)
 
-    # Check if submission modal is already open
-    modal_already_open = _is_modal_open(target)
-
-    if is_same_campaign and modal_already_open:
-        print(f"[{job_id}] Same campaign & modal already open -- replacing link in-place.")
-        _fill_submission_form(page, target, job_id, video_link)
-        _submit_for_approval(page, target, job_id)
-        return
-
     human_wait(page, 600)
 
     if not is_same_campaign:
         # Navigate from Discover to campaign card
         _find_and_open_campaign(page, target, job_id, campaign_name)
     else:
-        print(f"[{job_id}] Same campaign as previous row -- clicking 'Submit clip' directly on campaign page.")
+        # Same campaign — close any open modal first, then click Submit clip fresh
+        print(f"[{job_id}] Same campaign — ensuring modal is closed, then clicking 'Submit clip'...")
+        if _is_modal_open(target):
+            print(f"[{job_id}] Modal already open, closing it first with Escape...")
+            try:
+                page.keyboard.press("Escape")
+                page.wait_for_timeout(800)
+            except Exception:
+                pass
 
-    # Click sticky/page 'Submit clip' button
+    # Click page-level 'Submit clip' button to open modal fresh
     submit_clip_btn = target.locator("button:has-text('Submit clip'):visible").first
     submit_clip_btn.wait_for(state="visible", timeout=20000)
     human_wait(page, 400)
