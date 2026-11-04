@@ -407,23 +407,41 @@ export async function GET(req: NextRequest) {
         const clipFileName = allClips[0]
         const cfg = (campaign.config as Record<string, any>) || {}
 
-        // Look for corresponding .meta.json file
+        // Look for corresponding .meta.json file — meta title/description takes PRIORITY
         const metaFileName = clipFileName.replace(/\.mp4$/, '.meta.json')
         const metaFullPath = path.join(clipsDir, metaFileName)
 
-        let title = cfg.onScreenTextPool
-          ? cfg.onScreenTextPool.split('\n')[0].slice(0, 60)
-          : `${campaign.name} Short`
-        let description = `${cfg.predefinedDescription || ''}\n\n${cfg.linksInDescription || ''}`.trim()
+        let title = ''
+        let description = ''
         let tags = ['shorts', 'viral', (cfg.niche || 'trending').toLowerCase()]
 
+        // 1. Try meta.json first (AI-generated title/description per clip)
         if (fs.existsSync(metaFullPath)) {
           try {
             const meta = JSON.parse(fs.readFileSync(metaFullPath, 'utf8'))
             if (meta.title) title = meta.title
             if (meta.description) description = meta.description
             if (meta.hashtags && Array.isArray(meta.hashtags)) tags = meta.hashtags
-          } catch {}
+            if (title) console.log(`[Worker Poll] ✅ Loaded meta.json for ${clipFileName}: "${title}"`)
+            else console.warn(`[Worker Poll] ⚠️ meta.json exists but title is empty for ${clipFileName}`)
+          } catch (e) {
+            console.warn(`[Worker Poll] ⚠️ Failed to parse meta.json for ${clipFileName}: ${e}`)
+          }
+        } else {
+          console.warn(`[Worker Poll] ⚠️ No meta.json found for ${clipFileName} at ${metaFullPath}`)
+        }
+
+        // 2. Fallback only if meta had no title
+        if (!title) {
+          title = cfg.onScreenTextPool
+            ? cfg.onScreenTextPool.split('\n')[0].slice(0, 60)
+            : `${campaign.name} Short`
+          console.warn(`[Worker Poll] ⚠️ Using fallback title: "${title}"`)
+        }
+
+        // 3. Fallback description from campaign config if meta had none
+        if (!description) {
+          description = `${cfg.predefinedDescription || ''}\n\n${cfg.linksInDescription || ''}`.trim()
         }
 
         const downloadUrl = `${baseUrl}/api/n8n/video-stream?campaignId=${campaign.id}&file=${encodeURIComponent(clipFileName)}`
