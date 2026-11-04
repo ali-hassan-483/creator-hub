@@ -53,6 +53,7 @@ services:
       - ./tools:/app/tools
       - ./workers:/app/workers
       - ./lib:/app/lib
+      - ./scripts:/app/scripts
     ports:
       - '3000:3000'
     environment:
@@ -110,6 +111,7 @@ services:
       - ./tools:/app/tools
       - ./workers:/app/workers
       - ./lib:/app/lib
+      - ./scripts:/app/scripts
     command: npm run worker:automation
     environment:
       DATABASE_URL: ${DATABASE_URL}
@@ -161,6 +163,7 @@ services:
       - ./tools:/app/tools
       - ./workers:/app/workers
       - ./lib:/app/lib
+      - ./scripts:/app/scripts
     command: npm run worker:editor
     environment:
       DATABASE_URL: ${DATABASE_URL}
@@ -187,6 +190,7 @@ services:
       - ./tools:/app/tools
       - ./workers:/app/workers
       - ./lib:/app/lib
+      - ./scripts:/app/scripts
     command: node scripts/upload-worker.js
     environment:
       CREATOR_HUB_URL: http://web:3000
@@ -207,6 +211,7 @@ services:
       - ./tools:/app/tools
       - ./workers:/app/workers
       - ./lib:/app/lib
+      - ./scripts:/app/scripts
       - ./whop-submission:/app/whop-submission
     command: python3 tools/whop_submission_worker.py
     environment:
