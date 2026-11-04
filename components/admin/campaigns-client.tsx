@@ -234,7 +234,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
           ...prev[campaignId],
           editingApproved: true,
           clipStatus: 'generating',
-          clipProgress: '⚙️ Starting auto-editing (Target: 300 clips)...',
+          clipProgress: '⚙️ Starting auto-editing (Target: 100 clips)...',
           clipError: null,
         },
       }))
@@ -265,7 +265,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
   const [isPruning, setIsPruning] = useState<Record<string, boolean>>({})
 
   async function handlePruneExcessClips(campaignId: string) {
-    if (!confirm('Kya aap excess clips delete karke exactly 300 clips rakhna chahte hain?')) return
+    if (!confirm('Kya aap excess clips delete karke exactly 100 clips rakhna chahte hain?')) return
     setIsPruning((prev) => ({ ...prev, [campaignId]: true }))
     try {
       const res = await fetch('/api/admin/campaigns/setup-status', {
@@ -275,17 +275,17 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to prune clips')
-      alert(data.message || 'Pruned to 300 clips successfully!')
+      alert(data.message || 'Pruned to 100 clips successfully!')
       setSetupStatuses((prev) => ({
         ...prev,
         [campaignId]: {
           ...prev[campaignId],
-          clipCount: data.clipCount || 300,
+          clipCount: data.clipCount || 100,
         },
       }))
       setCampaigns((prev) =>
         prev.map((c) =>
-          c.id === campaignId ? { ...c, availableClips: data.clipCount || 300 } : c
+          c.id === campaignId ? { ...c, availableClips: data.clipCount || 100 } : c
         )
       )
     } catch (err: any) {
@@ -1051,7 +1051,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                                 <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-0.5">
                                   <span className="font-semibold uppercase tracking-wider text-[9px]">Clips Pool</span>
                                   <span className="font-mono text-[10px] font-bold">
-                                    {ss.clipCount ?? c.availableClips ?? 0}/300
+                                    {ss.clipCount ?? c.availableClips ?? 0}/100
                                   </span>
                                 </div>
                                 {ss.clipStatus === 'generating' && (
@@ -1115,9 +1115,9 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                                           type="button"
                                           onClick={() => handleGenerateClips(c.id)}
                                           className="text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2 py-0.5 rounded shadow-xs transition-colors"
-                                          title="Start auto-editing (Target: 300 clips)"
+                                          title="Start auto-editing (Target: 100 clips)"
                                         >
-                                          ▶ Auto-300
+                                          ▶ Auto-100
                                         </button>
                                       )}
                                     </div>
@@ -1155,7 +1155,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                                           type="button"
                                           onClick={() => handleGenerateClips(c.id)}
                                           className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold shadow-xs transition-colors"
-                                          title="Confirm style in Sandbox, then click to auto-generate 300 clips."
+                                          title="Confirm style in Sandbox, then click to auto-generate 100 clips."
                                         >
                                           ▶ Start Auto-Editing
                                         </button>
@@ -1167,15 +1167,15 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                                   </div>
                                 )}
 
-                                {(ss.clipCount ?? c.availableClips ?? 0) > 300 && (
+                                {(ss.clipCount ?? c.availableClips ?? 0) > 100 && (
                                   <button
                                     type="button"
                                     onClick={() => handlePruneExcessClips(c.id)}
                                     disabled={isPruning[c.id]}
                                     className="text-[9px] text-orange-500 hover:text-orange-700 hover:underline pt-1 block font-semibold disabled:opacity-50"
-                                    title={`Prune ${(ss.clipCount ?? c.availableClips ?? 0) - 300} excess clips back to 300`}
+                                    title={`Prune ${(ss.clipCount ?? c.availableClips ?? 0) - 100} excess clips back to 100`}
                                   >
-                                    {isPruning[c.id] ? '⏳ Pruning...' : `✂️ Prune to 300 (${(ss.clipCount ?? c.availableClips ?? 0) - 300} excess)`}
+                                    {isPruning[c.id] ? '⏳ Pruning...' : `✂️ Prune to 100 (${(ss.clipCount ?? c.availableClips ?? 0) - 100} excess)`}
                                   </button>
                                 )}
 
@@ -2350,7 +2350,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
               <div>
                 <span className="text-muted-foreground block text-[11px]">Edited Clips Ready:</span>
                 <span className="text-sm font-bold text-purple-600 dark:text-purple-400">
-                  {poolStatus ? `${poolStatus.editedClipsCount} / 300` : '...'}
+                  {poolStatus ? `${poolStatus.editedClipsCount} / 100` : '...'}
                 </span>
               </div>
             </div>
@@ -2400,7 +2400,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                 <p className="text-[11px] text-muted-foreground mt-1">
                   {uploadTargetType === 'sources'
                     ? 'Source videos will be cut & styled by the continuous editing engine.'
-                    : 'Ready clips directly count towards the 300 clips pool and are ready to post.'}
+                    : 'Ready clips directly count towards the 100 clips pool and are ready to post.'}
                 </p>
               </div>
 

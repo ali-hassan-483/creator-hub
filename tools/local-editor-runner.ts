@@ -35,7 +35,7 @@ async function runLocalEditor() {
   console.log('====================================================')
   console.log('🎬 CREATOR HUB — LOCALSTANDALONE VIDEO EDITING AGENT')
   console.log('====================================================')
-  console.log('Yeh script aapke laptop ke FFMPEG se 300 clips render karegi.')
+  console.log('Yeh script aapke laptop ke FFMPEG se 100 clips render karegi.')
   console.log('')
 
   const campaignId = (await question('Enter Campaign ID ya Folder Name (default: local_campaign_1): ')).trim() || 'local_campaign_1'
@@ -64,7 +64,7 @@ async function runLocalEditor() {
   }
 
   const existingClips = countEditedClips(campaignId)
-  console.log(`📊 Existing clips ready in pool: ${existingClips}/300`)
+  console.log(`📊 Existing clips ready in pool: ${existingClips}/100`)
 
   // Default configuration for local rendering
   const localConfig: Record<string, any> = {

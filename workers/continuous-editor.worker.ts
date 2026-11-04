@@ -3,9 +3,9 @@
  * 
  * Yeh worker VPS backend par har waqt continuous check karta hai:
  * - Saari active campaigns ko query karta hai
- * - Har campaign ke paas check karta hai ke kya 300 clips pool me available hain?
- * - Agar kisi campaign me < 300 clips hon (e.g. users ne upload kar di ya naya campaign bana):
- *     -> Automatically continuous-edit-engine trigger ho jata hai aur 300 tak clips banata hai
+ * - Har campaign ke paas check karta hai ke kya 100 clips pool me available hain?
+ * - Agar kisi campaign me < 100 clips hon (e.g. users ne upload kar di ya naya campaign bana):
+ *     -> Automatically continuous-edit-engine trigger ho jata hai aur 100 tak clips banata hai
  * - Har 5 minute baad sleep & recheck loop.
  */
 

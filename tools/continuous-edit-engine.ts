@@ -1,8 +1,8 @@
 /**
- * Continuous Editing Engine (300 Clips Target Worker)
- * Powered by Story Re-Cut Editor (Whop Shorts Style)
+ * Continuous Editing Engine (100 Clips Target Worker)
+ * Powered by Continuous Random Clip Editor (Whop Shorts Style)
  * 
- * Target: Har campaign ke paas har waqt 300 active/ready edited clips available hone chahiye.
+ * Target: Har campaign ke paas har waqt 100 active/ready edited clips available hone chahiye.
  * - Brand-safe 9:16 vertical video from source footage only (no templates, no mirror blur)
  * - Cold-Open Reorder (Payoff/Hook first at 1.2x zoom, then Setup, then Payoff in context)
  * - Cross-cut pacing & per-segment loudness normalization
@@ -37,7 +37,7 @@ import {
   AiMetadataConfig,
 } from './ai-clipper'
 
-export const TARGET_EDITED_CLIPS = 300
+export const TARGET_EDITED_CLIPS = 100
 
 export interface EditEngineProgress {
   campaignId: string
@@ -48,7 +48,7 @@ export interface EditEngineProgress {
 }
 
 /**
- * Ensures target 300 clips exist for a campaign using the Story Re-Cut Editor.
+ * Ensures target 100 clips exist for a campaign using the Continuous Clip Editor.
  */
 export async function maintainCampaignClipPool(
   campaignId: string,
@@ -80,7 +80,7 @@ export async function maintainCampaignClipPool(
     })
   }
 
-  const maxTarget = Number(cfg.targetClipsPool || cfg.maxClipsPool || TARGET_EDITED_CLIPS) || 300
+  const maxTarget = Number(cfg.targetClipsPool || cfg.maxClipsPool || TARGET_EDITED_CLIPS) || 100
   let currentCount = countEditedClips(campaignId)
   log(`Current pool count: ${currentCount}/${maxTarget}`)
 

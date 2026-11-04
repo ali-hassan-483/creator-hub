@@ -24,7 +24,7 @@ export const dynamic = 'force-dynamic'
 
 /**
  * Derive clip generation status from active generator or DB automations for a campaign.
- * Automatically starts or resumes clip generation if campaign is active and pool has < 300 clips.
+ * Automatically starts or resumes clip generation if campaign is active and pool has < 100 clips.
  */
 async function getClipStatus(
   campaignId: string,
@@ -324,7 +324,7 @@ export async function POST(req: NextRequest) {
         })
       }
 
-      // Mark editing as approved by admin so background worker can maintain 300 clips
+      // Mark editing as approved by admin so background worker can maintain 100 clips
       const updatedCfg: Record<string, any> = { ...cfg, editingApproved: true }
       await prisma.campaign.update({
         where: { id: campaignId },
@@ -338,7 +338,7 @@ export async function POST(req: NextRequest) {
       })
 
       return NextResponse.json({
-        message: 'Auto-editing started! The system will now automatically maintain the 300 clips pool.',
+        message: 'Auto-editing started! The system will now automatically maintain the 100 clips pool.',
         status: 'generating',
         campaignId,
         editingApproved: true,

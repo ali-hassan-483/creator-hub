@@ -104,7 +104,7 @@ export async function GET(req: NextRequest) {
       campaignId,
       sourceFilesCount: sourceFiles.length,
       editedClipsCount: clipFiles.length,
-      targetClips: 300,
+      targetClips: 100,
       sourceFiles: sourceFiles.slice(0, 50),
       clipFiles: clipFiles.slice(0, 50),
     })
