@@ -54,6 +54,8 @@ services:
       - ./workers:/app/workers
       - ./lib:/app/lib
       - ./scripts:/app/scripts
+      - ./components:/app/components
+      - ./app:/app/app
     ports:
       - '3000:3000'
     environment:
@@ -112,6 +114,8 @@ services:
       - ./workers:/app/workers
       - ./lib:/app/lib
       - ./scripts:/app/scripts
+      - ./components:/app/components
+      - ./app:/app/app
     command: npm run worker:automation
     environment:
       DATABASE_URL: ${DATABASE_URL}
@@ -164,6 +168,8 @@ services:
       - ./workers:/app/workers
       - ./lib:/app/lib
       - ./scripts:/app/scripts
+      - ./components:/app/components
+      - ./app:/app/app
     command: npm run worker:editor
     environment:
       DATABASE_URL: ${DATABASE_URL}
@@ -191,6 +197,8 @@ services:
       - ./workers:/app/workers
       - ./lib:/app/lib
       - ./scripts:/app/scripts
+      - ./components:/app/components
+      - ./app:/app/app
     command: node scripts/upload-worker.js
     environment:
       CREATOR_HUB_URL: http://web:3000
@@ -212,6 +220,8 @@ services:
       - ./workers:/app/workers
       - ./lib:/app/lib
       - ./scripts:/app/scripts
+      - ./components:/app/components
+      - ./app:/app/app
       - ./whop-submission:/app/whop-submission
     command: python3 tools/whop_submission_worker.py
     environment:
