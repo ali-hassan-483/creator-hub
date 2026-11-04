@@ -181,76 +181,83 @@ def get_app_frame(page):
 
 def dismiss_onboarding_popups(page, job_id: str):
     """
-    Dismisses the 'Got it' welcome popup and the community-join overlay popup.
-    Waits up to 30s for 'Got it' welcome popup only. Community join popup is skipped.
+    Dismisses the 'Got it' welcome popup if present (up to 5s check).
     """
-    print(f"[{job_id}] Waiting for 'Got it' welcome popup (up to 30s)...")
-    got_it_dismissed = False
+    print(f"[{job_id}] Checking for 'Got it' welcome popup (up to 5s)...")
     start_time = time.time()
-    while time.time() - start_time < 30:
+    while time.time() - start_time < 5:
         try:
             btn = page.locator("button:has-text('Got it')").first
             if btn.is_visible():
                 print(f"[{job_id}] 'Got it' welcome popup detected. Dismissing...")
                 btn.click()
-                got_it_dismissed = True
-                break
+                human_wait(page, 800)
+                return
         except Exception:
             pass
-        page.wait_for_timeout(500)
+        page.wait_for_timeout(400)
+    print(f"[{job_id}] No 'Got it' popup appeared — continuing.")
 
-    if got_it_dismissed:
-        page.wait_for_timeout(1000)
-        print(f"[{job_id}] 'Got it' popup dismissed.")
-    else:
-        print(f"[{job_id}] No 'Got it' popup appeared — continuing.")
+
+def _clean_campaign_search_terms(campaign_name: str) -> list:
+    """
+    Extracts high-accuracy search variants from a campaign name.
+    e.g. 'Lula Granji x The Packed Lunch — Campaign Rules'
+    -> ['Lula Granji x The Packed Lunch', 'Lula Granji', 'The Packed Lunch']
+    """
+    # Remove rules suffix
+    base = re.sub(r"\s*[—–-]\s*(campaign\s*)?rules.*$", "", campaign_name, flags=re.I).strip()
+    base = re.sub(r"\(.*?\)", "", base).strip()
+
+    terms = [base]
+    if " x " in base:
+        parts = [p.strip() for p in base.split(" x ") if p.strip()]
+        terms.extend(parts)
+        if len(parts) >= 2:
+            terms.append(f"{parts[0]} x {parts[1]}")
+
+    seen = set()
+    cleaned = []
+    for t in terms:
+        tc = t.strip()
+        if tc and tc.lower() not in seen:
+            seen.add(tc.lower())
+            cleaned.append(tc)
+    return cleaned
 
 
 def _locate_campaign_card(target, page, campaign_name: str, timeout: int = 3000):
     """
-    Finds the campaign card in Content Rewards (Screenshot 4).
-    Excludes site headers, sidebars/navbars, and search input fields.
+    Finds the campaign card in Content Rewards (Screenshots 1 & 4).
+    Uses Playwright's wait_for to reliably wait for React card rendering.
     """
-    clean_name = campaign_name.strip()
-    short_name = clean_name.split(' x ')[0].strip() if ' x' in clean_name else clean_name
+    terms = _clean_campaign_search_terms(campaign_name)
 
-    selectors = [
-        # Screenshot 4: Cards container inside the grid
-        f"[class*='grid'] div:has-text('{clean_name}')",
-        f"div:has-text('{clean_name}'):not(header *):not(nav *):not(form *)",
-        f"[aria-label*='{clean_name}' i]",
-        f"button:has-text('{clean_name}')",
-        f"a:has-text('{clean_name}')",
-        # Fallback to short name
-        f"[class*='grid'] div:has-text('{short_name}')",
-        f"div:has-text('{short_name}'):not(header *):not(nav *):not(form *)",
-    ]
+    for term in terms:
+        candidates = [
+            # Screenshot 4: Cards container inside the grid
+            target.locator(f"[class*='grid'] div:has-text('{term}')").first,
+            page.locator(f"[class*='grid'] div:has-text('{term}')").first,
+            # Direct text element outside headers/navs/inputs
+            target.locator(f"div:has-text('{term}'):not(header *):not(nav *):not(form *)").last,
+            page.locator(f"div:has-text('{term}'):not(header *):not(nav *):not(form *)").last,
+            # Accessible name / role
+            target.get_by_text(re.compile(re.escape(term), re.I)).first,
+            page.get_by_text(re.compile(re.escape(term), re.I)).first,
+            target.locator(f"[aria-label*='{term}' i]").first,
+            target.locator(f"button:has-text('{term}')").first,
+            target.locator(f"a:has-text('{term}')").first,
+        ]
 
-    for sel in selectors:
-        for ctx in [target, page]:
+        for cand in candidates:
             try:
-                loc = ctx.locator(sel)
-                count = loc.count()
-                for i in range(count):
-                    cand = loc.nth(i)
-                    if cand.is_visible(timeout=timeout):
-                        tag = cand.evaluate("el => el.tagName.toLowerCase()").strip()
-                        if tag in ['input', 'textarea', 'form']:
-                            continue
-                        return cand
+                cand.wait_for(state="visible", timeout=timeout)
+                tag = cand.evaluate("el => el.tagName.toLowerCase()").strip()
+                if tag in ['input', 'textarea', 'form']:
+                    continue
+                return cand
             except Exception:
                 continue
-
-    # Text fallback
-    for ctx in [target, page]:
-        try:
-            cand = ctx.get_by_text(clean_name, exact=False).first
-            if cand.is_visible(timeout=timeout):
-                tag = cand.evaluate("el => el.tagName.toLowerCase()").strip()
-                if tag not in ['input', 'textarea', 'form']:
-                    return cand
-        except Exception:
-            continue
 
     return None
 
@@ -261,92 +268,139 @@ def _find_search_input(target, page):
     Strictly avoids the global Whop site navbar search input.
     """
     candidates = [
-        # Screenshot 2: Accessible Name is exactly "Search campaigns"
+        # Screenshot 1: form input inside content rewards
+        target.locator("form.relative input, form input.min-w-0, form input").first,
+        page.locator("form.relative input, form input.min-w-0, form input").first,
+        # Screenshot 2: Accessible Name "Search campaigns"
         target.get_by_role("textbox", name=re.compile(r"search campaigns", re.I)).first,
         page.get_by_role("textbox", name=re.compile(r"search campaigns", re.I)).first,
         target.locator("input[aria-label='Search campaigns']").first,
         page.locator("input[aria-label='Search campaigns']").first,
-        # Screenshot 1 & 2: Placeholders inside Content Rewards
+        # Screenshot 1 & 2: Placeholders
         target.locator("input[placeholder*='platform and budget' i]").first,
         page.locator("input[placeholder*='platform and budget' i]").first,
         target.locator("input[placeholder*='favorite brands' i]").first,
         page.locator("input[placeholder*='favorite brands' i]").first,
-        # Screenshot 1: Form input inside Content Rewards container
-        target.locator("form.relative input, form input.min-w-0, form input").first,
-        page.locator("form.relative input, form input.min-w-0, form input").first,
-        # Generic input inside main content (excluding header / top nav)
-        target.locator("div[data-is-root-theme] input:not(header input):not(nav input)").first,
-        page.locator("main input:not(header input):not(nav input)").first,
     ]
     for cand in candidates:
         try:
-            if cand.is_visible(timeout=1000):
-                return cand
+            cand.wait_for(state="visible", timeout=1200)
+            return cand
         except Exception:
             continue
     return None
 
 
-def _find_and_open_campaign(page, target, job_id: str, campaign_name: str):
+def _find_and_open_campaign(page, target, job_id: str, campaign_name: str, channel_link: str = ""):
     """
-    Directly searches and opens the campaign card (Screenshots 1 through 5).
-    1. Check if card is already visible.
-    2. Search using Content Rewards search box (typing + Enter + clicking Search button).
-    3. If still not visible, navigate directly with ?q= parameter (Screenshot 4).
-    4. Gentle scroll to reveal.
-    5. Click card and wait for campaign details page (Screenshot 5).
+    Multi-strategy search & open for Whop campaign card (Screenshots 1 through 5).
+    Strategy A: Check if card is already visible directly on screen.
+    Strategy B: Direct query navigation `?q=<term>` (Screenshot 4).
+    Strategy C: Interactive search input typing & Enter (Screenshots 1, 2, 3).
+    Strategy D: Gentle scroll down to reveal cards.
     """
+    terms = _clean_campaign_search_terms(campaign_name)
+    best_term = terms[0]
+    print(f"[{job_id}] Target campaign: '{campaign_name}' (Search terms: {terms})")
     human_wait(page, 1000)
 
-    # 1. First check if campaign card is already visible directly on screen
-    print(f"[{job_id}] Checking if campaign '{campaign_name}' is already visible on screen...")
-    campaign_link = _locate_campaign_card(target, page, campaign_name, timeout=2000)
+    # ── Strategy A: Is card already visible on screen right now? ──────
+    print(f"[{job_id}] Checking if campaign card is already visible on screen...")
+    campaign_card = _locate_campaign_card(target, page, campaign_name, timeout=2000)
 
-    # 2. If not immediately visible, search via the Content Rewards search box (Screenshots 1, 2, 3)
-    if campaign_link is None:
+    # ── Strategy B: Direct URL navigation with ?q= (Screenshot 4) ─────
+    # Whop Content Rewards natively filters via ?q= in URL!
+    if campaign_card is None:
+        try:
+            curr = page.url or ""
+            base = curr.split("?")[0].rstrip("/") if curr else (channel_link.split("?")[0].rstrip("/") if channel_link else "")
+            if base:
+                q_url = f"{base}/?q={urllib.parse.quote_plus(best_term)}"
+                print(f"[{job_id}] Navigating directly with search query: {q_url}...")
+                page.goto(q_url, wait_until="domcontentloaded", timeout=25000)
+                human_wait(page, 2000)
+                target = get_app_frame(page)
+                campaign_card = _locate_campaign_card(target, page, campaign_name, timeout=4000)
+                if campaign_card is not None:
+                    print(f"[{job_id}] ✅ Found campaign card via direct query URL!")
+        except Exception as q_err:
+            print(f"[{job_id}] Query URL navigation note: {q_err}")
+
+    # ── Strategy C: Search via on-screen search input (Screenshots 1, 2, 3) ──
+    if campaign_card is None:
         print(f"[{job_id}] Locating Content Rewards campaign search box...")
         search_input = _find_search_input(target, page)
         if search_input:
             try:
-                print(f"[{job_id}] Found campaign search box. Typing '{campaign_name}'...")
+                print(f"[{job_id}] Found campaign search box. Typing '{best_term}'...")
                 search_input.scroll_into_view_if_needed()
                 search_input.click(force=True)
-                human_wait(page, 300)
+                human_wait(page, 200)
                 search_input.press("Control+A")
                 search_input.press("Backspace")
-                human_type(search_input, campaign_name)
+                human_wait(page, 150)
+                human_type(search_input, best_term)
                 human_wait(page, 300)
                 search_input.press("Enter")
 
-                # Screenshot 3: Search button right next to input
+                # Also click Search button if present (Screenshot 3)
                 try:
-                    s_btn = target.locator("button[aria-label='Search button'], form button").first
-                    if s_btn.is_visible(timeout=1000):
+                    s_btn = page.locator("button[aria-label='Search button'], form.relative button, form button").first
+                    if s_btn.is_visible(timeout=800):
                         s_btn.click()
                 except Exception:
                     pass
 
-                human_wait(page, 2000, variance=0.15)
-                campaign_link = _locate_campaign_card(target, page, campaign_name, timeout=4000)
+                human_wait(page, 2000)
+                campaign_card = _locate_campaign_card(target, page, campaign_name, timeout=4000)
+                if campaign_card is not None:
+                    print(f"[{job_id}] ✅ Found campaign card via search input typing!")
             except Exception as se:
                 print(f"[{job_id}] Search typing note: {se}")
 
-    # 3. If still not found, try direct ?q= URL navigation (Screenshot 4)
-    if campaign_link is None:
+    # ── Strategy D: Scroll down to reveal lazy-loaded cards ────────────
+    if campaign_card is None:
+        print(f"[{job_id}] Scrolling to find campaign card '{campaign_name}'...")
+        for scroll_idx in range(5):
+            page.mouse.wheel(0, 600)
+            human_wait(page, 700)
+            campaign_card = _locate_campaign_card(target, page, campaign_name, timeout=1500)
+            if campaign_card is not None:
+                print(f"[{job_id}] ✅ Found campaign card after scrolling!")
+                break
+
+    if campaign_card is None:
+        raise Exception(f"Campaign '{campaign_name}' (tried terms: {terms}) not found on page")
+
+    # ── Click the campaign card (Screenshots 4 & 5) ────────────────────
+    print(f"[{job_id}] Clicking campaign card '{best_term}'...")
+    campaign_card.scroll_into_view_if_needed()
+    human_wait(page, 300)
+    try:
+        campaign_card.click(timeout=5000)
+    except Exception:
+        campaign_card.click(force=True)
+
+    # Wait for campaign detail page to load (Screenshot 5: orange 'Submit clip' button)
+    print(f"[{job_id}] Waiting for campaign detail view to load...")
+    details_loaded = False
+    for wait_tick in range(15):
         try:
-            curr_url = page.url
-            if "?" in curr_url:
-                base_clean = curr_url.split("?")[0].rstrip("/")
-            else:
-                base_clean = curr_url.rstrip("/")
-            direct_q_url = f"{base_clean}/?q={urllib.parse.quote_plus(campaign_name)}"
-            print(f"[{job_id}] Trying Whop direct query navigation: {direct_q_url}...")
-            page.goto(direct_q_url, wait_until="domcontentloaded", timeout=20000)
-            human_wait(page, 2500)
-            target = get_app_frame(page)
-            campaign_link = _locate_campaign_card(target, page, campaign_name, timeout=4000)
-        except Exception as qe:
-            print(f"[{job_id}] Direct ?q= navigation note: {qe}")
+            for ctx in [target, page]:
+                btn = ctx.locator("button:has-text('Submit clip'):visible").first
+                if btn.is_visible(timeout=800):
+                    details_loaded = True
+                    break
+            if details_loaded:
+                break
+        except Exception:
+            pass
+        page.wait_for_timeout(500)
+
+    if details_loaded:
+        print(f"[{job_id}] ✅ Campaign detail view loaded successfully (Submit clip button visible).")
+    else:
+        print(f"[{job_id}] Proceeding to submit clip step.")
 
     # 4. If still not found, gently scroll down to reveal campaign cards
     if campaign_link is None:
@@ -716,13 +770,13 @@ def _submit_for_approval(page, target, job_id: str, max_retries: int = 5):
     raise Exception(f"Submission did not complete after {max_retries} attempts.")
 
 
-def process_submission(page, job_id: str, campaign_name: str, video_link: str):
+def process_submission(page, job_id: str, campaign_name: str, video_link: str, channel_link: str = ""):
     """Full submission flow: Search Campaign → Click Card → Submit clip → Paste link → Submit → Done."""
     target = get_app_frame(page)
     human_wait(page, 600)
 
     # Step 1: Search & open campaign card directly
-    _find_and_open_campaign(page, target, job_id, campaign_name)
+    _find_and_open_campaign(page, target, job_id, campaign_name, channel_link=channel_link)
 
     # Step 2: Click page-level 'Submit clip' button to open modal (Screenshot 5)
     print(f"[{job_id}] Clicking 'Submit clip' button to open modal...")
@@ -884,7 +938,7 @@ def main_worker_loop():
                 dismiss_onboarding_popups(page, job_id)
 
                 # ── 5. Discover → Campaign → Submit clip → Paste → Submit ──
-                process_submission(page, job_id, campaign_name, video_link)
+                process_submission(page, job_id, campaign_name, video_link, channel_link=channel_link)
 
                 # ── 6. ✅ Success ───────────────────────────────────────────
                 time_taken_min = max(1, int((time.time() - job_start_time) / 60))
