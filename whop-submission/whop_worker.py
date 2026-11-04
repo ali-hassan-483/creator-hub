@@ -221,34 +221,76 @@ def _locate_campaign_card(target, campaign_name: str, timeout: int = 3000):
     return None
 
 
+def _find_discover_element(page, target):
+    """
+    Finds the Discover nav element using multiple strategies.
+    Whop uses both <a href*='/discover'> and <span>/<div> with text 'Discover'.
+    """
+    # Try all frames including main page
+    search_targets = [target, page]
+
+    candidates = [
+        ("a[href*='/discover']", "href selector"),
+        ("nav a:has-text('Discover')", "nav anchor"),
+        ("a:has-text('Discover')", "any anchor"),
+        ("span:has-text('Discover')", "span text"),
+        ("[role='link']:has-text('Discover')", "role link"),
+        ("div:has-text('Discover'):visible", "div text"),
+    ]
+
+    for ctx in search_targets:
+        for sel, label in candidates:
+            try:
+                loc = ctx.locator(sel).first
+                if loc.is_visible(timeout=2000):
+                    return loc, label
+            except Exception:
+                continue
+
+    # get_by_text fallback
+    for ctx in search_targets:
+        try:
+            loc = ctx.get_by_text("Discover", exact=True).first
+            if loc.is_visible(timeout=2000):
+                return loc, "get_by_text exact"
+        except Exception:
+            continue
+
+    return None, None
+
+
 def _find_and_open_campaign(page, target, job_id: str, campaign_name: str):
     """Clicks 'Discover' tab, scrolls/searches for campaign card, and opens it."""
     print(f"[{job_id}] Clicking 'Discover' tab...")
-    discover_link = target.locator("a[href*='/discover']").first
+
+    discover_el, strategy = _find_discover_element(page, target)
+    if discover_el is None:
+        raise Exception("'Discover' nav element not found with any selector strategy")
+
+    print(f"[{job_id}] Found Discover via: {strategy}. Clicking...")
+
+    # Try normal click first
     try:
-        discover_link.wait_for(state="visible", timeout=20000)
-    except Exception as e:
-        raise Exception(f"'Discover' nav link not found: {e}")
+        discover_el.scroll_into_view_if_needed()
+        human_wait(page, 300)
+        discover_el.click(timeout=5000)
+    except Exception:
+        # Fallback: dispatch native mouse events
+        try:
+            discover_el.evaluate("""el => {
+                ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(et => {
+                    el.dispatchEvent(new MouseEvent(et, {
+                        view: window, bubbles: true, cancelable: true, buttons: 1
+                    }));
+                });
+            }""")
+        except Exception:
+            # Last resort: coordinate click
+            box = discover_el.bounding_box()
+            if box:
+                page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
 
-    # Dispatch native mouse event sequence
-    discover_link.evaluate("""el => {
-        ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(eventType => {
-            el.dispatchEvent(new MouseEvent(eventType, {
-                view: window,
-                bubbles: true,
-                cancelable: true,
-                buttons: 1
-            }));
-        });
-    }""")
-    human_wait(page, 1400)
-
-    # Fallback to coordinate click if needed
-    if target.locator("[aria-label*='Preview ']").first.count() == 0:
-        box = discover_link.bounding_box()
-        if box:
-            page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-            human_wait(page, 1400)
+    human_wait(page, 1800)
 
     print(f"[{job_id}] Looking for campaign '{campaign_name}'...")
     campaign_link = _locate_campaign_card(target, campaign_name, timeout=5000)
