@@ -23,6 +23,7 @@ import json
 import base64
 import argparse
 import functools
+import urllib.parse
 from pathlib import Path
 import requests
 from playwright.sync_api import sync_playwright
@@ -205,35 +206,77 @@ def dismiss_onboarding_popups(page, job_id: str):
         print(f"[{job_id}] No 'Got it' popup appeared — continuing.")
 
 
-def _locate_campaign_card(target, campaign_name: str, timeout: int = 3000):
-    """Finds campaign card link by aria-label or text match."""
-    candidates = [
-        target.locator(f"[aria-label='Preview {campaign_name}']").first,
-        target.locator(f"[aria-label*='{campaign_name}']").first,
-        target.locator(f"button:has-text('{campaign_name}')").first,
-        target.locator(f"a:has-text('{campaign_name}')").first,
-        target.get_by_text(campaign_name, exact=False).first,
+def _locate_campaign_card(target, page, campaign_name: str, timeout: int = 3000):
+    """
+    Finds the campaign card in Content Rewards (Screenshot 4).
+    Excludes site headers, sidebars/navbars, and search input fields.
+    """
+    clean_name = campaign_name.strip()
+    short_name = clean_name.split(' x ')[0].strip() if ' x' in clean_name else clean_name
+
+    selectors = [
+        # Screenshot 4: Cards container inside the grid
+        f"[class*='grid'] div:has-text('{clean_name}')",
+        f"div:has-text('{clean_name}'):not(header *):not(nav *):not(form *)",
+        f"[aria-label*='{clean_name}' i]",
+        f"button:has-text('{clean_name}')",
+        f"a:has-text('{clean_name}')",
+        # Fallback to short name
+        f"[class*='grid'] div:has-text('{short_name}')",
+        f"div:has-text('{short_name}'):not(header *):not(nav *):not(form *)",
     ]
-    for candidate in candidates:
+
+    for sel in selectors:
+        for ctx in [target, page]:
+            try:
+                loc = ctx.locator(sel)
+                count = loc.count()
+                for i in range(count):
+                    cand = loc.nth(i)
+                    if cand.is_visible(timeout=timeout):
+                        tag = cand.evaluate("el => el.tagName.toLowerCase()").strip()
+                        if tag in ['input', 'textarea', 'form']:
+                            continue
+                        return cand
+            except Exception:
+                continue
+
+    # Text fallback
+    for ctx in [target, page]:
         try:
-            candidate.wait_for(state="visible", timeout=timeout)
-            return candidate
+            cand = ctx.get_by_text(clean_name, exact=False).first
+            if cand.is_visible(timeout=timeout):
+                tag = cand.evaluate("el => el.tagName.toLowerCase()").strip()
+                if tag not in ['input', 'textarea', 'form']:
+                    return cand
         except Exception:
             continue
+
     return None
 
 
 def _find_search_input(target, page):
-    """Finds the campaign search box on Whop page or iframe."""
+    """
+    Finds the Content Rewards campaign search box (Screenshots 1, 2, 3).
+    Strictly avoids the global Whop site navbar search input.
+    """
     candidates = [
-        target.locator("input[placeholder*='Search' i]").first,
-        page.locator("input[placeholder*='Search' i]").first,
-        target.get_by_placeholder(re.compile(r"search", re.I)).first,
-        page.get_by_placeholder(re.compile(r"search", re.I)).first,
-        target.locator("input[aria-label*='Search' i]").first,
-        page.locator("input[aria-label*='Search' i]").first,
-        target.get_by_role("textbox", name=re.compile(r"search", re.I)).first,
-        page.get_by_role("textbox", name=re.compile(r"search", re.I)).first,
+        # Screenshot 2: Accessible Name is exactly "Search campaigns"
+        target.get_by_role("textbox", name=re.compile(r"search campaigns", re.I)).first,
+        page.get_by_role("textbox", name=re.compile(r"search campaigns", re.I)).first,
+        target.locator("input[aria-label='Search campaigns']").first,
+        page.locator("input[aria-label='Search campaigns']").first,
+        # Screenshot 1 & 2: Placeholders inside Content Rewards
+        target.locator("input[placeholder*='platform and budget' i]").first,
+        page.locator("input[placeholder*='platform and budget' i]").first,
+        target.locator("input[placeholder*='favorite brands' i]").first,
+        page.locator("input[placeholder*='favorite brands' i]").first,
+        # Screenshot 1: Form input inside Content Rewards container
+        target.locator("form.relative input, form input.min-w-0, form input").first,
+        page.locator("form.relative input, form input.min-w-0, form input").first,
+        # Generic input inside main content (excluding header / top nav)
+        target.locator("div[data-is-root-theme] input:not(header input):not(nav input)").first,
+        page.locator("main input:not(header input):not(nav input)").first,
     ]
     for cand in candidates:
         try:
@@ -245,45 +288,73 @@ def _find_search_input(target, page):
 
 
 def _find_and_open_campaign(page, target, job_id: str, campaign_name: str):
-    """Directly searches and opens the campaign card (no Discover click)."""
+    """
+    Directly searches and opens the campaign card (Screenshots 1 through 5).
+    1. Check if card is already visible.
+    2. Search using Content Rewards search box (typing + Enter + clicking Search button).
+    3. If still not visible, navigate directly with ?q= parameter (Screenshot 4).
+    4. Gentle scroll to reveal.
+    5. Click card and wait for campaign details page (Screenshot 5).
+    """
     human_wait(page, 1000)
 
     # 1. First check if campaign card is already visible directly on screen
     print(f"[{job_id}] Checking if campaign '{campaign_name}' is already visible on screen...")
-    campaign_link = _locate_campaign_card(target, campaign_name, timeout=2500)
-    if campaign_link is None:
-        campaign_link = _locate_campaign_card(page, campaign_name, timeout=1500)
+    campaign_link = _locate_campaign_card(target, page, campaign_name, timeout=2000)
 
-    # 2. If not immediately visible, directly use the search box
+    # 2. If not immediately visible, search via the Content Rewards search box (Screenshots 1, 2, 3)
     if campaign_link is None:
-        print(f"[{job_id}] Directly searching for campaign '{campaign_name}'...")
+        print(f"[{job_id}] Locating Content Rewards campaign search box...")
         search_input = _find_search_input(target, page)
         if search_input:
             try:
-                print(f"[{job_id}] Found search box. Typing campaign name...")
+                print(f"[{job_id}] Found campaign search box. Typing '{campaign_name}'...")
                 search_input.scroll_into_view_if_needed()
                 search_input.click(force=True)
                 human_wait(page, 300)
                 search_input.press("Control+A")
                 search_input.press("Backspace")
                 human_type(search_input, campaign_name)
+                human_wait(page, 300)
                 search_input.press("Enter")
-                human_wait(page, 2500, variance=0.15)
-                campaign_link = _locate_campaign_card(target, campaign_name, timeout=5000)
-                if campaign_link is None:
-                    campaign_link = _locate_campaign_card(page, campaign_name, timeout=3000)
+
+                # Screenshot 3: Search button right next to input
+                try:
+                    s_btn = target.locator("button[aria-label='Search button'], form button").first
+                    if s_btn.is_visible(timeout=1000):
+                        s_btn.click()
+                except Exception:
+                    pass
+
+                human_wait(page, 2000, variance=0.15)
+                campaign_link = _locate_campaign_card(target, page, campaign_name, timeout=4000)
             except Exception as se:
                 print(f"[{job_id}] Search typing note: {se}")
 
-    # 3. If still not found, gently scroll down to reveal campaign cards
+    # 3. If still not found, try direct ?q= URL navigation (Screenshot 4)
+    if campaign_link is None:
+        try:
+            curr_url = page.url
+            if "?" in curr_url:
+                base_clean = curr_url.split("?")[0].rstrip("/")
+            else:
+                base_clean = curr_url.rstrip("/")
+            direct_q_url = f"{base_clean}/?q={urllib.parse.quote_plus(campaign_name)}"
+            print(f"[{job_id}] Trying Whop direct query navigation: {direct_q_url}...")
+            page.goto(direct_q_url, wait_until="domcontentloaded", timeout=20000)
+            human_wait(page, 2500)
+            target = get_app_frame(page)
+            campaign_link = _locate_campaign_card(target, page, campaign_name, timeout=4000)
+        except Exception as qe:
+            print(f"[{job_id}] Direct ?q= navigation note: {qe}")
+
+    # 4. If still not found, gently scroll down to reveal campaign cards
     if campaign_link is None:
         print(f"[{job_id}] Scrolling to find campaign card '{campaign_name}'...")
         for scroll_idx in range(5):
-            page.mouse.wheel(0, 700)
+            page.mouse.wheel(0, 600)
             human_wait(page, 800)
-            campaign_link = _locate_campaign_card(target, campaign_name, timeout=1500)
-            if campaign_link is None:
-                campaign_link = _locate_campaign_card(page, campaign_name, timeout=1000)
+            campaign_link = _locate_campaign_card(target, page, campaign_name, timeout=1500)
             if campaign_link is not None:
                 break
 
@@ -297,7 +368,27 @@ def _find_and_open_campaign(page, target, job_id: str, campaign_name: str):
         campaign_link.click(timeout=5000)
     except Exception:
         campaign_link.click(force=True)
-    human_wait(page, 2000)
+
+    # Wait for campaign details page to load (Screenshot 5: orange 'Submit clip' button or '< Back')
+    print(f"[{job_id}] Waiting for campaign detail view to load...")
+    details_loaded = False
+    for wait_tick in range(15):
+        try:
+            for ctx in [target, page]:
+                btn = ctx.locator("button:has-text('Submit clip'):visible").first
+                if btn.is_visible(timeout=800):
+                    details_loaded = True
+                    break
+            if details_loaded:
+                break
+        except Exception:
+            pass
+        page.wait_for_timeout(500)
+
+    if details_loaded:
+        print(f"[{job_id}] Campaign detail view loaded successfully.")
+    else:
+        print(f"[{job_id}] Proceeding to submit clip step.")
 
 
 def _modal_anchor(target):
@@ -314,41 +405,26 @@ def _modal_anchor(target):
 
 def _find_link_input(target):
     """
-    Locates the video link input in the Whop submission modal.
-    Matches the updated Whop UI:
-    <input aria-label="Clip link" inputmode="url" placeholder="Paste a link" type="url" ...>
-    inside <label data-clip-picker-block ...>
+    Locates the video link input in the Whop submission modal (Screenshot 6).
+    <input placeholder="Paste a link" aria-label="Clip link">
     """
     candidates = [
-        "input[aria-label='Clip link']",
-        "label[data-clip-picker-block] input",
-        "input[placeholder*='Paste' i]",
-        "input[placeholder*='link' i]",
-        "input[inputmode='url']",
-        "input[type='url']",
-        "input:visible:not([type='checkbox']):not([type='hidden']):not([type='radio'])",
+        target.locator("input[aria-label='Clip link']").first,
+        target.get_by_role("textbox", name="Clip link").first,
+        target.locator("input[placeholder*='Paste a link' i]").first,
+        target.get_by_placeholder("Paste a link").first,
+        target.locator("input[placeholder*='Paste' i]").first,
+        target.locator("input[placeholder*='link' i]").first,
+        target.locator("label[data-clip-picker-block] input").first,
+        target.locator("div[role='dialog'] input[type='text'], div[role='dialog'] input:not([type='checkbox'])").first,
+        target.locator("input:visible:not([type='checkbox']):not([type='hidden']):not([type='radio'])").first,
     ]
     for sel in candidates:
         try:
-            loc = target.locator(sel).first
-            if loc.is_visible(timeout=1000):
-                return loc
+            if sel.is_visible(timeout=1000):
+                return sel
         except Exception:
             continue
-
-    try:
-        loc = target.get_by_role("textbox", name=re.compile(r"Clip link|Paste.*link", re.I)).first
-        if loc.is_visible(timeout=1000):
-            return loc
-    except Exception:
-        pass
-
-    try:
-        loc = target.get_by_placeholder(re.compile(r"Paste.*link|link", re.I)).first
-        if loc.is_visible(timeout=1000):
-            return loc
-    except Exception:
-        pass
 
     raise Exception("Could not find video link input field in Whop submission modal")
 
@@ -372,18 +448,39 @@ def _is_modal_open(target) -> bool:
 
 
 def _modal_submit_btn(target):
-    """Returns the 'Submit clip' button inside the active modal."""
-    try:
-        btn = target.locator("div[role='dialog'] button:has-text('Submit clip'), [data-modal] button:has-text('Submit clip')").first
-        if btn.is_visible(timeout=800):
-            return btn
-    except Exception:
-        pass
+    """Returns the 'Submit clip' button inside the active modal (Screenshot 9)."""
+    for sel in [
+        "div[role='dialog'] button:has-text('Submit clip')",
+        "[data-modal] button:has-text('Submit clip')",
+        "button.relative:has-text('Submit clip')",
+    ]:
+        try:
+            btn = target.locator(sel).last
+            if btn.is_visible(timeout=800):
+                return btn
+        except Exception:
+            continue
     return target.locator("button:has-text('Submit clip'):visible").last
 
 
 def _agree_label(target):
-    return target.locator("label").filter(has_text=re.compile(r"read the requirements|non-compliant", re.IGNORECASE)).first
+    """
+    Locates agreement checkbox / label in the Whop submission modal (Screenshots 7 & 8).
+    <label class="..."> I've read the requirements and accept that non-compliant clips may be auto-rejected.
+    """
+    candidates = [
+        target.locator("label:has-text('read the requirements')").first,
+        target.locator("label:has-text('non-compliant')").first,
+        target.locator("label").filter(has_text=re.compile(r"read the requirements|non-compliant", re.IGNORECASE)).first,
+        target.locator("span.grid.size-\\[22px\\]").first,
+    ]
+    for c in candidates:
+        try:
+            if c.is_visible(timeout=1000):
+                return c
+        except Exception:
+            continue
+    return target.locator("label:has-text('I\'ve read the requirements')").first
 
 
 def _submit_enabled(btn) -> bool:
@@ -627,10 +724,27 @@ def process_submission(page, job_id: str, campaign_name: str, video_link: str):
     # Step 1: Search & open campaign card directly
     _find_and_open_campaign(page, target, job_id, campaign_name)
 
-    # Step 2: Click page-level 'Submit clip' button to open modal
+    # Step 2: Click page-level 'Submit clip' button to open modal (Screenshot 5)
     print(f"[{job_id}] Clicking 'Submit clip' button to open modal...")
-    submit_clip_btn = target.locator("button:has-text('Submit clip'):visible").first
-    submit_clip_btn.wait_for(state="visible", timeout=20000)
+    submit_clip_btn = None
+    for cand in [
+        target.locator("button:has-text('Submit clip'):visible").first,
+        page.locator("button:has-text('Submit clip'):visible").first,
+        target.get_by_role("button", name=re.compile(r"^submit clip$", re.I)).first,
+        page.get_by_role("button", name=re.compile(r"^submit clip$", re.I)).first,
+    ]:
+        try:
+            if cand.is_visible(timeout=3000):
+                submit_clip_btn = cand
+                break
+        except Exception:
+            continue
+
+    if submit_clip_btn is None:
+        submit_clip_btn = target.locator("button:has-text('Submit clip'):visible").first
+        submit_clip_btn.wait_for(state="visible", timeout=10000)
+
+    submit_clip_btn.scroll_into_view_if_needed()
     human_wait(page, 400)
     try:
         submit_clip_btn.click(timeout=5000)
