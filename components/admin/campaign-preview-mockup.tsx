@@ -205,7 +205,7 @@ export function CampaignPreviewMockup({ formData }: CampaignPreviewMockupProps) 
       <div className="w-full flex items-center justify-between px-3 py-2 mb-2 bg-muted/60 border border-border rounded-xl text-xs text-muted-foreground font-medium">
         <span className="flex items-center gap-1.5 font-bold text-foreground">
           <Film size={14} className="text-primary" />
-          <span>Story Re-Cut 9:16 Canvas ({aspectRatio})</span>
+          <span>Continuous 9:16 Canvas ({aspectRatio})</span>
         </span>
         <button
           type="button"

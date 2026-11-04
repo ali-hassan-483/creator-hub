@@ -1309,8 +1309,8 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                 </h3>
                 <p className="text-xs text-muted-foreground">
                   {editingCampaign
-                    ? `Update settings, story re-cut options, or subtitles for "${editingCampaign.name}"`
-                    : 'Configure brand-safe Story Re-Cut editor, submission targets, source video links, and keyword captions.'}
+                    ? `Update settings, continuous clip options, or subtitles for "${editingCampaign.name}"`
+                    : 'Configure brand-safe Continuous Clip editor, submission targets, source video links, and keyword subtitles.'}
                 </p>
               </div>
               <button
@@ -1442,7 +1442,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                       className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
                     />
                     <p className="text-[10px] text-muted-foreground mt-1">
-                      System will navigate to this Whop channel URL, wait for 'Got it' & community popup, then click 'Discover' to find this campaign and submit clips.
+                      System will navigate to this Whop channel URL, dismiss 'Got it' popup, search for this campaign, and submit clips.
                     </p>
                   </div>
                 </div>
@@ -1593,11 +1593,11 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                 </div>
               </div>
 
-              {/* SECTION 3: STORY RE-CUT EDITING (BRAND-SAFE WHOP SHORTS STYLE) */}
+              {/* SECTION 3: CONTINUOUS RANDOM CLIP EDITING (BRAND-SAFE WHOP SHORTS STYLE) */}
               <div className="space-y-3 pt-3 border-t border-border">
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                    <Sliders size={14} /> Smart Clip & Subtitle Editor (9:16 Vertical)
+                    <Sliders size={14} /> Smart Continuous Clip & Subtitle Editor (9:16 Vertical)
                   </h4>
                   <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-primary/10 text-primary border border-primary/20">
                     Continuous 9:16 Full Frame
@@ -1610,14 +1610,14 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                     ✨ Continuous Random Clip Slicing + On-Screen Hook + Burned Subtitles
                   </p>
                   <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    Picks continuous sections from random source videos at target duration.
+                    Slices a single continuous segment from a random source video at a random timestamp matching your target duration.
                     Applies brand-safe 9:16 vertical crop, burns stylish on-screen text banners, and burns crystal-clear karaoke subtitles directly onto every short.
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                   <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">Target Duration (seconds)</label>
+                    <label className="block text-xs font-medium text-foreground mb-1">Target / Clip Duration (seconds)</label>
                     <input
                       type="number"
                       min={15}
@@ -1627,69 +1627,42 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                       onChange={(e) => setFormData({ ...formData, shortDuration: Number(e.target.value) })}
                       className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     />
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Length of the continuous clip (15s–180s, default 45s).
+                    </p>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">Cold-Open Hook (seconds)</label>
+                    <label className="block text-xs font-medium text-foreground mb-1">Audio Volume Multiplier</label>
                     <input
                       type="number"
-                      step="0.5"
-                      min={2}
-                      max={8}
-                      placeholder="3.5"
-                      value={formData.hookDuration}
-                      onChange={(e) => setFormData({ ...formData, hookDuration: Number(e.target.value) })}
+                      step="0.1"
+                      min={0.5}
+                      max={3.0}
+                      placeholder="1.0"
+                      value={formData.volumeMultiplier ?? 1.0}
+                      onChange={(e) => setFormData({ ...formData, volumeMultiplier: Number(e.target.value) })}
                       className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     />
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Audio level: 1.0 = standard, 1.2 = +20% boost.
+                    </p>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">Punch Zoom Level</label>
-                    <input
-                      type="number"
-                      step="0.05"
-                      min={1.0}
-                      max={1.5}
-                      placeholder="1.20"
-                      value={formData.punchZoom}
-                      onChange={(e) => setFormData({ ...formData, punchZoom: Number(e.target.value) })}
-                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                  </div>
-
-                  <div className="flex flex-col justify-end">
-                    <label className="flex items-center gap-2 p-2 rounded-lg border border-border bg-card cursor-pointer hover:bg-muted text-xs font-medium">
-                      <input
-                        type="checkbox"
-                        checked={formData.tightenSilence}
-                        onChange={(e) => setFormData({ ...formData, tightenSilence: e.target.checked })}
-                        className="rounded border-input text-primary"
-                      />
-                      <span>Tighten Dead Silence</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">Hook Video URLs</label>
-                    <textarea
-                      rows={2}
-                      placeholder="https://drive.google.com/..., https://..."
-                      value={formData.hookVideoUrls}
-                      onChange={(e) => setFormData({ ...formData, hookVideoUrls: e.target.value })}
-                      className="w-full p-2.5 bg-background border border-input rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">CTA Video URLs</label>
-                    <textarea
-                      rows={2}
-                      placeholder="https://drive.google.com/..., https://..."
-                      value={formData.ctaVideoUrls}
-                      onChange={(e) => setFormData({ ...formData, ctaVideoUrls: e.target.value })}
-                      className="w-full p-2.5 bg-background border border-input rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
+                    <label className="block text-xs font-medium text-foreground mb-1">Slicing Mode</label>
+                    <div className="px-3 py-2 bg-muted/40 border border-input rounded-lg text-xs font-medium text-foreground flex items-center justify-between h-[38px]">
+                      <span className="flex items-center gap-1.5 text-primary font-semibold">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        Random Continuous Cut
+                      </span>
+                      <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-bold">
+                        9:16 Auto
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Smooth continuous cut (no fragmented story jump cuts).
+                    </p>
                   </div>
                 </div>
 

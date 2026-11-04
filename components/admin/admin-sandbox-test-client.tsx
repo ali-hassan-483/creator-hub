@@ -213,13 +213,13 @@ export function AdminSandboxTestClient({ initialCampaigns = [] }: AdminSandboxTe
             <div>
               <span className="text-muted-foreground text-[11px] block">Editing Style</span>
               <span className="font-semibold text-primary capitalize">
-                Story Re-Cut (9:16 Full Frame)
+                Continuous Slice (9:16)
               </span>
             </div>
             <div>
-              <span className="text-muted-foreground text-[11px] block">Pacing & Hook</span>
+              <span className="text-muted-foreground text-[11px] block">Video Selection</span>
               <span className="font-semibold text-foreground">
-                Cold-Open + 1.2x Punch
+                Random Timestamp
               </span>
             </div>
             <div>
@@ -229,9 +229,9 @@ export function AdminSandboxTestClient({ initialCampaigns = [] }: AdminSandboxTe
               </span>
             </div>
             <div>
-              <span className="text-muted-foreground text-[11px] block">Cold-Open Hook</span>
+              <span className="text-muted-foreground text-[11px] block">Subtitles</span>
               <span className="font-semibold text-foreground">
-                {cfg.hookDuration || 3.5}s Payoff
+                Burned ASS Karaoke
               </span>
             </div>
           </div>
