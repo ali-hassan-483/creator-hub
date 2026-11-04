@@ -210,6 +210,8 @@ def _locate_campaign_card(target, campaign_name: str, timeout: int = 3000):
     candidates = [
         target.locator(f"[aria-label='Preview {campaign_name}']").first,
         target.locator(f"[aria-label*='{campaign_name}']").first,
+        target.locator(f"button:has-text('{campaign_name}')").first,
+        target.locator(f"a:has-text('{campaign_name}')").first,
         target.get_by_text(campaign_name, exact=False).first,
     ]
     for candidate in candidates:
@@ -221,111 +223,80 @@ def _locate_campaign_card(target, campaign_name: str, timeout: int = 3000):
     return None
 
 
-def _find_discover_element(page, target):
-    """
-    Finds the Discover nav element using multiple strategies.
-    Whop uses both <a href*='/discover'> and <span>/<div> with text 'Discover'.
-    """
-    # Try all frames including main page
-    search_targets = [target, page]
-
+def _find_search_input(target, page):
+    """Finds the campaign search box on Whop page or iframe."""
     candidates = [
-        ("a[href*='/discover']", "href selector"),
-        ("nav a:has-text('Discover')", "nav anchor"),
-        ("a:has-text('Discover')", "any anchor"),
-        ("span:has-text('Discover')", "span text"),
-        ("[role='link']:has-text('Discover')", "role link"),
-        ("div:has-text('Discover'):visible", "div text"),
+        target.locator("input[placeholder*='Search' i]").first,
+        page.locator("input[placeholder*='Search' i]").first,
+        target.get_by_placeholder(re.compile(r"search", re.I)).first,
+        page.get_by_placeholder(re.compile(r"search", re.I)).first,
+        target.locator("input[aria-label*='Search' i]").first,
+        page.locator("input[aria-label*='Search' i]").first,
+        target.get_by_role("textbox", name=re.compile(r"search", re.I)).first,
+        page.get_by_role("textbox", name=re.compile(r"search", re.I)).first,
     ]
-
-    for ctx in search_targets:
-        for sel, label in candidates:
-            try:
-                loc = ctx.locator(sel).first
-                if loc.is_visible(timeout=2000):
-                    return loc, label
-            except Exception:
-                continue
-
-    # get_by_text fallback
-    for ctx in search_targets:
+    for cand in candidates:
         try:
-            loc = ctx.get_by_text("Discover", exact=True).first
-            if loc.is_visible(timeout=2000):
-                return loc, "get_by_text exact"
+            if cand.is_visible(timeout=1000):
+                return cand
         except Exception:
             continue
-
-    return None, None
+    return None
 
 
 def _find_and_open_campaign(page, target, job_id: str, campaign_name: str):
-    """Clicks 'Discover' tab, scrolls/searches for campaign card, and opens it."""
-    print(f"[{job_id}] Clicking 'Discover' tab...")
+    """Directly searches and opens the campaign card (no Discover click)."""
+    human_wait(page, 1000)
 
-    discover_el, strategy = _find_discover_element(page, target)
-    if discover_el is None:
-        raise Exception("'Discover' nav element not found with any selector strategy")
-
-    print(f"[{job_id}] Found Discover via: {strategy}. Clicking...")
-
-    # Try normal click first
-    try:
-        discover_el.scroll_into_view_if_needed()
-        human_wait(page, 300)
-        discover_el.click(timeout=5000)
-    except Exception:
-        # Fallback: dispatch native mouse events
-        try:
-            discover_el.evaluate("""el => {
-                ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(et => {
-                    el.dispatchEvent(new MouseEvent(et, {
-                        view: window, bubbles: true, cancelable: true, buttons: 1
-                    }));
-                });
-            }""")
-        except Exception:
-            # Last resort: coordinate click
-            box = discover_el.bounding_box()
-            if box:
-                page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-
-    human_wait(page, 1800)
-
-    print(f"[{job_id}] Looking for campaign '{campaign_name}'...")
-    campaign_link = _locate_campaign_card(target, campaign_name, timeout=5000)
-
+    # 1. First check if campaign card is already visible directly on screen
+    print(f"[{job_id}] Checking if campaign '{campaign_name}' is already visible on screen...")
+    campaign_link = _locate_campaign_card(target, campaign_name, timeout=2500)
     if campaign_link is None:
-        print(f"[{job_id}] Scrolling to find campaign card...")
-        for _ in range(6):
-            page.mouse.wheel(0, 900)
-            human_wait(page, 900)
+        campaign_link = _locate_campaign_card(page, campaign_name, timeout=1500)
+
+    # 2. If not immediately visible, directly use the search box
+    if campaign_link is None:
+        print(f"[{job_id}] Directly searching for campaign '{campaign_name}'...")
+        search_input = _find_search_input(target, page)
+        if search_input:
+            try:
+                print(f"[{job_id}] Found search box. Typing campaign name...")
+                search_input.scroll_into_view_if_needed()
+                search_input.click(force=True)
+                human_wait(page, 300)
+                search_input.press("Control+A")
+                search_input.press("Backspace")
+                human_type(search_input, campaign_name)
+                search_input.press("Enter")
+                human_wait(page, 2500, variance=0.15)
+                campaign_link = _locate_campaign_card(target, campaign_name, timeout=5000)
+                if campaign_link is None:
+                    campaign_link = _locate_campaign_card(page, campaign_name, timeout=3000)
+            except Exception as se:
+                print(f"[{job_id}] Search typing note: {se}")
+
+    # 3. If still not found, gently scroll down to reveal campaign cards
+    if campaign_link is None:
+        print(f"[{job_id}] Scrolling to find campaign card '{campaign_name}'...")
+        for scroll_idx in range(5):
+            page.mouse.wheel(0, 700)
+            human_wait(page, 800)
             campaign_link = _locate_campaign_card(target, campaign_name, timeout=1500)
+            if campaign_link is None:
+                campaign_link = _locate_campaign_card(page, campaign_name, timeout=1000)
             if campaign_link is not None:
                 break
 
     if campaign_link is None:
-        print(f"[{job_id}] Trying search box fallback...")
-        try:
-            search_input = target.get_by_role("textbox", name="Search campaigns", exact=True).first
-            if not search_input.is_visible(timeout=3000):
-                search_input = target.get_by_placeholder("Search campaigns").first
-            search_input.wait_for(state="visible", timeout=5000)
-            human_wait(page, 400)
-            human_type(search_input, campaign_name)
-            search_input.press("Enter")
-            human_wait(page, 4000, variance=0.15)
-            campaign_link = _locate_campaign_card(target, campaign_name, timeout=8000)
-        except Exception as e:
-            print(f"[{job_id}] Search box failed: {e}")
-
-    if campaign_link is None:
-        raise Exception(f"Campaign '{campaign_name}' not found on Discover page")
+        raise Exception(f"Campaign '{campaign_name}' not found on page")
 
     print(f"[{job_id}] Clicking campaign card '{campaign_name}'...")
     campaign_link.scroll_into_view_if_needed()
     human_wait(page, 400)
-    campaign_link.click()
+    try:
+        campaign_link.click(timeout=5000)
+    except Exception:
+        campaign_link.click(force=True)
     human_wait(page, 2000)
 
 
@@ -649,11 +620,11 @@ def _submit_for_approval(page, target, job_id: str, max_retries: int = 5):
 
 
 def process_submission(page, job_id: str, campaign_name: str, video_link: str):
-    """Full submission flow: Discover → Campaign → Submit clip → Paste link → Submit → Done."""
+    """Full submission flow: Search Campaign → Click Card → Submit clip → Paste link → Submit → Done."""
     target = get_app_frame(page)
     human_wait(page, 600)
 
-    # Step 1: Discover → Campaign card
+    # Step 1: Search & open campaign card directly
     _find_and_open_campaign(page, target, job_id, campaign_name)
 
     # Step 2: Click page-level 'Submit clip' button to open modal
