@@ -431,17 +431,59 @@ export async function GET(req: NextRequest) {
           console.warn(`[Worker Poll] ⚠️ No meta.json found for ${clipFileName} at ${metaFullPath}`)
         }
 
-        // 2. Fallback only if meta had no title
+        // 2. If meta had no title or description, generate on-the-fly with AI (NEVER use generic fallback!)
+        if (!title || !description) {
+          console.log(`[Worker Poll] 🤖 Metadata missing/incomplete for ${clipFileName}. Generating AI title & description on the fly...`)
+          try {
+            const { generateBatchMetadataFromGuidelines } = await import('@/tools/ai-clipper')
+            const aiBatch = await generateBatchMetadataFromGuidelines(1, {
+              titlesGuide: cfg.titlesGuide,
+              descriptionsGuide: cfg.descriptionsGuide,
+              onScreenGuide: cfg.onScreenAiGuide,
+              ftcDisclosure: cfg.ftcDisclosure,
+              predefinedDescription: cfg.predefinedDescription,
+              useOnlyPredefinedDescription: cfg.useOnlyPredefinedDescription,
+              linksInDescription: cfg.linksInDescription,
+              maxTitleChars: cfg.maxTitleCharacters ? parseInt(cfg.maxTitleCharacters) : 100,
+              niche: cfg.niche,
+              campaignName: campaign.name,
+            })
+            if (aiBatch && aiBatch[0]) {
+              title = aiBatch[0].title
+              description = aiBatch[0].description
+              if (aiBatch[0].hashtags && aiBatch[0].hashtags.length > 0) tags = aiBatch[0].hashtags
+              // Save meta.json file so it is permanently cached and never empty again
+              fs.writeFileSync(
+                metaFullPath,
+                JSON.stringify({
+                  clipId: clipFileName.replace(/\.mp4$/, ''),
+                  videoPath: path.join(clipsDir, clipFileName),
+                  title,
+                  description,
+                  onScreenText: aiBatch[0].onScreenText,
+                  hashtags: tags,
+                  createdAt: new Date().toISOString(),
+                }, null, 2),
+                'utf8'
+              )
+              console.log(`[Worker Poll] ✅ AI generated & saved meta.json for ${clipFileName}: "${title}"`)
+            }
+          } catch (aiErr: any) {
+            console.error(`[Worker Poll] ❌ AI metadata on-the-fly generation failed: ${aiErr.message}`)
+          }
+        }
+
+        // Final safety check: if AI failed, derive an engaging title from campaign rather than a raw fallback
         if (!title) {
           title = cfg.onScreenTextPool
             ? cfg.onScreenTextPool.split('\n')[0].slice(0, 60)
-            : `${campaign.name} Short`
-          console.warn(`[Worker Poll] ⚠️ Using fallback title: "${title}"`)
+            : `How To Win Big With ${campaign.name}`
         }
-
-        // 3. Fallback description from campaign config if meta had none
         if (!description) {
           description = `${cfg.predefinedDescription || ''}\n\n${cfg.linksInDescription || ''}`.trim()
+          if (!description) {
+            description = `Watch ${campaign.name}! Tap the link to learn more. #shorts #viral #${(cfg.niche || 'trending').toLowerCase().replace(/\s+/g, '')}`
+          }
         }
 
         const downloadUrl = `${baseUrl}/api/n8n/video-stream?campaignId=${campaign.id}&file=${encodeURIComponent(clipFileName)}`

@@ -216,11 +216,11 @@ export async function maintainCampaignClipPool(
         currentClips: currentCount,
         targetClips: maxTarget,
         status: 'editing',
-        lastMessage: `Rendering Story Re-Cut batch (${currentCount + 1} to ${currentCount + batchSize})...`,
+        lastMessage: `Rendering clip batch (${currentCount + 1} to ${currentCount + batchSize})...`,
       })
 
-    // Pick a source video (round-robin)
-    const sourceVideo = sourceVideos[currentCount % sourceVideos.length]
+    // Pick a random source video from available sources
+    const sourceVideo = sourceVideos[Math.floor(Math.random() * sourceVideos.length)]
     let videoDuration = 1800 // default 30m
     try {
       const vInfo = await getVideoInfo(sourceVideo)
@@ -247,7 +247,7 @@ export async function maintainCampaignClipPool(
     // Extract on-screen texts from pre-fetched pool for this batch
     const onScreenList = batchMetadataPool.slice(batchMetadataIndex, batchMetadataIndex + batchSize).map(m => m.onScreenText).filter(Boolean)
 
-    const resolvedSubFont = (cfg.useSameFontForBannersAndSubs ? cfg.onScreenFontName : cfg.subtitleFonts) || 'Arial'
+    const resolvedSubFont = (cfg.useSameFontForBannersAndSubs ? cfg.onScreenFontName : cfg.subtitleFonts) || 'DejaVu Sans'
     const resolvedSubHighlight = (cfg.useSameForSpeakingWordHighlight ? cfg.onScreenStyledWordsColor : cfg.speakingWordHighlight) || 'yellow'
 
     // Build cutmap for this batch
@@ -268,8 +268,8 @@ export async function maintainCampaignClipPool(
       onScreenConfig: {
         font: cfg.onScreenFontName || 'Arial',
         text_color: cfg.onScreenTextColor || 'white',
-        position_height_percent: cfg.onScreenPositionHeightPercent !== undefined && cfg.onScreenPositionHeightPercent !== '' ? Number(cfg.onScreenPositionHeightPercent) : 27,
-        size_px: Number(cfg.onScreenSizePx) || 52,
+        position_height_percent: cfg.onScreenPositionHeightPercent !== undefined && cfg.onScreenPositionHeightPercent !== '' ? Number(cfg.onScreenPositionHeightPercent) : 25,
+        size_px: Number(cfg.onScreenSizePx) || 54,
         background: cfg.onScreenBackground || 'black@0.5',
         styled_word_count: Number(cfg.onScreenStyledWordCount) || 0,
         styled_words_color: cfg.onScreenStyledWordsColor || 'yellow',
@@ -279,16 +279,16 @@ export async function maintainCampaignClipPool(
         font: resolvedSubFont,
         color: cfg.subtitleColors || 'white',
         outline_color: cfg.outlineColors || 'black',
-        font_size: Number(cfg.subtitleWordSize) || 54,
-        placement_height_percent: cfg.subtitlesPlacementHeightPercent !== undefined && cfg.subtitlesPlacementHeightPercent !== '' ? Number(cfg.subtitlesPlacementHeightPercent) : 80,
-        max_words_per_screen: Number(cfg.maxWordsPerScreen) || 5,
+        font_size: Number(cfg.subtitleWordSize) || 64,
+        placement_height_percent: cfg.subtitlesPlacementHeightPercent !== undefined && cfg.subtitlesPlacementHeightPercent !== '' ? Number(cfg.subtitlesPlacementHeightPercent) : 78,
+        max_words_per_screen: Number(cfg.maxWordsPerScreen) || 4,
         speaking_word_highlight: resolvedSubHighlight,
         text_cases: Array.isArray(cfg.subtitleTextCases) ? cfg.subtitleTextCases : ['Normal Text'],
       },
       onScreenTextList: onScreenList,
     })
 
-    log(`🎬 Rendering Story Re-Cut batch of ${batchSize} clips from ${path.basename(sourceVideo)}...`)
+    log(`🎬 Rendering clip batch of ${batchSize} clips from ${path.basename(sourceVideo)}...`)
 
     try {
       const manifest = await renderStoryRecutBatch(sourceVideo, cutmap, clipsDir, {
@@ -317,16 +317,19 @@ export async function maintainCampaignClipPool(
         const meta = batchMetadataPool[batchMetadataIndex] ?? batchMetadataPool[batchMetadataPool.length - 1]
         batchMetadataIndex++
 
+        const finalTitle = (meta?.title || '').trim() || `${cfg.campaignName || 'Video'} - Special Feature`
+        const finalDesc = (meta?.description || '').trim() || `Watch ${cfg.campaignName || 'this video'}! Subscribe for more daily content. #shorts #viral`
+
         const metaJsonPath = path.join(clipsDir, `${item.id}.meta.json`)
         fs.writeFileSync(
           metaJsonPath,
           JSON.stringify({
             clipId: item.id,
             videoPath: item.file,
-            title: meta.title,
-            description: meta.description,
-            onScreenText: meta.onScreenText,
-            hashtags: meta.hashtags,
+            title: finalTitle,
+            description: finalDesc,
+            onScreenText: meta?.onScreenText || '',
+            hashtags: meta?.hashtags || ['shorts', 'viral'],
             duration: item.duration_sec,
             playbackRanges: item.playback_order_source_ranges,
             roles: item.roles,

@@ -364,7 +364,14 @@ No explanation, no markdown backticks, pure JSON only.`
       }
 
       const formatted = batch.map((item, idx) => {
-        let desc = item.description || predefined || ''
+        let rawTitle = (item.title || '').trim()
+        if (!rawTitle) {
+          rawTitle = `How ${config.campaignName || 'This Strategy'} Changes Everything`
+        }
+        let desc = (item.description || '').trim()
+        if (!desc) {
+          desc = `Check out this breakdown of ${config.campaignName || 'this amazing method'}! Don't forget to like and subscribe for more content. #shorts #viral`
+        }
         if (config.useOnlyPredefinedDescription && predefined) {
           desc = predefined
         } else if (predefined && !desc.includes(predefined)) {
@@ -375,10 +382,10 @@ No explanation, no markdown backticks, pure JSON only.`
         }
 
         return {
-          title: (item.title || `${config.campaignName || 'Video'} #${allResults.length + idx + 1}`).slice(0, maxTitleChars),
-          onScreenText: (item.onScreenText || 'Watch this!').slice(0, onScreenMaxChars),
+          title: rawTitle.slice(0, maxTitleChars),
+          onScreenText: (item.onScreenText || rawTitle.slice(0, onScreenMaxChars)).slice(0, onScreenMaxChars),
           description: desc,
-          hashtags: Array.isArray(item.hashtags) ? item.hashtags : ['shorts', 'viral'],
+          hashtags: Array.isArray(item.hashtags) && item.hashtags.length > 0 ? item.hashtags : ['shorts', 'viral', (config.niche || 'trending').toLowerCase()],
         }
       })
 

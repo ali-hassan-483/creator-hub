@@ -158,47 +158,23 @@ export function buildStoryRecutMap(
   const clips: StoryRecutClipDef[] = []
   const dur = Math.max(60, videoDuration)
 
-  // Target durations for each segment strictly summing up to targetDuration
-  const T = Math.max(5, targetDuration)
-  const H = Math.max(1, Math.min(hookDuration, Math.round(T * 0.35 * 10) / 10))
-  const remaining = Math.round((T - H) * 10) / 10
-  // Setup takes ~58% of remaining, Payoff takes the rest
-  const S = Math.round(remaining * 0.58 * 10) / 10
-  const P = Math.round((remaining - S) * 10) / 10
-
-  // Safe window size in source video to sample setup and payoff
-  const windowDur = Math.max(T * 1.6, 35)
-  const maxStart = Math.max(0, dur - windowDur - 10)
+  // Target duration for single continuous natural clip (default 45s, clamped 15-180s)
+  const T = Math.max(15, Math.min(180, targetDuration))
+  const maxStart = Math.max(0, dur - T - 3)
 
   for (let i = 0; i < clipCount; i++) {
     const clipNum = startIndex + i
     const clipId = `final_${String(clipNum).padStart(4, '0')}_${Date.now()}`
 
-    // Distribute clips across source timeline using golden ratio
-    const safeMax = Math.max(0, dur - windowDur - 5)
-    const blockStart = safeMax > 0 ? Math.round((safeMax * ((clipNum * 0.61803398875) % 1)) * 10) / 10 : 0
-    const blockEnd = Math.min(dur - 0.5, Math.round((blockStart + windowDur) * 10) / 10)
-
-    // 1. Setup segment (Context, exactly S seconds)
-    const setupStart = Math.max(0, Math.min(dur - S - 0.5, blockStart))
-    const setupEnd = Math.round((setupStart + S) * 10) / 10
-
-    // 2. Payoff in context (Climax, exactly P seconds)
-    const payoffMaxS = Math.max(0, dur - P - 0.5)
-    const payoffTarget = Math.max(setupEnd + 1, blockEnd - P - 0.5)
-    const payoffStart = Math.round(Math.min(payoffMaxS, Math.max(0, payoffTarget)) * 10) / 10
-    const payoffEnd = Math.round((payoffStart + P) * 10) / 10
-
-    // 3. Cold-open hook (Snippet from payoff, exactly H seconds)
-    const hookMaxS = Math.max(0, dur - H - 0.5)
-    const hookStart = Math.round(Math.min(hookMaxS, payoffStart) * 10) / 10
-    const hookEnd = Math.round((hookStart + H) * 10) / 10
+    // Pick random start position across source timeline
+    const clipStart = maxStart > 0 ? Math.round((Math.random() * maxStart) * 10) / 10 : 0
+    const clipEnd = Math.min(dur - 0.5, Math.round((clipStart + T) * 10) / 10)
 
     // Extract spoken words in this range to get smart keywords
     let spokenKeywords: string[] = []
     if (transcript && transcript.length > 0) {
       const clipWords = transcript
-        .filter(s => s.start >= blockStart && s.end <= blockEnd)
+        .filter(s => s.start >= clipStart && s.end <= clipEnd)
         .map(s => s.text)
         .join(' ')
       spokenKeywords = extractKeywords(clipWords, 4)
@@ -216,26 +192,11 @@ export function buildStoryRecutMap(
       keywords: spokenKeywords,
       on_screen_text: clipText,
       segments: [
-        // 1. COLD-OPEN PAYOFF HOOK (Payoff first, exactly H seconds!)
         {
-          start: Math.round(hookStart * 10) / 10,
-          end: Math.round(hookEnd * 10) / 10,
-          role: 'hook',
-          zoom: 1.2,
-        },
-        // 2. SETUP (Context, exactly S seconds!)
-        {
-          start: Math.round(setupStart * 10) / 10,
-          end: Math.round(setupEnd * 10) / 10,
-          role: 'setup',
+          start: clipStart,
+          end: clipEnd,
+          role: 'story',
           zoom: 1.0,
-        },
-        // 3. PAYOFF IN CONTEXT (Climax, exactly P seconds!)
-        {
-          start: Math.round(payoffStart * 10) / 10,
-          end: Math.round(payoffEnd * 10) / 10,
-          role: 'payoff',
-          zoom: 1.12,
         },
       ],
     })
@@ -243,7 +204,7 @@ export function buildStoryRecutMap(
 
   const result: StoryRecutMap = {
     _how_it_works:
-      'segments are played in the ORDER LISTED, not source order. List the hook (payoff) first, then the setup, then the payoff in context. Brand-safe vertical crop with punch zooms and clean keyword captions.',
+      'Continuous brand-safe 9:16 vertical clip with clean burned subtitles and on-screen hook.',
     video_aspect_ratio: videoAspectRatio,
     frame_background_color: frameBackgroundColor,
     logo,

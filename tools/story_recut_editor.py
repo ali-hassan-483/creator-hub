@@ -99,24 +99,24 @@ def fmt_ass_time(sec):
     return f"{h}:{m:02d}:{s:05.2f}"
 
 
-def to_ass_bgr(color_str, alpha=0):
-    """Convert hex (#RRGGBB) or named color to ASS &H[AA][BB][GG][RR] format."""
+def to_ass_color_6(color_str):
+    """Convert hex (#RRGGBB) or named color to 6-digit ASS BGR &H[BB][GG][RR]& format strictly required by ASS \\c tags."""
     c = str(color_str or "").strip().lower()
     named = {
         "white": "FFFFFF",
         "black": "000000",
-        "yellow": "00D7FF",  # BGR for yellow
-        "gold": "00D7FF",
-        "red": "4444EF",     # BGR for red
-        "blue": "F6823B",    # BGR for blue
-        "green": "22C55E",
-        "cyan": "F8BD38",
-        "orange": "0080FF",
+        "yellow": "00FFFF",  # RGB #FFFF00 -> BGR 00FFFF
+        "gold": "00D7FF",    # RGB #FFD700 -> BGR 00D7FF
+        "red": "0000FF",     # RGB #FF0000 -> BGR 0000FF
+        "blue": "FF0000",    # RGB #0000FF -> BGR FF0000
+        "green": "00FF00",   # RGB #00FF00 -> BGR 00FF00
+        "cyan": "FFFF00",    # RGB #00FFFF -> BGR FFFF00
+        "orange": "0080FF",  # RGB #FF8000 -> BGR 0080FF
         "purple": "800080",
         "pink": "CBC0FF",
     }
     if c in named:
-        return f"&H{alpha:02X}{named[c]}"
+        return f"&H{named[c]}&"
     if c.startswith("#"):
         hex_c = c[1:]
         if len(hex_c) == 3:
@@ -125,8 +125,39 @@ def to_ass_bgr(color_str, alpha=0):
             r = hex_c[0:2]
             g = hex_c[2:4]
             b = hex_c[4:6]
-            return f"&H{alpha:02X}{b.upper()}{g.upper()}{r.upper()}"
-    return f"&H{alpha:02X}FFFFFF"
+            return f"&H{b.upper()}{g.upper()}{r.upper()}&"
+    return "&HFFFFFF&"
+
+
+def to_ass_bgr(color_str, alpha=0):
+    """Convert hex (#RRGGBB) or named color to ASS &H[AA][BB][GG][RR] format for Style declarations."""
+    c = str(color_str or "").strip().lower()
+    named = {
+        "white": "FFFFFF",
+        "black": "000000",
+        "yellow": "00FFFF",  # BGR for yellow
+        "gold": "00D7FF",
+        "red": "0000FF",     # BGR for red
+        "blue": "FF0000",    # BGR for blue
+        "green": "00FF00",
+        "cyan": "FFFF00",
+        "orange": "0080FF",
+        "purple": "800080",
+        "pink": "CBC0FF",
+    }
+    hex_bgr = named.get(c)
+    if not hex_bgr and c.startswith("#"):
+        hex_c = c[1:]
+        if len(hex_c) == 3:
+            hex_c = "".join(ch * 2 for ch in hex_c)
+        if len(hex_c) == 6:
+            r = hex_c[0:2]
+            g = hex_c[2:4]
+            b = hex_c[4:6]
+            hex_bgr = f"{b.upper()}{g.upper()}{r.upper()}"
+    if not hex_bgr:
+        hex_bgr = "FFFFFF"
+    return f"&H{alpha:02X}{hex_bgr}"
 
 
 def parse_bg_to_ass(bg_str):
@@ -154,12 +185,12 @@ def style_on_screen_text(text, count, highlight_color, base_color="white"):
     if not words or count <= 0:
         return text
     highlight_start = max(0, len(words) - count)
-    ass_hl = to_ass_bgr(highlight_color)
-    ass_base = to_ass_bgr(base_color)
+    ass_hl = to_ass_color_6(highlight_color)
+    ass_base = to_ass_color_6(base_color)
     res = []
     for i, w in enumerate(words):
         if i >= highlight_start:
-            res.append(f"{{\\c{ass_hl}&}}{w}{{\\c{ass_base}&}}")
+            res.append(f"{{\\c{ass_hl}}}{w}{{\\c{ass_base}}}")
         else:
             res.append(w)
     return " ".join(res)
@@ -219,8 +250,8 @@ def format_on_screen_hook(raw_text, styled_cnt, styled_color, base_color="white"
     # Apply word highlighting across the lines
     all_words = text.split()
     highlight_start = max(0, len(all_words) - styled_cnt) if styled_cnt > 0 else 999999
-    ass_hl = to_ass_bgr(styled_color)
-    ass_base = to_ass_bgr(base_color)
+    ass_hl = to_ass_color_6(styled_color)
+    ass_base = to_ass_color_6(base_color)
 
     word_global_idx = 0
     formatted_lines = []
@@ -229,7 +260,7 @@ def format_on_screen_hook(raw_text, styled_cnt, styled_color, base_color="white"
         res_words = []
         for w in line_words:
             if word_global_idx >= highlight_start:
-                res_words.append(f"{{\\c{ass_hl}&}}{w}{{\\c{ass_base}&}}")
+                res_words.append(f"{{\\c{ass_hl}}}{w}{{\\c{ass_base}}}")
             else:
                 res_words.append(w)
             word_global_idx += 1
@@ -333,12 +364,14 @@ def get_whisper_model():
 
 def normalize_font_name(font_name):
     if not font_name:
-        return "Arial"
+        return "DejaVu Sans"
     f = str(font_name).strip()
     first_part = f.split(",")[0].strip()
     low = first_part.lower()
     if "montenegrin" in low or "dela" in low:
         return "Dela Gothic One"
+    if "arial" in low or "sans" in low or "montserrat" in low or "inter" in low or "roboto" in low:
+        return "DejaVu Sans"
     return first_part
 
 
@@ -360,16 +393,16 @@ def apply_text_case(text, cases):
     return text
 
 
-def build_subtitle_karaoke_events(segments_data, max_words=5, hl_color="&H0000D7FF", txt_color="&H00FFFFFF", text_cases=None):
+def build_subtitle_karaoke_events(segments_data, max_words=4, hl_color="yellow", txt_color="white", text_cases=None):
     """
     Generate dynamic modern karaoke subtitle events matching admin settings.
-    - Active speaking word highlighted in hl_color
+    - Active speaking word highlighted in hl_color using valid 6-hex ASS tag (\\c&HBBGGRR&)
     - Grouped into max_words words per screen
     - Text case applied
     """
     events = []
-    hl_c = hl_color.rstrip("&")
-    txt_c = txt_color.rstrip("&")
+    hl_tag = to_ass_color_6(hl_color)
+    txt_tag = to_ass_color_6(txt_color)
 
     for seg in segments_data:
         words = seg.get("words", [])
@@ -383,12 +416,12 @@ def build_subtitle_karaoke_events(segments_data, max_words=5, hl_color="&H0000D7
                     ws = active_w["start"]
                     we = active_w["end"]
                     if we <= ws:
-                        we = ws + 0.15
+                        we = ws + 0.18
                     parts = []
                     for idx, w in enumerate(chunk):
                         w_text = apply_text_case(w["word"], text_cases)
                         if idx == j:
-                            parts.append(f"{{\\c{hl_c}&}}{w_text}{{\\c{txt_c}&}}")
+                            parts.append(f"{{\\c{hl_tag}}}{w_text}{{\\c{txt_tag}}}")
                         else:
                             parts.append(w_text)
                     events.append((ws, we, " ".join(parts)))
@@ -416,7 +449,7 @@ def build_subtitle_karaoke_events(segments_data, max_words=5, hl_color="&H0000D7
                     for idx, w in enumerate(chunk):
                         w_text = apply_text_case(w, text_cases)
                         if idx == j:
-                            parts.append(f"{{\\c{hl_c}&}}{w_text}{{\\c{txt_c}&}}")
+                            parts.append(f"{{\\c{hl_tag}}}{w_text}{{\\c{txt_tag}}}")
                         else:
                             parts.append(w_text)
                     events.append((ws, we, " ".join(parts)))
@@ -481,18 +514,16 @@ def build_ass(srt_entries, segments, keywords, out_path, on_screen_cfg=None, on_
 
     # Subtitle configuration parameters from campaign settings
     sub_cfg = subtitle_cfg or {}
-    sub_font = normalize_font_name(sub_cfg.get("font") or "Arial")
-    sub_size = int(sub_cfg.get("font_size") or 100)
+    sub_font = normalize_font_name(sub_cfg.get("font") or "DejaVu Sans")
+    sub_size = max(50, min(110, int(sub_cfg.get("font_size") or 64)))
     sub_color = to_ass_bgr(sub_cfg.get("color") or "white")
     sub_outline = to_ass_bgr(sub_cfg.get("outline_color") or "black")
-    sub_hl = to_ass_bgr(sub_cfg.get("speaking_word_highlight") or "yellow")
-    sub_pos_pct = float(sub_cfg.get("placement_height_percent") or 80)
-    # Align vertical center of subtitle text at sub_pos_pct% of canvas height
-    sub_target_y = HEIGHT * (sub_pos_pct / 100.0)
-    # With ASS Alignment 2 (Bottom-Center), the baseline/bottom is ~ sub_size*0.4 below center
-    sub_margin_v = max(20, min(1800, int(round(HEIGHT - (sub_target_y + (sub_size * 0.4))))))
-    outline_px = max(3, min(15, int(round(sub_size * 0.08))))
-    max_words = max(1, min(20, int(sub_cfg.get("max_words_per_screen") or 5)))
+    sub_hl = sub_cfg.get("speaking_word_highlight") or "yellow"
+    sub_pos_pct = float(sub_cfg.get("placement_height_percent") or 78)
+    # Alignment 2 is Bottom-Center. MarginV is distance from the BOTTOM of the canvas.
+    sub_margin_v = max(100, min(1400, int(round(HEIGHT * (1.0 - (sub_pos_pct / 100.0))))))
+    outline_px = max(3, min(10, int(round(sub_size * 0.08))))
+    max_words = max(1, min(8, int(sub_cfg.get("max_words_per_screen") or 4)))
     text_cases = sub_cfg.get("text_cases") or ["Normal Text"]
 
     subs_cfg_enable = sub_cfg.get("enable")
@@ -548,13 +579,13 @@ def build_ass(srt_entries, segments, keywords, out_path, on_screen_cfg=None, on_
     extra_events = []
     if on_screen_text and str(on_screen_text).strip():
         osc = on_screen_cfg or {}
-        os_font = normalize_font_name(osc.get("font") or "Arial")
-        os_size = int(osc.get("size_px", 52))
+        os_font = normalize_font_name(osc.get("font") or "DejaVu Sans")
+        os_size = int(osc.get("size_px", 54))
         os_color = to_ass_bgr(osc.get("text_color", "white"))
         os_bg = parse_bg_to_ass(osc.get("background", "black@0.5"))
         styled_cnt = int(osc.get("styled_word_count", 0))
         styled_col = osc.get("styled_words_color", "yellow")
-        os_height_pct = float(osc.get("position_height_percent", 27))
+        os_height_pct = float(osc.get("position_height_percent", 25))
         # Top-center alignment uses MarginV from the TOP, centered around os_height_pct
         os_margin_v = max(10, min(1800, int(round(HEIGHT * (os_height_pct / 100.0) - (os_size * 0.8)))))
 
@@ -582,7 +613,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{sub_font},{sub_size},{sc_clean},{sc_clean},{so_clean},&H64000000,-1,0,0,0,100,100,0,0,1,{outline_px},0,2,60,60,{sub_margin_v},1
+Style: Default,{sub_font},{sub_size},{sc_clean},{sc_clean},{so_clean},&H80000000,-1,0,0,0,100,100,0,0,1,{outline_px},2,2,40,40,{sub_margin_v},1
 {extra_styles}
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -711,22 +742,29 @@ def render_clip(src, clip, srt_entries, out_dir, tmp, cfg, tighten=False):
     elif total > 60:
         print(f"  . note {cid}: {total:.1f}s (Shorts up to 3 min are allowed)")
 
-    seg_files = []
-    for i, seg in enumerate(segments):
-        p = tmp / f"{cid}_seg{i}.mp4"
-        print(f"  segment {i} [{seg['role'] or 'body'}] "
-              f"source {seg['start']:.1f}-{seg['end']:.1f} zoom={seg['zoom']}")
-        render_segment(src, seg, p, aspect_ratio=aspect_ratio, bg_color=bg_color)
-        seg_files.append(p)
-
-    # Use forward slashes in concat file for cross-platform compatibility
-    concat_list = tmp / f"{cid}_concat.txt"
-    concat_lines = "".join(f"file '{str(p).replace(chr(92), '/')}'\n" for p in seg_files)
-    concat_list.write_text(concat_lines, encoding="utf-8")
     joined = tmp / f"{cid}_joined.mp4"
-    run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-         "-f", "concat", "-safe", "0", "-i", str(concat_list),
-         "-c", "copy", str(joined)])
+    if len(segments) == 1:
+        # Fast direct cut for single continuous clip (no concat needed!)
+        seg = segments[0]
+        seg_dur = seg["end"] - seg["start"]
+        print(f"  continuous clip source {seg['start']:.1f}-{seg['end']:.1f} ({seg_dur:.1f}s)")
+        render_segment(src, seg, joined, aspect_ratio=aspect_ratio, bg_color=bg_color)
+    else:
+        seg_files = []
+        for i, seg in enumerate(segments):
+            p = tmp / f"{cid}_seg{i}.mp4"
+            print(f"  segment {i} [{seg['role'] or 'body'}] "
+                  f"source {seg['start']:.1f}-{seg['end']:.1f} zoom={seg['zoom']}")
+            render_segment(src, seg, p, aspect_ratio=aspect_ratio, bg_color=bg_color)
+            seg_files.append(p)
+
+        # Use forward slashes in concat file for cross-platform compatibility
+        concat_list = tmp / f"{cid}_concat.txt"
+        concat_lines = "".join(f"file '{str(p).replace(chr(92), '/')}'\n" for p in seg_files)
+        concat_list.write_text(concat_lines, encoding="utf-8")
+        run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+             "-f", "concat", "-safe", "0", "-i", str(concat_list),
+             "-c", "copy", str(joined)])
 
     final = out_dir / f"{cid}.mp4"
     keywords = clip.get("keywords", [])

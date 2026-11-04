@@ -968,10 +968,10 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                       <td className="px-5 py-4">
                         <div className="space-y-1">
                           <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-primary/15 text-primary uppercase inline-block">
-                            Story Re-Cut
+                            Auto-Clip (9:16)
                           </span>
                           <span className="text-[11px] text-muted-foreground block">
-                            {cfg.shortDuration || 45}s • Hook {cfg.hookDuration || 3.5}s • 9:16
+                            {cfg.shortDuration || 45}s • 9:16 Vertical
                           </span>
                         </div>
                       </td>
@@ -1597,22 +1597,21 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
               <div className="space-y-3 pt-3 border-t border-border">
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                    <Sliders size={14} /> Story Re-Cut Editor (Whop Shorts Style)
+                    <Sliders size={14} /> Smart Clip & Subtitle Editor (9:16 Vertical)
                   </h4>
                   <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-primary/10 text-primary border border-primary/20">
-                    Brand-Safe 9:16 Full Frame
+                    Continuous 9:16 Full Frame
                   </span>
                 </div>
 
-                {/* Info Card explaining the Story Re-Cut Engine */}
+                {/* Info Card explaining the Engine */}
                 <div className="bg-primary/5 border border-primary/15 rounded-xl p-3 text-xs space-y-1.5">
                   <p className="font-semibold text-foreground flex items-center gap-1.5">
-                    ✨ Cold-Open Payoff Reorder + Punch Zoom + Pacing
+                    ✨ Continuous Random Clip Slicing + On-Screen Hook + Burned Subtitles
                   </p>
                   <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    Uses <strong>only brand source footage</strong> (no templates, no fake banners, no mirror blurs).
-                    Plays the payoff/hook first (3-4s at 1.2x punch zoom) → Setup context → Payoff in full context.
-                    Auto-tightens dead silence at cut boundaries and burns clean keyword-highlighted captions.
+                    Picks continuous sections from random source videos at target duration.
+                    Applies brand-safe 9:16 vertical crop, burns stylish on-screen text banners, and burns crystal-clear karaoke subtitles directly onto every short.
                   </p>
                 </div>
 
