@@ -181,7 +181,7 @@ def get_app_frame(page):
 def dismiss_onboarding_popups(page, job_id: str):
     """
     Dismisses the 'Got it' welcome popup and the community-join overlay popup.
-    Waits up to 30s for 'Got it' and up to 30s for community join dismiss popup.
+    Waits up to 30s for 'Got it' welcome popup only. Community join popup is skipped.
     """
     print(f"[{job_id}] Waiting for 'Got it' welcome popup (up to 30s)...")
     got_it_dismissed = False
@@ -200,43 +200,9 @@ def dismiss_onboarding_popups(page, job_id: str):
 
     if got_it_dismissed:
         page.wait_for_timeout(1000)
+        print(f"[{job_id}] 'Got it' popup dismissed.")
     else:
-        print(f"[{job_id}] No 'Got it' welcome popup appeared within 30s.")
-
-    print(f"[{job_id}] Waiting for community join popup (up to 30s)...")
-    dismissed = False
-    start_time = time.time()
-    while time.time() - start_time < 30:
-        try:
-            btn = page.locator("button[aria-label='Dismiss']").first
-            if btn.is_visible():
-                print(f"[{job_id}] Community join popup detected on main page. Dismissing...")
-                btn.click()
-                dismissed = True
-                break
-        except Exception:
-            pass
-
-        for frame in page.frames:
-            try:
-                btn = frame.locator("button[aria-label='Dismiss']").first
-                if btn.is_visible():
-                    print(f"[{job_id}] Community join popup inside iframe dismissed...")
-                    btn.click()
-                    dismissed = True
-                    break
-            except Exception:
-                pass
-
-        if dismissed:
-            break
-        page.wait_for_timeout(500)
-
-    if dismissed:
-        print(f"[{job_id}] Community join popup dismissed.")
-        page.wait_for_timeout(1000)
-    else:
-        print(f"[{job_id}] No community join popup appeared within 30s.")
+        print(f"[{job_id}] No 'Got it' popup appeared — continuing.")
 
 
 def _locate_campaign_card(target, campaign_name: str, timeout: int = 3000):
@@ -640,34 +606,23 @@ def _submit_for_approval(page, target, job_id: str, max_retries: int = 5):
     raise Exception(f"Submission did not complete after {max_retries} attempts.")
 
 
-def process_submission(page, job_id: str, campaign_name: str, video_link: str, is_same_campaign: bool):
-    """Executes the full or fast-resumed submission on the active page."""
+def process_submission(page, job_id: str, campaign_name: str, video_link: str):
+    """Full submission flow: Discover → Campaign → Submit clip → Paste link → Submit → Done."""
     target = get_app_frame(page)
-
     human_wait(page, 600)
 
-    if not is_same_campaign:
-        # Navigate from Discover to campaign card
-        _find_and_open_campaign(page, target, job_id, campaign_name)
-    else:
-        # Same campaign — close any open modal first, then click Submit clip fresh
-        print(f"[{job_id}] Same campaign — ensuring modal is closed, then clicking 'Submit clip'...")
-        if _is_modal_open(target):
-            print(f"[{job_id}] Modal already open, closing it first with Escape...")
-            try:
-                page.keyboard.press("Escape")
-                page.wait_for_timeout(800)
-            except Exception:
-                pass
+    # Step 1: Discover → Campaign card
+    _find_and_open_campaign(page, target, job_id, campaign_name)
 
-    # Click page-level 'Submit clip' button to open modal fresh
+    # Step 2: Click page-level 'Submit clip' button to open modal
+    print(f"[{job_id}] Clicking 'Submit clip' button to open modal...")
     submit_clip_btn = target.locator("button:has-text('Submit clip'):visible").first
     submit_clip_btn.wait_for(state="visible", timeout=20000)
     human_wait(page, 400)
     try:
         submit_clip_btn.click(timeout=5000)
-    except Exception as click_err:
-        print(f"[{job_id}] Note: Submit clip click intercepted, clearing backdrop with Escape and forcing click...")
+    except Exception:
+        print(f"[{job_id}] Submit clip click intercepted — forcing click...")
         try:
             page.keyboard.press("Escape")
             page.wait_for_timeout(400)
@@ -676,8 +631,10 @@ def process_submission(page, job_id: str, campaign_name: str, video_link: str, i
         submit_clip_btn.click(force=True)
     human_wait(page, 1500)
 
-    # Fill modal and submit
+    # Step 3: Paste link + tick agreement
     _fill_submission_form(page, target, job_id, video_link)
+
+    # Step 4: Submit + click Done
     _submit_for_approval(page, target, job_id)
 
 
@@ -742,144 +699,106 @@ def main_worker_loop():
         sys.exit(1)
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(
-            headless=HEADLESS,
-            args=[
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-blink-features=AutomationControlled",
-            ]
-        )
+        while True:
+            job = poll_for_job()
+            if not job:
+                time.sleep(POLL_INTERVAL_SEC)
+                continue
 
-        current_loaded_whop_email = None
-        current_loaded_campaign = None
-        current_context = None
-        current_page = None
-        last_submission_success = False  # Track if last job succeeded
+            job_id        = job.get("jobId")
+            automation_id = job.get("automationId")
+            whop_email    = (job.get("whopEmail") or "").strip().lower()
+            campaign_name = job.get("campaignName") or ""
+            channel_link  = job.get("channelLink") or ""
+            video_link    = job.get("videoLink") or ""
+            video_title   = job.get("videoTitle") or "Short"
+            cookies_payload = job.get("cookies")
 
-        try:
-            while True:
-                job = poll_for_job()
-                if not job:
-                    time.sleep(POLL_INTERVAL_SEC)
-                    continue
+            print(f"\n🎯 [Job {job_id}] Processing submission:")
+            print(f"   Email:    {whop_email}")
+            print(f"   Campaign: {campaign_name}")
+            print(f"   Video:    {video_link}")
+            print(f"   Title:    \"{video_title}\"")
 
-                job_id = job.get("jobId")
-                automation_id = job.get("automationId")
-                whop_email = (job.get("whopEmail") or "").strip().lower()
-                campaign_name = job.get("campaignName") or ""
-                channel_link = job.get("channelLink") or ""
-                video_link = job.get("videoLink") or ""
-                video_title = job.get("videoTitle") or "Short"
-                cookies_payload = job.get("cookies")
+            job_start_time = time.time()
+            browser = None
+            context = None
+            page    = None
 
-                print(f"\n🎯 [Job {job_id}] Processing submission:")
-                print(f"   Email:     {whop_email}")
-                print(f"   Campaign:  {campaign_name}")
-                print(f"   Video:     {video_link}")
-                print(f"   Title:     \"{video_title}\"")
+            try:
+                # ── 1. Fresh browser for every submission ──────────────────
+                browser = p.chromium.launch(
+                    headless=HEADLESS,
+                    args=[
+                        "--no-sandbox",
+                        "--disable-setuid-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-blink-features=AutomationControlled",
+                    ]
+                )
 
-                job_start_time = time.time()
+                # ── 2. Load this email's cookies ───────────────────────────
+                auth_state_path = prepare_auth_state(whop_email, cookies_payload)
+                if auth_state_path and auth_state_path.exists():
+                    context = browser.new_context(storage_state=str(auth_state_path))
+                    print(f"[{job_id}] Loaded cookies for {whop_email}")
+                else:
+                    context = browser.new_context()
+                    print(f"[{job_id}] ⚠️ No cookies found for {whop_email} — proceeding without auth")
 
-                # ── Session Continuity Check ──────────────────────────────
-                is_same_email = bool(current_loaded_whop_email) and (whop_email == current_loaded_whop_email) and (current_page is not None)
-                is_same_campaign = is_same_email and bool(current_loaded_campaign) and (campaign_name == current_loaded_campaign)
+                page = context.new_page()
 
-                # Fast path: same email + same campaign + last submission was SUCCESS
-                # → Skip all navigation, directly click Submit clip & paste new link
-                can_fast_submit = is_same_email and is_same_campaign and last_submission_success
+                # ── 3. Navigate to Whop channel ────────────────────────────
+                print(f"[{job_id}] Navigating to: {channel_link}")
+                page.goto(channel_link, wait_until="domcontentloaded", timeout=90000)
+                human_wait(page, 4000, variance=0.15)
 
+                # ── 4. Dismiss 'Got it' popup (community join skipped) ─────
+                dismiss_onboarding_popups(page, job_id)
+
+                # ── 5. Discover → Campaign → Submit clip → Paste → Submit ──
+                process_submission(page, job_id, campaign_name, video_link)
+
+                # ── 6. ✅ Success ───────────────────────────────────────────
+                time_taken_min = max(1, int((time.time() - job_start_time) / 60))
+                report_job_result(job_id, automation_id, "submitted", time_taken=time_taken_min)
+
+            except Exception as sub_err:
+                err_msg = str(sub_err)
+                print(f"❌ [Job {job_id}] Submission error: {err_msg}")
+
+                # Debug screenshot
+                screenshot_b64 = None
                 try:
-                    if can_fast_submit:
-                        # ⚡ FAST PATH: No navigation, no popup wait — just open modal & paste link
-                        print(f"⚡ [Fast-Submit] Last submission succeeded. Same email ({whop_email}) & campaign ({campaign_name}). Clicking Submit clip directly...")
-                        process_submission(current_page, job_id, campaign_name, video_link, is_same_campaign=True)
-
-                    elif is_same_email and is_same_campaign and not last_submission_success:
-                        # ❌ Last job errored — full fresh navigation + popup dismissal
-                        print(f"🔄 [Error-Recovery] Last submission failed. Re-navigating to campaign '{campaign_name}' from scratch...")
-                        current_page.goto(channel_link, wait_until="domcontentloaded", timeout=90000)
-                        human_wait(current_page, 5000, variance=0.15)
-                        dismiss_onboarding_popups(current_page, job_id)
-                        process_submission(current_page, job_id, campaign_name, video_link, is_same_campaign=False)
-
-                    elif is_same_email and not is_same_campaign:
-                        # 🔄 Same email, different campaign → Navigate + popup dismissal
-                        print(f"🔄 [Campaign-Switch] Same Whop email ({whop_email}), switching to campaign '{campaign_name}'...")
-                        current_page.goto(channel_link, wait_until="domcontentloaded", timeout=90000)
-                        human_wait(current_page, 4500, variance=0.15)
-                        dismiss_onboarding_popups(current_page, job_id)
-                        process_submission(current_page, job_id, campaign_name, video_link, is_same_campaign=False)
-                        current_loaded_campaign = campaign_name
-
-                    else:
-                        # 🚀 Different email (or first job) → Full scratch start with cookies
-                        print(f"🚀 [Scratch-Start] Switching to Whop account: {whop_email} (Campaign: {campaign_name})...")
-                        if current_context:
-                            try: current_context.close()
-                            except: pass
-
-                        auth_state_path = prepare_auth_state(whop_email, cookies_payload)
-                        if auth_state_path and auth_state_path.exists():
-                            current_context = browser.new_context(storage_state=str(auth_state_path))
-                        else:
-                            current_context = browser.new_context()
-
-                        current_page = current_context.new_page()
-
-                        print(f"[{job_id}] Navigating to channel URL: {channel_link}...")
-                        current_page.goto(channel_link, wait_until="domcontentloaded", timeout=90000)
-                        human_wait(current_page, 5000, variance=0.15)
-                        dismiss_onboarding_popups(current_page, job_id)
-                        process_submission(current_page, job_id, campaign_name, video_link, is_same_campaign=False)
-
-                        current_loaded_whop_email = whop_email
-                        current_loaded_campaign = campaign_name
-
-                    # ✅ Success
-                    last_submission_success = True
-                    time_taken_min = max(1, int((time.time() - job_start_time) / 60))
-                    report_job_result(job_id, automation_id, "submitted", time_taken=time_taken_min)
-
-                except Exception as sub_err:
-                    err_msg = str(sub_err)
-                    print(f"❌ [Job {job_id}] Submission error: {err_msg}")
-                    last_submission_success = False  # ← Next job will do full re-navigation
-
-                    # Take debug screenshot & encode to base64
-                    screenshot_b64 = None
-                    try:
+                    if page:
+                        shot_bytes = page.screenshot()
                         screenshot_path = DEBUG_DIR / f"fail_{job_id}_{int(time.time())}.png"
-                        if current_page:
-                            shot_bytes = current_page.screenshot()
-                            with open(screenshot_path, "wb") as sf:
-                                sf.write(shot_bytes)
-                            screenshot_b64 = base64.b64encode(shot_bytes).decode("utf-8")
-                            print(f"📸 [Debug] Screenshot captured & saved to: {screenshot_path}")
-                    except Exception as s_err:
-                        print(f"⚠️ [Debug] Screenshot capture note: {s_err}")
+                        with open(screenshot_path, "wb") as sf:
+                            sf.write(shot_bytes)
+                        screenshot_b64 = base64.b64encode(shot_bytes).decode("utf-8")
+                        print(f"📸 [Debug] Screenshot saved: {screenshot_path}")
+                except Exception as s_err:
+                    print(f"⚠️ [Debug] Screenshot error: {s_err}")
 
-                    # Report failure with screenshot
-                    time_taken_min = max(1, int((time.time() - job_start_time) / 60))
-                    report_job_result(
-                        job_id,
-                        automation_id,
-                        "failed",
-                        error_message=err_msg,
-                        time_taken=time_taken_min,
-                        screenshot_base64=screenshot_b64
-                    )
+                time_taken_min = max(1, int((time.time() - job_start_time) / 60))
+                report_job_result(
+                    job_id, automation_id, "failed",
+                    error_message=err_msg,
+                    time_taken=time_taken_min,
+                    screenshot_base64=screenshot_b64
+                )
 
-                # Randomized human delay between consecutive submissions
-                print(f"[{job_id}] Submission cycle complete. Polling for next job...")
-                time.sleep(random.uniform(2.0, 4.5))
+            finally:
+                # ── 7. Always close browser after each submission ──────────
+                try:
+                    if context: context.close()
+                except Exception: pass
+                try:
+                    if browser: browser.close()
+                except Exception: pass
+                print(f"[{job_id}] Browser closed. Polling for next job...")
 
-        finally:
-            if current_context:
-                try: current_context.close()
-                except: pass
-            browser.close()
+            time.sleep(random.uniform(2.0, 4.5))
 
 
 if __name__ == "__main__":
