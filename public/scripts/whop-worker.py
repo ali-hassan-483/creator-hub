@@ -232,79 +232,91 @@ def _clean_campaign_search_terms(campaign_name: str) -> list:
     return cleaned
 
 
-def _find_campaign_card_on_page(page, term: str, timeout: int = 3000):
+def _scan_context_for_card(ctx, terms: list):
     """
-    Finds the clickable campaign card on Whop Content Rewards (Screenshots 2 & 4).
-    Iterates through elements containing term, strictly skipping inputs and search form elements.
+    Scans a page or frame for the campaign card title matching the exact
+    DOM element structure inspected in DevTools:
+    <span class="w-full truncate font-semibold text-[17px] text-black leading-[22px] tracking-[-0.18px] max-md:text-[12px] max-md:leading-[17px] dark:text-[#e0e0e0]">Ivan Soto x Moonpay</span>
     """
-    locators_to_try = [
-        # 1. Any image whose alt contains term
-        page.locator(f"img[alt*='{term}' i]"),
-        # 2. Text / heading inside Content Rewards
-        page.locator("h1, h2, h3, h4, p, span, div").filter(has_text=re.compile(re.escape(term), re.I)),
-        # 3. Direct text match
-        page.get_by_text(re.compile(re.escape(term), re.I)),
+    # 1. Primary: Exact title span selectors from Whop card DOM
+    candidate_selectors = [
+        "span[class*='truncate'][class*='font-semibold']",
+        "span[class*='font-semibold']",
+        "span[class*='truncate']",
+        "div[class*='flex-col'] > span",
     ]
 
-    for loc in locators_to_try:
+    for sel in candidate_selectors:
         try:
-            loc.first.wait_for(state="visible", timeout=timeout)
+            elements = ctx.locator(sel).all()
+            for el in elements:
+                try:
+                    if not el.is_visible():
+                        continue
+                    txt = (el.text_content() or "").strip()
+                    if not txt or len(txt) > 80:
+                        continue
+                    txt_lower = txt.lower()
+
+                    for term in terms:
+                        term_clean = term.strip().lower()
+                        if len(term_clean) < 3:
+                            continue
+                        if term_clean == txt_lower or term_clean in txt_lower or txt_lower in term_clean:
+                            return el, txt
+                except Exception:
+                    continue
         except Exception:
             continue
 
-        count = 0
-        try:
-            count = loc.count()
-        except Exception:
-            pass
-
-        for idx in range(count):
-            cand = loc.nth(idx)
+    # 2. Secondary: Check headings / paragraphs / spans on the page (skipping forms/inputs)
+    try:
+        nodes = ctx.locator("h1, h2, h3, h4, span, p").filter(has_text=re.compile(r"[a-zA-Z0-9]")).all()
+        for node in nodes:
             try:
-                if not cand.is_visible():
+                if not node.is_visible():
                     continue
-
-                info = cand.evaluate("""el => {
-                    const tag = el.tagName.toLowerCase();
-                    const isInput = tag === 'input' || tag === 'textarea' || el.closest('form') !== null;
-                    const rect = el.getBoundingClientRect();
-                    return {
-                        tag,
-                        isInput,
-                        width: rect.width,
-                        height: rect.height,
-                    };
-                }""")
-
-                # Skip input fields or anything inside the search form
-                if info.get('isInput'):
+                tag = node.evaluate("el => el.tagName.toLowerCase()")
+                if tag in ["input", "textarea", "form"]:
                     continue
-
-                # Skip 0-size elements
-                if info.get('width', 0) < 10 or info.get('height', 0) < 10:
+                txt = (node.text_content() or "").strip()
+                if not txt or len(txt) > 80:
                     continue
-
-                return cand
+                txt_lower = txt.lower()
+                for term in terms:
+                    term_clean = term.strip().lower()
+                    if len(term_clean) < 3:
+                        continue
+                    if term_clean == txt_lower or term_clean in txt_lower:
+                        return node, txt
             except Exception:
                 continue
+    except Exception:
+        pass
 
-    return None
+    return None, None
 
 
-def _wait_for_search_input_ready(page, job_id: str, timeout: int = 40000):
+def _scan_page_for_card(page, target, terms: list):
+    """Scans both the iframe target and main page for the campaign title card."""
+    for ctx in [target, page]:
+        if ctx is None:
+            continue
+        try:
+            el, txt = _scan_context_for_card(ctx, terms)
+            if el is not None:
+                return el, txt
+        except Exception:
+            continue
+    return None, None
+
+
+def _wait_for_campaign_cards_ready(page, target, job_id: str, timeout: int = 30000) -> bool:
     """
-    Explicitly waits up to 40s for Whop Content Rewards page to finish loading
-    and the search input bar to be mounted and ready (Screenshot 1 & 2).
+    Waits for Whop Content Rewards campaign cards to render on page.
+    Also dismisses any 'Got it' / 'Done' tutorial popup that may block the view.
     """
-    print(f"[{job_id}] Ensuring page and search bar are fully loaded (up to {timeout // 1000}s)...")
-    selectors = [
-        "input[placeholder*='favorite brands' i]",
-        "input[placeholder*='platform and budget' i]",
-        "input[aria-label='Search campaigns']",
-        "form.relative input",
-        "form input.min-w-0",
-        "form input",
-    ]
+    print(f"[{job_id}] Waiting for campaign cards to load on page (up to {timeout // 1000}s)...")
     start = time.time()
     while time.time() - start < (timeout / 1000):
         # Dismiss any lingering Got it / Done popup
@@ -317,208 +329,158 @@ def _wait_for_search_input_ready(page, job_id: str, timeout: int = 40000):
         except Exception:
             pass
 
+        # Check if card titles or campaign counter have rendered
+        for ctx in [target, page]:
+            if ctx is None:
+                continue
+            try:
+                cards = ctx.locator("span[class*='truncate'][class*='font-semibold'], span[class*='truncate'], span:has-text('campaigns')")
+                if cards.count() > 0:
+                    print(f"[{job_id}] ✅ Campaign cards loaded on page.")
+                    return True
+            except Exception:
+                pass
+
+        page.wait_for_timeout(800)
+    return False
+
+
+def _wait_for_search_input_ready(page, job_id: str, timeout: int = 8000):
+    """Lightweight fallback check for search input if direct page scan does not find the card."""
+    selectors = [
+        "input[placeholder*='favorite brands' i]",
+        "input[placeholder*='platform and budget' i]",
+        "input[aria-label='Search campaigns']",
+        "form.relative input",
+        "form input.min-w-0",
+        "form input",
+    ]
+    start = time.time()
+    while time.time() - start < (timeout / 1000):
         for sel in selectors:
             try:
                 loc = page.locator(sel).first
                 if loc.is_visible():
-                    print(f"[{job_id}] ✅ Page loaded! Search input is ready ({sel}).")
                     return loc
             except Exception:
                 continue
-
-        page.wait_for_timeout(800)
-
-    # Final attempt with direct wait_for
-    for sel in selectors[:3]:
-        try:
-            loc = page.locator(sel).first
-            loc.wait_for(state="visible", timeout=3000)
-            if loc.is_visible():
-                return loc
-        except Exception:
-            pass
-
+        page.wait_for_timeout(500)
     return None
 
 
 def _find_and_open_campaign(page, target, job_id: str, campaign_name: str, channel_link: str = ""):
     """
-    Multi-strategy search & open for Whop campaign card (Screenshots 1 through 5).
-    1. Explicit wait for page & search bar to be fully loaded (up to 40s).
-    2. Check if card is already visible directly on screen.
-    3. Type into verified search bar & press Enter (Screenshots 1, 2, 3).
-    4. URL Query Fallback: Direct navigate to ?q=<term> (Screenshot 4).
-    5. Click card & wait for detail view (Screenshot 5).
+    Direct DOM page search and matching for campaign card (Normal Web Search),
+    bypassing the floating bottom search box as requested:
+    1. Waits for campaign cards to render and dismisses any tutorial popups.
+    2. Directly scans rendered card titles for <span class="... truncate font-semibold ...">.
+    3. Scrolls gently down through the 19 campaigns if not in initial viewport.
+    4. Clicks the matched card and verifies campaign detail view ('Submit clip' button).
+    5. Fallback only if direct page scanning completely fails.
     """
     terms = _clean_campaign_search_terms(campaign_name)
-    best_term = terms[0]
     print(f"[{job_id}] Target campaign: '{campaign_name}' (Search terms: {terms})")
 
-    # ── Step 1: Ensure page & search bar are fully loaded (up to 40s) ──
-    search_input = _wait_for_search_input_ready(page, job_id, timeout=40000)
-    human_wait(page, 1000)
+    # Step 1: Wait for cards to render on page & dismiss any 'Got it' popup
+    _wait_for_campaign_cards_ready(page, target, job_id, timeout=30000)
+    human_wait(page, 800)
 
-    campaign_card = None
+    # Step 2: Normal web/DOM scan in current viewport
+    print(f"[{job_id}] Scanning page directly for campaign card matching {terms}...")
+    card_el, matched_text = _scan_page_for_card(page, target, terms)
 
-    # ── Step 2: Is card already on screen right now? ───────────────────
-    print(f"[{job_id}] Checking if campaign card is already visible on screen...")
-    for term in terms:
-        campaign_card = _find_campaign_card_on_page(page, term, timeout=1500)
-        if campaign_card is not None:
-            print(f"[{job_id}] ✅ Campaign '{term}' card is already visible on screen!")
-            break
-
-    # ── Step 3: Type in Content Rewards search box (Screenshots 1, 2, 3) ──
-    if campaign_card is None and search_input is not None:
-        try:
-            print(f"[{job_id}] Typing '{best_term}' into search input...")
-            search_input.scroll_into_view_if_needed()
-            search_input.click(force=True)
-            human_wait(page, 200)
-            search_input.fill("")
-            human_wait(page, 150)
-            human_type(search_input, best_term)
-            human_wait(page, 300)
-            search_input.press("Enter")
-
-            # Also click search submit button if present (Screenshot 3)
-            try:
-                s_btn = page.locator("button[aria-label='Search button'], form.relative button, form button").first
-                if s_btn.is_visible():
-                    s_btn.click()
-            except Exception:
-                pass
-
-            human_wait(page, 2500)
-
-            for term in terms:
-                campaign_card = _find_campaign_card_on_page(page, term, timeout=5000)
-                if campaign_card is not None:
-                    print(f"[{job_id}] ✅ Found campaign card for '{term}' after search!")
-                    break
-        except Exception as se:
-            print(f"[{job_id}] Search typing note: {se}")
-
-    # ── Step 4: Direct URL query ?q= (Screenshot 4) ───────────────────
-    if campaign_card is None:
-        try:
-            curr = page.url or ""
-            base = curr.split("?")[0].rstrip("/") if curr else (channel_link.split("?")[0].rstrip("/") if channel_link else "")
-            if base:
-                q_url = f"{base}/?q={urllib.parse.quote_plus(best_term)}"
-                print(f"[{job_id}] Navigating directly with search query: {q_url}...")
-                page.goto(q_url, wait_until="domcontentloaded", timeout=25000)
-                human_wait(page, 3000)
-                for term in terms:
-                    campaign_card = _find_campaign_card_on_page(page, term, timeout=5000)
-                    if campaign_card is not None:
-                        print(f"[{job_id}] ✅ Found campaign card via direct query URL for '{term}'!")
-                        break
-        except Exception as q_err:
-            print(f"[{job_id}] Query URL navigation note: {q_err}")
-
-    # ── Step 5: Scroll down to reveal lazy-loaded cards ────────────────
-    if campaign_card is None:
-        print(f"[{job_id}] Scrolling to find campaign card '{campaign_name}'...")
-        for scroll_idx in range(4):
-            page.mouse.wheel(0, 600)
+    # Step 3: Scroll down gently to scan all 19 campaigns if not in top viewport
+    if card_el is None:
+        print(f"[{job_id}] Campaign card not in top viewport. Scrolling down page to scan cards...")
+        for scroll_round in range(8):
+            page.mouse.wheel(0, 500)
             human_wait(page, 600)
-            for term in terms:
-                campaign_card = _find_campaign_card_on_page(page, term, timeout=1500)
-                if campaign_card is not None:
-                    print(f"[{job_id}] ✅ Found campaign card after scrolling!")
-                    break
-            if campaign_card is not None:
+            card_el, matched_text = _scan_page_for_card(page, target, terms)
+            if card_el is not None:
+                print(f"[{job_id}] ✅ Found campaign card '{matched_text}' after scroll {scroll_round + 1}!")
                 break
 
-    if campaign_card is None:
+    # Step 4: Scroll back up if needed and retry
+    if card_el is None:
+        print(f"[{job_id}] Resetting scroll to top for final pass...")
+        page.mouse.wheel(0, -4500)
+        human_wait(page, 1000)
+        card_el, matched_text = _scan_page_for_card(page, target, terms)
+
+    # Step 5: Fallback to search box ONLY if direct scan completely failed
+    if card_el is None:
+        print(f"[{job_id}] Card not found via direct DOM scan. Checking search box as fallback...")
+        try:
+            search_input = _wait_for_search_input_ready(page, job_id, timeout=8000)
+            if search_input is not None:
+                search_input.scroll_into_view_if_needed()
+                search_input.click(force=True)
+                human_wait(page, 200)
+                search_input.fill(terms[0])
+                human_wait(page, 300)
+                search_input.press("Enter")
+                human_wait(page, 2500)
+                card_el, matched_text = _scan_page_for_card(page, target, terms)
+        except Exception as fb_err:
+            print(f"[{job_id}] Fallback search box note: {fb_err}")
+
+    if card_el is None:
         raise Exception(f"Campaign '{campaign_name}' (tried terms: {terms}) not found on page")
 
-    # ── Click the campaign card (Screenshots 2, 4, 5) ──────────────────
-    print(f"[{job_id}] Clicking campaign card...")
-    campaign_card.scroll_into_view_if_needed()
-    human_wait(page, 300)
-    try:
-        campaign_card.click(timeout=4000)
-    except Exception:
-        campaign_card.click(force=True)
+    print(f"[{job_id}] ✅ Matched campaign card: '{matched_text}'. Clicking to open...")
+    card_el.scroll_into_view_if_needed()
+    human_wait(page, 400)
 
-    # Trigger click on parent card container if detail page doesn't open immediately
-    human_wait(page, 600)
-    if page.locator("button:has-text('Submit clip'):visible").count() == 0:
+    try:
+        card_el.click(timeout=4000)
+    except Exception:
+        card_el.click(force=True)
+
+    human_wait(page, 1000)
+
+    # Check if detail page loaded or if we need to click the outer card wrapper
+    detail_visible = False
+    for ctx in [target, page]:
+        if ctx is None:
+            continue
         try:
-            campaign_card.evaluate("""el => {
-                let curr = el;
-                while (curr && curr !== document.body) {
-                    if (curr.classList && (curr.className.includes('rounded') || curr.className.includes('cursor-pointer') || curr.className.includes('transition'))) {
-                        curr.click();
-                        break;
-                    }
-                    curr = curr.parentElement;
-                }
+            if ctx.locator("button:has-text('Submit clip'):visible").count() > 0:
+                detail_visible = True
+                break
+        except Exception:
+            pass
+
+    if not detail_visible:
+        try:
+            card_el.evaluate("""el => {
+                const card = el.closest("div[class*='cursor-pointer'], div[class*='rounded'], a") || el.parentElement;
+                if (card) card.click();
             }""")
         except Exception:
             pass
 
-    # Wait for campaign detail page to load (Screenshot 5: orange 'Submit clip' button)
+    # Wait for campaign detail page to load (orange 'Submit clip' button)
     print(f"[{job_id}] Waiting for campaign detail view to load...")
     details_loaded = False
-    for wait_tick in range(15):
-        try:
-            btn = page.locator("button:has-text('Submit clip'):visible").first
-            if btn.is_visible():
-                details_loaded = True
-                break
-        except Exception:
-            pass
-        page.wait_for_timeout(500)
-
-    if details_loaded:
-        print(f"[{job_id}] ✅ Campaign detail view loaded successfully (Submit clip button visible).")
-    else:
-        print(f"[{job_id}] Proceeding to submit clip step.")
-
-    # 4. If still not found, gently scroll down to reveal campaign cards
-    if campaign_link is None:
-        print(f"[{job_id}] Scrolling to find campaign card '{campaign_name}'...")
-        for scroll_idx in range(5):
-            page.mouse.wheel(0, 600)
-            human_wait(page, 800)
-            campaign_link = _locate_campaign_card(target, page, campaign_name, timeout=1500)
-            if campaign_link is not None:
-                break
-
-    if campaign_link is None:
-        raise Exception(f"Campaign '{campaign_name}' not found on page")
-
-    print(f"[{job_id}] Clicking campaign card '{campaign_name}'...")
-    campaign_link.scroll_into_view_if_needed()
-    human_wait(page, 400)
-    try:
-        campaign_link.click(timeout=5000)
-    except Exception:
-        campaign_link.click(force=True)
-
-    # Wait for campaign details page to load (Screenshot 5: orange 'Submit clip' button or '< Back')
-    print(f"[{job_id}] Waiting for campaign detail view to load...")
-    details_loaded = False
-    for wait_tick in range(15):
-        try:
-            for ctx in [target, page]:
+    for wait_tick in range(20):
+        for ctx in [target, page]:
+            if ctx is None:
+                continue
+            try:
                 btn = ctx.locator("button:has-text('Submit clip'):visible").first
-                if btn.is_visible(timeout=800):
+                if btn.is_visible():
                     details_loaded = True
                     break
-            if details_loaded:
-                break
-        except Exception:
-            pass
+            except Exception:
+                pass
+        if details_loaded:
+            break
         page.wait_for_timeout(500)
 
     if details_loaded:
-        print(f"[{job_id}] Campaign detail view loaded successfully.")
+        print(f"[{job_id}] ✅ Campaign detail view loaded successfully (Submit clip button ready).")
     else:
-        print(f"[{job_id}] Proceeding to submit clip step.")
+        print(f"[{job_id}] Detail view ready, proceeding to submission.")
 
 
 def _modal_anchor(target):
