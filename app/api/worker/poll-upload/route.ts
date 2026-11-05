@@ -437,12 +437,13 @@ export async function GET(req: NextRequest) {
           try {
             const { generateBatchMetadataFromGuidelines } = await import('@/tools/ai-clipper')
             const aiBatch = await generateBatchMetadataFromGuidelines(1, {
-              titlesGuide: cfg.titlesGuide,
-              descriptionsGuide: cfg.descriptionsGuide,
-              onScreenGuide: cfg.onScreenAiGuide,
+              // DB stores fields as titlesAiGuide / descriptionsAiGuide / onScreenTextAiGuide
+              titlesGuide: cfg.titlesAiGuide || cfg.titlesGuide || '',
+              descriptionsGuide: cfg.descriptionsAiGuide || cfg.descriptionsGuide || '',
+              onScreenGuide: cfg.onScreenTextAiGuide || cfg.onScreenAiGuide || '',
               ftcDisclosure: cfg.ftcDisclosure,
               predefinedDescription: cfg.predefinedDescription,
-              useOnlyPredefinedDescription: cfg.useOnlyPredefinedDescription,
+              useOnlyPredefinedDescription: cfg.useOnlyPredefinedDescription || cfg.useOnlyPredefinedDesc,
               linksInDescription: cfg.linksInDescription,
               maxTitleChars: cfg.maxTitleCharacters ? parseInt(cfg.maxTitleCharacters) : 100,
               niche: cfg.niche,

@@ -41,15 +41,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
 
     const metaConfig = {
-      titlesGuide: cfg.titlesGuide || '',
-      descriptionsGuide: cfg.descriptionsGuide || '',
-      onScreenGuide: cfg.onScreenAiGuide || cfg.onScreenGuide || '',
+      // DB stores fields as titlesAiGuide / descriptionsAiGuide / onScreenTextAiGuide
+      titlesGuide: cfg.titlesAiGuide || cfg.titlesGuide || '',
+      descriptionsGuide: cfg.descriptionsAiGuide || cfg.descriptionsGuide || '',
+      onScreenGuide: cfg.onScreenTextAiGuide || cfg.onScreenAiGuide || cfg.onScreenGuide || '',
       ftcDisclosure: cfg.ftcDisclosure || '',
       predefinedDescription: cfg.predefinedDescription || '',
-      useOnlyPredefinedDescription: cfg.useOnlyPredefinedDescription || false,
+      useOnlyPredefinedDescription: cfg.useOnlyPredefinedDescription || cfg.useOnlyPredefinedDesc || false,
       linksInDescription: cfg.linksInDescription || '',
       maxTitleChars: cfg.maxTitleCharacters ? parseInt(cfg.maxTitleCharacters) : 100,
-      onScreenMaxChars: cfg.onScreenMaxChars ? parseInt(cfg.onScreenMaxChars) : 80,
+      onScreenMaxChars: cfg.onScreenMaxCharacters ? parseInt(cfg.onScreenMaxCharacters) : (cfg.onScreenMaxChars ? parseInt(cfg.onScreenMaxChars) : 80),
       niche: cfg.niche || '',
       campaignName: campaign.name,
     }

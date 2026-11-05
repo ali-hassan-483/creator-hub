@@ -120,15 +120,16 @@ async function executeSandboxRender(jobId: string, campaignId: string) {
     // Generate metadata for the test clip first so on-screen text hook is available
     update('rendering', 'Generating title & descriptions with AI...')
     const metaConfig: AiMetadataConfig = {
-      titlesGuide: cfg.titlesGuide,
-      descriptionsGuide: cfg.descriptionsGuide,
-      onScreenGuide: cfg.onScreenAiGuide,
+      // DB stores fields as titlesAiGuide / descriptionsAiGuide / onScreenTextAiGuide
+      titlesGuide: cfg.titlesAiGuide || cfg.titlesGuide || '',
+      descriptionsGuide: cfg.descriptionsAiGuide || cfg.descriptionsGuide || '',
+      onScreenGuide: cfg.onScreenTextAiGuide || cfg.onScreenAiGuide || '',
       ftcDisclosure: cfg.ftcDisclosure,
       predefinedDescription: cfg.predefinedDescription,
-      useOnlyPredefinedDescription: cfg.useOnlyPredefinedDescription,
+      useOnlyPredefinedDescription: cfg.useOnlyPredefinedDescription || cfg.useOnlyPredefinedDesc,
       linksInDescription: cfg.linksInDescription,
       maxTitleChars: cfg.maxTitleCharacters ? parseInt(cfg.maxTitleCharacters) : 100,
-      onScreenMaxChars: cfg.onScreenMaxChars ? parseInt(cfg.onScreenMaxChars) : 80,
+      onScreenMaxChars: cfg.onScreenMaxCharacters ? parseInt(cfg.onScreenMaxCharacters) : (cfg.onScreenMaxChars ? parseInt(cfg.onScreenMaxChars) : 80),
       audioNotes: cfg.audioNotes,
       niche: cfg.niche || 'general',
       campaignName: campaign.name,
