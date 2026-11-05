@@ -156,19 +156,40 @@ export function buildStoryRecutMap(
   } = options
 
   const clips: StoryRecutClipDef[] = []
-  const dur = Math.max(60, videoDuration)
+  
+  // Real video duration: if videoDuration is positive, use it! Only fallback to 60 if <= 0
+  const dur = videoDuration > 0 ? videoDuration : 60
 
-  // Target duration for single continuous natural clip (default 45s, clamped 15-180s)
-  const T = Math.max(15, Math.min(180, targetDuration))
-  const maxStart = Math.max(0, dur - T - 3)
+  // Target duration for single continuous natural clip
+  // If the source video itself is shorter than targetDuration (e.g. 15s video, 20s target),
+  // clamp target duration to the video's actual duration!
+  const requestedT = Math.max(5, Math.min(180, targetDuration))
+  const T = dur > 0 ? Math.min(dur, requestedT) : requestedT
+
+  // If source video duration is <= target duration, we simply use the whole video from 0 to dur!
+  const maxStart = Math.max(0, dur - T)
 
   for (let i = 0; i < clipCount; i++) {
     const clipNum = startIndex + i
     const clipId = `final_${String(clipNum).padStart(4, '0')}_${Date.now()}`
 
-    // Pick random start position across source timeline
-    const clipStart = maxStart > 0 ? Math.round((Math.random() * maxStart) * 10) / 10 : 0
-    const clipEnd = Math.min(dur - 0.5, Math.round((clipStart + T) * 10) / 10)
+    // Pick start position across source timeline
+    // If video is short (dur <= T or maxStart <= 1.0), start is 0 and end is dur!
+    let clipStart = 0
+    let clipEnd = dur
+
+    if (maxStart > 1.0) {
+      clipStart = Math.round((Math.random() * maxStart) * 10) / 10
+      clipEnd = Math.min(dur, Math.round((clipStart + T) * 10) / 10)
+    } else {
+      clipStart = 0
+      clipEnd = Math.round(dur * 10) / 10
+    }
+
+    if (clipEnd <= clipStart) {
+      clipStart = 0
+      clipEnd = Math.max(3, dur)
+    }
 
     // Extract spoken words in this range to get smart keywords
     let spokenKeywords: string[] = []

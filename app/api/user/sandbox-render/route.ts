@@ -80,10 +80,12 @@ async function executeSandboxRender(jobId: string, campaignId: string) {
 
     const sourceVideo = sourceVideos[0]
     update('rendering', 'Inspecting video dimensions & duration...')
-    let videoDuration = 1800
+    let videoDuration = 0
     try {
       const vInfo = await getVideoInfo(sourceVideo)
-      videoDuration = vInfo.duration
+      if (vInfo.duration > 0) {
+        videoDuration = vInfo.duration
+      }
     } catch {}
 
     let transcript = loadTranscript(sourceVideo, campaignId)

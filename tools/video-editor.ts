@@ -145,14 +145,16 @@ export async function getVideoInfo(filePath: string): Promise<{ width: number; h
     const cmd = `ffprobe -v quiet -print_format json -show_streams -show_format "${filePath}"`
     const { stdout } = await execAsync(cmd, { maxBuffer: 2 * 1024 * 1024 })
     const info = JSON.parse(stdout)
-    const video = info.streams.find((s: any) => s.codec_type === 'video')
+    const video = (info.streams || []).find((s: any) => s.codec_type === 'video')
+    const rawDur = info.format?.duration || video?.duration || '0'
+    const duration = parseFloat(rawDur)
     return {
-      width: video?.width || 1920,
-      height: video?.height || 1080,
-      duration: parseFloat(info.format?.duration || '0'),
+      width: video?.width || 1080,
+      height: video?.height || 1920,
+      duration: isNaN(duration) ? 0 : duration,
     }
   } catch {
-    return { width: 1920, height: 1080, duration: 0 }
+    return { width: 1080, height: 1920, duration: 0 }
   }
 }
 

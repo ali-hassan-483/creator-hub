@@ -72,13 +72,21 @@ def run(cmd, **kw):
 def probe_duration(path):
     try:
         r = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration:stream=duration",
              "-of", "json", str(path)],
             capture_output=True, text=True, check=True)
-        return float(json.loads(r.stdout)["format"]["duration"])
+        data = json.loads(r.stdout)
+        fmt_dur = data.get("format", {}).get("duration")
+        if fmt_dur and fmt_dur != "N/A":
+            return float(fmt_dur)
+        streams = data.get("streams", [])
+        for s in streams:
+            s_dur = s.get("duration")
+            if s_dur and s_dur != "N/A":
+                return float(s_dur)
     except Exception as e:
         print(f"  [Probe] Error probing duration of {path}: {e}")
-        return 0.0
+    return 0.0
 
 
 def parse_ts(v):
@@ -547,7 +555,8 @@ def build_ass(srt_entries, segments, keywords, out_path, on_screen_cfg=None, on_
                     })
             offset += (e - s)
 
-    total_dur = max(1.0, offset if offset > 0 else 60.0)
+    calculated_total = sum(max(0.0, parse_ts(seg["end"]) - parse_ts(seg["start"])) for seg in segments)
+    total_dur = max(1.0, offset if offset > 0 else (calculated_total if calculated_total > 0 else 60.0))
 
     # If srt_entries matched, generate karaoke events
     if matched_srt_segments:
@@ -922,14 +931,30 @@ def main():
         tmp = Path(td)
         for clip in clips:
             try:
-                skip_clip = False
+                # Validate & clamp segment timestamps against src_dur so clips are never dropped
+                valid_clip = True
                 for raw in clip["segments"]:
-                    if parse_ts(raw["end"]) > src_dur + 0.5:
-                        print(f"  ⚠️ Skipping clip {clip['id']}: segment is beyond source duration ({src_dur:.1f}s)")
-                        skip_clip = True
-                        break
-                if skip_clip:
+                    s = parse_ts(raw["start"])
+                    e = parse_ts(raw["end"])
+                    seg_len = max(2.0, e - s)
+
+                    if s >= src_dur - 0.5:
+                        # Start is past or at the end of the video, pull start back to fit seg_len
+                        s = max(0.0, src_dur - min(seg_len, src_dur))
+                        e = src_dur
+                        raw["start"] = round(s, 2)
+                        raw["end"] = round(e, 2)
+                    elif e > src_dur:
+                        print(f"  ℹ️ Clamping clip {clip['id']} end from {e:.1f}s to source duration {src_dur:.1f}s")
+                        e = src_dur
+                        raw["end"] = round(e, 2)
+
+                # Ensure segment has valid duration
+                seg_total = sum(parse_ts(sg["end"]) - parse_ts(sg["start"]) for sg in clip["segments"])
+                if seg_total < 1.0:
+                    print(f"  ⚠️ Skipping clip {clip['id']}: total duration {seg_total:.1f}s is too short (<1s)")
                     continue
+
                 print(f"\nRendering clip: {clip['id']}")
                 res = render_clip(src, clip, srt_entries, out_dir, tmp, cfg, tighten=args.tighten)
                 if res:

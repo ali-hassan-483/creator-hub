@@ -223,10 +223,12 @@ export async function maintainCampaignClipPool(
 
     // Pick a random source video from available sources
     const sourceVideo = sourceVideos[Math.floor(Math.random() * sourceVideos.length)]
-    let videoDuration = 1800 // default 30m
+    let videoDuration = 0
     try {
       const vInfo = await getVideoInfo(sourceVideo)
-      videoDuration = vInfo.duration
+      if (vInfo.duration > 0) {
+        videoDuration = vInfo.duration
+      }
     } catch {}
 
     const transcript = loadTranscript(sourceVideo, campaignId)
