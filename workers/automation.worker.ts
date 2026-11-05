@@ -373,6 +373,27 @@ const worker = new Worker(
 
           console.log(`[Worker] Clip ${slice.index} metadata: "${metadata.title}"`)
 
+          // Save unique .meta.json file permanently to disk next to the rendered clip
+          try {
+            const metaPath = finalClipPath.replace(/\.mp4$/, '.meta.json')
+            fs.writeFileSync(
+              metaPath,
+              JSON.stringify({
+                clipId: path.basename(finalClipPath, '.mp4'),
+                videoPath: finalClipPath,
+                title: metadata.title,
+                description: metadata.description,
+                onScreenText: metadata.onScreenText || '',
+                hashtags: metadata.hashtags || ['shorts', 'viral'],
+                createdAt: new Date().toISOString(),
+              }, null, 2),
+              'utf8'
+            )
+            console.log(`[Worker] Saved clip metadata to ${path.basename(metaPath)}`)
+          } catch (writeErr) {
+            console.warn(`[Worker] Failed to write meta.json for clip ${slice.index}:`, writeErr)
+          }
+
           allClipJobs.push({
             clipPath: finalClipPath,
             title: metadata.title,

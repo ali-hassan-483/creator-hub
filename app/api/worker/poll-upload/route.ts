@@ -457,19 +457,23 @@ export async function GET(req: NextRequest) {
           }
           try {
             const { generateBatchMetadataFromGuidelines } = await import('@/tools/ai-clipper')
-            const aiBatch = await generateBatchMetadataFromGuidelines(1, {
-              // DB stores fields as titlesAiGuide / descriptionsAiGuide / onScreenTextAiGuide
-              titlesGuide: cfg.titlesAiGuide || cfg.titlesGuide || '',
-              descriptionsGuide: cfg.descriptionsAiGuide || cfg.descriptionsGuide || '',
-              onScreenGuide: cfg.onScreenTextAiGuide || cfg.onScreenAiGuide || '',
-              ftcDisclosure: cfg.ftcDisclosure,
-              predefinedDescription: cfg.predefinedDescription,
-              useOnlyPredefinedDescription: cfg.useOnlyPredefinedDescription || cfg.useOnlyPredefinedDesc,
-              linksInDescription: cfg.linksInDescription,
-              maxTitleChars: cfg.maxTitleCharacters ? parseInt(cfg.maxTitleCharacters) : 100,
-              niche: cfg.niche,
-              campaignName: campaign.name,
-            })
+            const aiBatch = await generateBatchMetadataFromGuidelines(
+              1,
+              {
+                // DB stores fields as titlesAiGuide / descriptionsAiGuide / onScreenTextAiGuide
+                titlesGuide: cfg.titlesAiGuide || cfg.titlesGuide || '',
+                descriptionsGuide: cfg.descriptionsAiGuide || cfg.descriptionsGuide || '',
+                onScreenGuide: cfg.onScreenTextAiGuide || cfg.onScreenAiGuide || '',
+                ftcDisclosure: cfg.ftcDisclosure,
+                predefinedDescription: cfg.predefinedDescription,
+                useOnlyPredefinedDescription: cfg.useOnlyPredefinedDescription || cfg.useOnlyPredefinedDesc,
+                linksInDescription: cfg.linksInDescription,
+                maxTitleChars: cfg.maxTitleCharacters ? parseInt(cfg.maxTitleCharacters) : 100,
+                niche: cfg.niche,
+                campaignName: campaign.name,
+              },
+              Array.from(alreadyUsedTitles)
+            )
             if (aiBatch && aiBatch[0]) {
               title = aiBatch[0].title
               description = aiBatch[0].description

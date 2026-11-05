@@ -302,13 +302,18 @@ export async function generateFullMetadata(
  */
 export async function generateBatchMetadataFromGuidelines(
   count: number = 50,
-  config: AiMetadataConfig
+  config: AiMetadataConfig,
+  avoidTitles?: string[]
 ): Promise<ShortMetadata[]> {
   const maxTitleChars = config.maxTitleChars || 100
   const onScreenMaxChars = config.onScreenMaxChars || 80
   const ftc = config.ftcDisclosure ? ` (Must include FTC disclosure: "${config.ftcDisclosure}")` : ''
   const links = config.linksInDescription ? `\nLinks to include in description: ${config.linksInDescription}` : ''
   const predefined = config.predefinedDescription || ''
+  const avoidList = (avoidTitles || []).filter(Boolean)
+  const avoidSection = avoidList.length > 0
+    ? `\nDO NOT USE ANY OF THESE PREVIOUSLY USED TITLES (MUST BE COMPLETELY DIFFERENT & ORIGINAL):\n${avoidList.slice(-15).map(t => `- "${t}"`).join('\n')}`
+    : ''
 
   const subBatchSize = Math.min(count, 10)
   const allResults: ShortMetadata[] = []
@@ -333,6 +338,7 @@ GUIDELINES:
 
 ${predefined ? `PREDEFINED BASE DESCRIPTION: "${predefined}"` : ''}
 ${links}
+${avoidSection}
 
 REQUIREMENTS:
 - Return an array of exactly ${needed} items.
@@ -341,7 +347,7 @@ REQUIREMENTS:
   - "onScreenText": String (<= ${onScreenMaxChars} chars)
   - "description": String
   - "hashtags": Array of strings (e.g. ["shorts", "viral", ...])
-- DO NOT repeat titles or hooks. Make them varied and high-converting.
+- DO NOT repeat titles or hooks. Every title and hook MUST be distinct, fresh, and creative.
 
 Return ONLY a valid JSON array of ${needed} objects matching this exact schema:
 [
