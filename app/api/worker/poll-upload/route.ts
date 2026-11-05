@@ -394,16 +394,24 @@ export async function GET(req: NextRequest) {
           fs.existsSync(postedDir) ? fs.readdirSync(postedDir) : []
         )
 
+        // Find clips currently in-progress across any channel in this automation run
+        // so multiple parallel channels NEVER pick the exact same clip!
+        const inProgressClips = new Set(
+          mockVideoUploads
+            .filter((u: any) => u.status === 'in_progress' && u.clipFilename)
+            .map((u: any) => u.clipFilename)
+        )
+
         const allClips = fs
           .readdirSync(clipsDir)
-          .filter((f) => f.endsWith('.mp4') && !postedFiles.has(f))
+          .filter((f) => f.endsWith('.mp4') && !postedFiles.has(f) && !inProgressClips.has(f))
 
         if (allClips.length === 0) {
-          console.warn(`[Worker Poll] No unposted clips left in campaign ${campaign.name}`)
+          console.warn(`[Worker Poll] No available (unreserved) clips left in campaign ${campaign.name} (${inProgressClips.size} currently in-progress)`)
           continue
         }
 
-        // Pick exactly 1 available clip
+        // Pick exactly 1 available unreserved clip
         const clipFileName = allClips[0]
         const cfg = (campaign.config as Record<string, any>) || {}
 
@@ -431,9 +439,22 @@ export async function GET(req: NextRequest) {
           console.warn(`[Worker Poll] ⚠️ No meta.json found for ${clipFileName} at ${metaFullPath}`)
         }
 
-        // 2. If meta had no title or description, generate on-the-fly with AI (NEVER use generic fallback!)
-        if (!title || !description) {
-          console.log(`[Worker Poll] 🤖 Metadata missing/incomplete for ${clipFileName}. Generating AI title & description on the fly...`)
+        // 2. Check if this title was already used by another channel in this automation run
+        const alreadyUsedTitles = new Set(
+          mockVideoUploads
+            .map((u: any) => (u.videoTitle || '').trim().toLowerCase())
+            .filter(Boolean)
+        )
+        const isDuplicateTitle = !!(title && alreadyUsedTitles.has(title.trim().toLowerCase()))
+
+        // 3. If meta had no title or description OR if title was already used for another clip in this run,
+        // generate on-the-fly fresh unique AI metadata (NEVER upload duplicate titles!)
+        if (!title || !description || isDuplicateTitle) {
+          if (isDuplicateTitle) {
+            console.log(`[Worker Poll] ⚠️ Title "${title}" was already used by another channel in this run. Generating a fresh unique AI title & description for ${clipFileName}...`)
+          } else {
+            console.log(`[Worker Poll] 🤖 Metadata missing/incomplete for ${clipFileName}. Generating AI title & description on the fly...`)
+          }
           try {
             const { generateBatchMetadataFromGuidelines } = await import('@/tools/ai-clipper')
             const aiBatch = await generateBatchMetadataFromGuidelines(1, {
@@ -453,7 +474,7 @@ export async function GET(req: NextRequest) {
               title = aiBatch[0].title
               description = aiBatch[0].description
               if (aiBatch[0].hashtags && aiBatch[0].hashtags.length > 0) tags = aiBatch[0].hashtags
-              // Save meta.json file so it is permanently cached and never empty again
+              // Save meta.json file so it is permanently cached and never empty or duplicate again
               fs.writeFileSync(
                 metaFullPath,
                 JSON.stringify({
@@ -467,7 +488,7 @@ export async function GET(req: NextRequest) {
                 }, null, 2),
                 'utf8'
               )
-              console.log(`[Worker Poll] ✅ AI generated & saved meta.json for ${clipFileName}: "${title}"`)
+              console.log(`[Worker Poll] ✅ AI generated & saved unique meta.json for ${clipFileName}: "${title}"`)
             }
           } catch (aiErr: any) {
             console.error(`[Worker Poll] ❌ AI metadata on-the-fly generation failed: ${aiErr.message}`)
