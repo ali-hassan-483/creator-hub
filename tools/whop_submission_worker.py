@@ -156,6 +156,16 @@ REQUIREMENT_LABELS = [
 MODAL_ANCHOR_RE = re.compile(r"Post your clip|Submit video link", re.IGNORECASE)
 FAIL_COLOR_MARKERS = ["255, 51, 85"]
 
+# Red inline error messages that may appear after pasting a link (e.g. "30 minutes" timing error)
+INLINE_RED_ERROR_SELECTORS = [
+    "p[class*='text-[#f35]']",
+    "p[class*='text-[#ff3355]']",
+    "p[class*='text-red']",
+    "[class*='text-[#f35]']",
+    "[class*='text-[#ff3355]']",
+    "[class*='text-red-']",
+]
+
 
 def get_app_frame(page):
     """Locates the Whop 'Content Rewards' app iframe with multiple fallbacks."""
@@ -579,6 +589,81 @@ def _get_failed_requirement_reasons(target) -> list:
     return failed_reasons
 
 
+def _get_inline_red_error(target, page) -> str:
+    """
+    Checks for inline red error messages that appear immediately after pasting the link.
+    E.g.: 'Posts have to be submitted within 30 minutes of going live...'
+    Returns error text if found, empty string otherwise.
+    """
+    for ctx in [target, page]:
+        if ctx is None:
+            continue
+        for sel in INLINE_RED_ERROR_SELECTORS:
+            try:
+                loc = ctx.locator(sel).first
+                if loc.is_visible(timeout=300):
+                    txt = (loc.text_content() or "").strip()
+                    if txt and len(txt) > 5:
+                        return txt
+            except Exception:
+                continue
+
+        # Also check by computed color — any <p> or <span> with red computed color
+        try:
+            candidates = ctx.locator("p, span").all()
+            for c in candidates[:40]:
+                try:
+                    if not c.is_visible():
+                        continue
+                    txt = (c.text_content() or "").strip()
+                    if not txt or len(txt) < 10:
+                        continue
+                    color = c.evaluate("el => getComputedStyle(el).color")
+                    # rgb(255, 51, 85) or similar red
+                    if "255, 51" in color or "255, 0" in color:
+                        return txt
+                except Exception:
+                    continue
+        except Exception:
+            pass
+    return ""
+
+
+def _poll_for_done_or_error(page, target, job_id: str, poll_seconds: int = 30) -> tuple:
+    """
+    Polls every 2s for up to `poll_seconds` waiting for either:
+    - 'Done' / 'Got it' popup → returns ("done", "")
+    - Inline red error text → returns ("error", error_text)
+    - Requirement validation failure → returns ("error", error_text)
+    Returns ("timeout", "") if neither appears.
+    """
+    print(f"[{job_id}] Polling every 2s for Done popup or error (up to {poll_seconds}s)...")
+    end_time = time.time() + poll_seconds
+    while time.time() < end_time:
+        # Check 1: Done/Got it popup
+        got_it = _find_got_it_button(page, target)
+        if got_it is not None:
+            print(f"[{job_id}] ✅ 'Done' popup detected!")
+            return ("done", "")
+
+        # Check 2: Inline red error (e.g. "30 minutes" timing error)
+        red_err = _get_inline_red_error(target, page)
+        if red_err:
+            print(f"[{job_id}] ❌ Inline red error detected: {red_err}")
+            return ("error", red_err)
+
+        # Check 3: Requirement validation dot errors
+        reasons = _get_failed_requirement_reasons(target)
+        if reasons:
+            err_text = "; ".join(reasons)
+            print(f"[{job_id}] ❌ Validation failure detected: {err_text}")
+            return ("error", err_text)
+
+        page.wait_for_timeout(2000)
+
+    return ("timeout", "")
+
+
 def _fill_submission_form(page, target, job_id: str, video_link: str):
     """Fills video link input and ticks agreement checkbox."""
     print(f"[{job_id}] Locating video link input in modal...")
@@ -714,61 +799,98 @@ def _dismiss_success_confirmation(page, target, job_id: str):
         pass
 
 
-def _submit_for_approval(page, target, job_id: str, max_retries: int = 5):
-    """Submits the modal form and verifies success/Done confirmation."""
+def _submit_for_approval(page, target, job_id: str, max_retries: int = 3):
+    """
+    Clicks the modal 'Submit clip' button then polls every 2s for:
+    - 'Done' / 'Got it' popup → success, dismiss and return
+    - Inline red error text (e.g. '30 minutes' timing error) → raise Exception
+    - Requirement validation dot failure → raise Exception
+    Retries up to max_retries times if submission reverts.
+    """
     submit_btn = _modal_submit_btn(target)
     submit_btn.wait_for(state="visible", timeout=10000)
 
     for attempt in range(1, max_retries + 1):
+        # Already done from a previous attempt?
         if attempt > 1 and _find_got_it_button(page, target) is not None:
+            print(f"[{job_id}] ✅ Submission already confirmed (Done popup found before retry).")
             _dismiss_success_confirmation(page, target, job_id)
             return
 
         print(f"[{job_id}] Clicking modal 'Submit clip' (attempt {attempt}/{max_retries})...")
         human_wait(page, 500)
-        submit_btn.click()
+        try:
+            submit_btn.click()
+        except Exception:
+            submit_btn.click(force=True)
 
+        # ── Poll every 2s for Done OR error ──────────────────────────────────
+        print(f"[{job_id}] Waiting for outcome (checking every 2s, up to 40s)...")
+        end_time = time.time() + 40
         outcome = None
-        start_wait_time = time.time()
-        while time.time() - start_wait_time < 30:
-            page.wait_for_timeout(random.randint(1200, 1800))
+        outcome_detail = ""
 
+        while time.time() < end_time:
+            page.wait_for_timeout(2000)
+
+            # 1. Done/Got it popup → success
             if _find_got_it_button(page, target) is not None:
-                outcome = "closed"
+                outcome = "done"
                 break
 
-            modal_open = _is_modal_open(target)
-            if not modal_open:
-                outcome = "closed"
+            # 2. Inline red error paragraph (e.g. "30 minutes" timing error from screenshot)
+            red_err = _get_inline_red_error(target, page)
+            if red_err:
+                outcome = "inline_red_error"
+                outcome_detail = red_err
                 break
 
-            if _get_failed_requirement_reasons(target):
-                outcome = "red_error"
+            # 3. Requirement validation dot failures
+            reasons = _get_failed_requirement_reasons(target)
+            if reasons:
+                outcome = "validation_failed"
+                outcome_detail = "; ".join(reasons)
                 break
 
+            # 4. Modal closed without Done → treat as success
+            if not _is_modal_open(target):
+                outcome = "done"
+                break
+
+            # 5. Button text reverted back to "Submit clip" → retry
             try:
-                btn_text = submit_btn.inner_text(timeout=1000).strip().lower()
+                btn_text = submit_btn.inner_text(timeout=800).strip().lower()
                 if btn_text == "submit clip":
                     outcome = "reverted"
                     break
             except Exception:
                 pass
 
-        if outcome == "closed":
+        # ── Handle outcome ────────────────────────────────────────────────────
+        if outcome == "done":
             print(f"[{job_id}] ✅ Submission succeeded!")
             _dismiss_success_confirmation(page, target, job_id)
             return
 
-        if outcome == "red_error":
-            reasons = _get_failed_requirement_reasons(target)
-            raise Exception("Validation failed: " + "; ".join(reasons))
+        if outcome in ("inline_red_error", "validation_failed"):
+            raise Exception(f"Submission failed: {outcome_detail}")
 
-        human_wait(page, 2500, variance=0.2)
+        if outcome == "reverted":
+            print(f"[{job_id}] Submit reverted. Retrying...")
+            human_wait(page, 2000)
+            continue
+
+        # Timeout — final check before giving up on this attempt
         if _find_got_it_button(page, target) is not None:
+            print(f"[{job_id}] ✅ Done popup found after timeout — success.")
             _dismiss_success_confirmation(page, target, job_id)
             return
-        if _get_failed_requirement_reasons(target):
-            raise Exception("Validation failed: " + "; ".join(_get_failed_requirement_reasons(target)))
+        red_err = _get_inline_red_error(target, page)
+        if red_err:
+            raise Exception(f"Submission failed: {red_err}")
+        reasons = _get_failed_requirement_reasons(target)
+        if reasons:
+            raise Exception(f"Submission failed: {'; '.join(reasons)}")
 
     raise Exception(f"Submission did not complete after {max_retries} attempts.")
 
