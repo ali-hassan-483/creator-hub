@@ -181,22 +181,28 @@ def get_app_frame(page):
 
 def dismiss_onboarding_popups(page, job_id: str):
     """
-    Dismisses the 'Got it' welcome popup if present (up to 5s check).
+    Waits up to 40s for 'Got it' welcome popup as requested by user.
     """
-    print(f"[{job_id}] Checking for 'Got it' welcome popup (up to 5s)...")
+    print(f"[{job_id}] Waiting for 'Got it' welcome popup (up to 40s)...")
     start_time = time.time()
-    while time.time() - start_time < 5:
+    got_it_dismissed = False
+    while time.time() - start_time < 40:
         try:
-            btn = page.locator("button:has-text('Got it')").first
+            btn = page.locator("button:has-text('Got it'), button:has-text('Done')").first
             if btn.is_visible():
                 print(f"[{job_id}] 'Got it' welcome popup detected. Dismissing...")
                 btn.click()
-                human_wait(page, 800)
-                return
+                got_it_dismissed = True
+                human_wait(page, 1500)
+                break
         except Exception:
             pass
-        page.wait_for_timeout(400)
-    print(f"[{job_id}] No 'Got it' popup appeared — continuing.")
+        page.wait_for_timeout(600)
+
+    if got_it_dismissed:
+        print(f"[{job_id}] 'Got it' popup dismissed.")
+    else:
+        print(f"[{job_id}] No 'Got it' popup appeared within 40s — continuing.")
 
 
 def _clean_campaign_search_terms(campaign_name: str) -> list:
@@ -285,28 +291,44 @@ def _find_campaign_card_on_page(page, term: str, timeout: int = 3000):
     return None
 
 
-def _find_search_input(page):
+def _wait_for_search_input_ready(page, job_id: str, timeout: int = 40000):
     """
-    Finds the Content Rewards campaign search box at the bottom (Screenshots 1, 2, 3).
-    Strictly avoids the global Whop site navbar search input.
+    Explicitly waits up to 40s for Whop Content Rewards page to finish loading
+    and the search input bar to be mounted and ready (Screenshot 1 & 2).
     """
+    print(f"[{job_id}] Ensuring page and search bar are fully loaded (up to {timeout // 1000}s)...")
     selectors = [
-        "form input[type='text']",
-        "form input:not([type='hidden'])",
-        "input[aria-label='Search campaigns']",
         "input[placeholder*='favorite brands' i]",
         "input[placeholder*='platform and budget' i]",
+        "input[aria-label='Search campaigns']",
         "form.relative input",
+        "form input.min-w-0",
         "form input",
     ]
-    for sel in selectors:
+    start = time.time()
+    while time.time() - start < (timeout / 1000):
+        # Dismiss any lingering Got it / Done popup
         try:
-            loc = page.locator(sel).first
-            if loc.is_visible():
-                return loc
+            got_it = page.locator("button:has-text('Got it'), button:has-text('Done')").first
+            if got_it.is_visible():
+                print(f"[{job_id}] 'Got it' popup detected. Dismissing...")
+                got_it.click()
+                human_wait(page, 1000)
         except Exception:
             pass
 
+        for sel in selectors:
+            try:
+                loc = page.locator(sel).first
+                if loc.is_visible():
+                    print(f"[{job_id}] ✅ Page loaded! Search input is ready ({sel}).")
+                    return loc
+            except Exception:
+                continue
+
+        page.wait_for_timeout(800)
+
+    # Final attempt with direct wait_for
     for sel in selectors[:3]:
         try:
             loc = page.locator(sel).first
@@ -322,61 +344,62 @@ def _find_search_input(page):
 def _find_and_open_campaign(page, target, job_id: str, campaign_name: str, channel_link: str = ""):
     """
     Multi-strategy search & open for Whop campaign card (Screenshots 1 through 5).
-    1. Instant check: Is card already visible directly on screen?
-    2. Interactive search: Type in bottom search box & press Enter (Screenshots 1, 2, 3).
-    3. URL Query Fallback: Direct navigate to ?q=<term> (Screenshot 4).
-    4. Click card & wait for detail view (Screenshot 5).
+    1. Explicit wait for page & search bar to be fully loaded (up to 40s).
+    2. Check if card is already visible directly on screen.
+    3. Type into verified search bar & press Enter (Screenshots 1, 2, 3).
+    4. URL Query Fallback: Direct navigate to ?q=<term> (Screenshot 4).
+    5. Click card & wait for detail view (Screenshot 5).
     """
     terms = _clean_campaign_search_terms(campaign_name)
     best_term = terms[0]
     print(f"[{job_id}] Target campaign: '{campaign_name}' (Search terms: {terms})")
-    human_wait(page, 800)
+
+    # ── Step 1: Ensure page & search bar are fully loaded (up to 40s) ──
+    search_input = _wait_for_search_input_ready(page, job_id, timeout=40000)
+    human_wait(page, 1000)
 
     campaign_card = None
 
-    # ── Strategy 1: Is card already on screen right now? ──────────────
+    # ── Step 2: Is card already on screen right now? ───────────────────
     print(f"[{job_id}] Checking if campaign card is already visible on screen...")
     for term in terms:
-        campaign_card = _find_campaign_card_on_page(page, term, timeout=1200)
+        campaign_card = _find_campaign_card_on_page(page, term, timeout=1500)
         if campaign_card is not None:
             print(f"[{job_id}] ✅ Campaign '{term}' card is already visible on screen!")
             break
 
-    # ── Strategy 2: Type in Content Rewards search box (Screenshots 1, 2, 3) ──
-    if campaign_card is None:
-        print(f"[{job_id}] Locating Content Rewards search input at bottom...")
-        search_input = _find_search_input(page)
-        if search_input:
+    # ── Step 3: Type in Content Rewards search box (Screenshots 1, 2, 3) ──
+    if campaign_card is None and search_input is not None:
+        try:
+            print(f"[{job_id}] Typing '{best_term}' into search input...")
+            search_input.scroll_into_view_if_needed()
+            search_input.click(force=True)
+            human_wait(page, 200)
+            search_input.fill("")
+            human_wait(page, 150)
+            human_type(search_input, best_term)
+            human_wait(page, 300)
+            search_input.press("Enter")
+
+            # Also click search submit button if present (Screenshot 3)
             try:
-                print(f"[{job_id}] Typing '{best_term}' into search input...")
-                search_input.scroll_into_view_if_needed()
-                search_input.click(force=True)
-                human_wait(page, 150)
-                search_input.fill("")
-                human_wait(page, 100)
-                human_type(search_input, best_term)
-                human_wait(page, 200)
-                search_input.press("Enter")
+                s_btn = page.locator("button[aria-label='Search button'], form.relative button, form button").first
+                if s_btn.is_visible():
+                    s_btn.click()
+            except Exception:
+                pass
 
-                # Also click search submit button if present (Screenshot 3)
-                try:
-                    s_btn = page.locator("button[aria-label='Search button'], form.relative button, form button").first
-                    if s_btn.is_visible():
-                        s_btn.click()
-                except Exception:
-                    pass
+            human_wait(page, 2500)
 
-                human_wait(page, 2000)
+            for term in terms:
+                campaign_card = _find_campaign_card_on_page(page, term, timeout=5000)
+                if campaign_card is not None:
+                    print(f"[{job_id}] ✅ Found campaign card for '{term}' after search!")
+                    break
+        except Exception as se:
+            print(f"[{job_id}] Search typing note: {se}")
 
-                for term in terms:
-                    campaign_card = _find_campaign_card_on_page(page, term, timeout=4000)
-                    if campaign_card is not None:
-                        print(f"[{job_id}] ✅ Found campaign card for '{term}' after search!")
-                        break
-            except Exception as se:
-                print(f"[{job_id}] Search typing note: {se}")
-
-    # ── Strategy 3: Direct URL query ?q= (Screenshot 4) ───────────────
+    # ── Step 4: Direct URL query ?q= (Screenshot 4) ───────────────────
     if campaign_card is None:
         try:
             curr = page.url or ""
@@ -384,24 +407,24 @@ def _find_and_open_campaign(page, target, job_id: str, campaign_name: str, chann
             if base:
                 q_url = f"{base}/?q={urllib.parse.quote_plus(best_term)}"
                 print(f"[{job_id}] Navigating directly with search query: {q_url}...")
-                page.goto(q_url, wait_until="domcontentloaded", timeout=20000)
-                human_wait(page, 2500)
+                page.goto(q_url, wait_until="domcontentloaded", timeout=25000)
+                human_wait(page, 3000)
                 for term in terms:
-                    campaign_card = _find_campaign_card_on_page(page, term, timeout=4000)
+                    campaign_card = _find_campaign_card_on_page(page, term, timeout=5000)
                     if campaign_card is not None:
                         print(f"[{job_id}] ✅ Found campaign card via direct query URL for '{term}'!")
                         break
         except Exception as q_err:
             print(f"[{job_id}] Query URL navigation note: {q_err}")
 
-    # ── Strategy 4: Scroll down to reveal lazy-loaded cards ────────────
+    # ── Step 5: Scroll down to reveal lazy-loaded cards ────────────────
     if campaign_card is None:
         print(f"[{job_id}] Scrolling to find campaign card '{campaign_name}'...")
         for scroll_idx in range(4):
             page.mouse.wheel(0, 600)
             human_wait(page, 600)
             for term in terms:
-                campaign_card = _find_campaign_card_on_page(page, term, timeout=1200)
+                campaign_card = _find_campaign_card_on_page(page, term, timeout=1500)
                 if campaign_card is not None:
                     print(f"[{job_id}] ✅ Found campaign card after scrolling!")
                     break
