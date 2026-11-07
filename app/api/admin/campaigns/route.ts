@@ -76,7 +76,28 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireAdmin()
-    const adminId = session.user.id
+    let adminId = session.user.id
+
+    // Fallback: If session user ID is from an older DB session, resolve active admin by email
+    const existingUser = await prisma.user.findUnique({
+      where: { id: adminId },
+      select: { id: true },
+    })
+    if (!existingUser) {
+      const activeAdmin = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { email: session.user.email },
+            { role: 'admin' },
+          ],
+        },
+        select: { id: true },
+      })
+      if (activeAdmin) {
+        adminId = activeAdmin.id
+      }
+    }
+
     const body = await req.json()
     const data = createCampaignSchema.parse(body)
 
