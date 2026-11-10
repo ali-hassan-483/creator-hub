@@ -678,7 +678,7 @@ def build_ass(srt_entries, segments, keywords, out_path, on_screen_cfg=None, on_
 
     sc_clean = sub_color.rstrip("&")
     so_clean = sub_outline.rstrip("&")
-    # Calculate the absolute Y position for subtitle text (pixels from top)
+    # sub_pos_y: Y position in pixels from top (used with \pos tag)
     sub_pos_y = max(50, min(HEIGHT - 50, int(round(HEIGHT * (sub_pos_pct / 100.0)))))
     sub_pos_x = WIDTH // 2  # Horizontally centered
 
@@ -686,7 +686,7 @@ def build_ass(srt_entries, segments, keywords, out_path, on_screen_cfg=None, on_
 ScriptType: v4.00+
 PlayResX: {WIDTH}
 PlayResY: {HEIGHT}
-WrapStyle: 2
+WrapStyle: 1
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
@@ -695,9 +695,9 @@ Style: Default,{sub_font},{sub_size},{sc_clean},{sc_clean},{so_clean},&H80000000
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
-    # Use \pos(x,y)\q2 to pin each event to exact position (no wrapping, no stacking)
+    # \an2 = bottom-center alignment, \pos pins to exact position, \q1 = end-of-line wrap (single line preferred)
     body_lines = extra_events + [
-        f"Dialogue: 0,{fmt_ass_time(a)},{fmt_ass_time(b)},Default,,0,0,0,,{{\\pos({sub_pos_x},{sub_pos_y})\\q2}}{t}"
+        f"Dialogue: 0,{fmt_ass_time(a)},{fmt_ass_time(b)},Default,,0,0,0,,{{\\an2\\pos({sub_pos_x},{sub_pos_y})}}{t}"
         for a, b, t in events
     ]
     body = "\n".join(body_lines)
@@ -875,7 +875,11 @@ def render_clip(src, clip, srt_entries, out_dir, tmp, cfg, tighten=False):
     logo_cfg = cfg.get("logo") or {}
     raw_logo_file = logo_cfg.get("path")
     has_logo = raw_logo_file and Path(raw_logo_file).is_file()
+    if raw_logo_file and not Path(raw_logo_file).is_file():
+        print(f"  ⚠️ Logo path given but file NOT found: {raw_logo_file}")
     logo_file = prepare_logo_image(raw_logo_file, logo_cfg.get("style"), tmp) if has_logo else None
+    if logo_file:
+        print(f"  ✅ Logo prepared: {logo_file} (style={logo_cfg.get('style')})")
 
     try:
         if ass_path and has_logo:

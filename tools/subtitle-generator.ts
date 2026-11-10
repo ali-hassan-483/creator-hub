@@ -306,7 +306,7 @@ export function generateAssSubtitles(
 ScriptType: v4.00+
 PlayResX: ${canvasWidth}
 PlayResY: ${canvasHeight}
-WrapStyle: 2
+WrapStyle: 1
 ScaledBorderAndShadow: yes
 
 [V4+ Styles]
@@ -322,10 +322,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
   for (const segment of segments) {
     if (!segment.words || segment.words.length === 0) {
-      // No word-level timestamps — emit whole segment, pinned to exact position
+      // No word-level timestamps — emit whole segment, pinned with \an2 (bottom-center)
       const text = applyTextCase(segment.text, textCase)
       events.push(
-        `Dialogue: 0,${secondsToAssTime(segment.start)},${secondsToAssTime(segment.end)},Default,,0,0,0,,{\\pos(${posX},${posY})\\q2}${text}`
+        `Dialogue: 0,${secondsToAssTime(segment.start)},${secondsToAssTime(segment.end)},Default,,0,0,0,,{\\an2\\pos(${posX},${posY})}${text}`
       )
       continue
     }
@@ -349,7 +349,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         })
 
         events.push(
-          `Dialogue: 0,${secondsToAssTime(word.start)},${secondsToAssTime(word.end)},Default,,0,0,0,,{\\pos(${posX},${posY})\\q2}${lineWords.join(' ')}`
+          `Dialogue: 0,${secondsToAssTime(word.start)},${secondsToAssTime(word.end)},Default,,0,0,0,,{\\an2\\pos(${posX},${posY})}${lineWords.join(' ')}`
         )
       }
     }

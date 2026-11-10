@@ -177,14 +177,30 @@ async function executeSandboxRender(jobId: string, campaignId: string) {
     const assetsDir = getAssetsDir(campaignId)
     let logoPath: string | undefined = undefined
     if (cfg.logoOverlayUrl) {
+      console.log(`[SandboxRender] Logo URL found: ${cfg.logoOverlayUrl}`)
       try {
         const dl = await downloadLogoOverlay(cfg.logoOverlayUrl, assetsDir)
-        if (dl) logoPath = dl
-      } catch {}
+        if (dl) {
+          logoPath = dl
+          console.log(`[SandboxRender] ✅ Logo downloaded to: ${logoPath}`)
+        } else {
+          console.warn(`[SandboxRender] ⚠️ Logo download returned null`)
+        }
+      } catch (e: any) {
+        console.error(`[SandboxRender] ❌ Logo download error: ${e?.message}`)
+      }
+    } else {
+      console.log(`[SandboxRender] No logoOverlayUrl in campaign config`)
     }
     if (!logoPath && fs.existsSync(assetsDir)) {
       const existing = fs.readdirSync(assetsDir).filter(f => !f.startsWith('.') && !f.endsWith('.part'))
-      if (existing.length > 0) logoPath = path.join(assetsDir, existing[0])
+      if (existing.length > 0) {
+        logoPath = path.join(assetsDir, existing[0])
+        console.log(`[SandboxRender] Using cached logo: ${logoPath}`)
+      }
+    }
+    if (!logoPath) {
+      console.warn(`[SandboxRender] ⚠️ No logo found — clip will render without logo`)
     }
 
     const onScreenTextVal = metadata.onScreenText || (cfg.onScreenTextPool ? cfg.onScreenTextPool.split('\n')[0] : '')
