@@ -200,6 +200,16 @@ export function CampaignPreviewMockup({ formData }: CampaignPreviewMockupProps) 
     return base
   }
 
+  const getDisplayLogoUrl = (url?: string) => {
+    if (!url) return ''
+    const trimmed = url.trim()
+    const match = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || trimmed.match(/id=([a-zA-Z0-9_-]+)/)
+    if (match && match[1]) {
+      return `https://drive.google.com/thumbnail?id=${match[1]}&sz=w500`
+    }
+    return trimmed
+  }
+
   return (
     <div className="flex flex-col items-center select-none font-sans">
       {/* Header Bar */}
@@ -308,13 +318,13 @@ export function CampaignPreviewMockup({ formData }: CampaignPreviewMockupProps) 
             <div style={getLogoStyle()}>
               <div className={`relative group flex items-center justify-center ${
                 formData.logoStyle === 'white_card'
-                  ? 'bg-white px-2.5 py-1.5 rounded-lg shadow-xl'
+                  ? 'bg-white px-3 py-1.5 rounded-xl shadow-2xl'
                   : formData.logoStyle === 'dark_card'
-                  ? 'bg-black/85 px-2.5 py-1.5 rounded-lg border border-white/20 shadow-xl'
+                  ? 'bg-black/90 px-3 py-1.5 rounded-xl border border-white/20 shadow-2xl'
                   : ''
               }`}>
                 <img
-                  src={formData.logoOverlayUrl}
+                  src={getDisplayLogoUrl(formData.logoOverlayUrl)}
                   alt="Logo Overlay"
                   style={formData.logoStyle === 'invert' ? { filter: 'invert(1) brightness(2)' } : undefined}
                   className="w-full h-auto max-h-12 object-contain drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]"
@@ -326,9 +336,13 @@ export function CampaignPreviewMockup({ formData }: CampaignPreviewMockupProps) 
                     if (fallback) fallback.style.display = 'flex'
                   }}
                 />
-                <div className="hidden px-2 py-1 bg-black/80 rounded border border-white/20 items-center gap-1 text-[9px] font-bold text-white shadow-lg">
-                  <ImageIcon size={10} className="text-primary" />
-                  <span className="truncate">LOGO</span>
+                <div className={`hidden px-2.5 py-1 rounded-md items-center gap-1.5 text-[10px] font-bold shadow-lg ${
+                  formData.logoStyle === 'white_card'
+                    ? 'bg-white text-black border border-neutral-200'
+                    : 'bg-black/85 text-white border border-white/20'
+                }`}>
+                  <ImageIcon size={11} className={formData.logoStyle === 'white_card' ? 'text-neutral-900' : 'text-primary'} />
+                  <span className="truncate">BRAND LOGO</span>
                 </div>
               </div>
             </div>

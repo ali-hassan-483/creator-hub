@@ -307,23 +307,68 @@ def calc_logo_overlay_xy(pos_str, height_pct=None):
     return x, y
 
 
+def prepare_logo_image(logo_path, style, tmp_dir):
+    """Process logo image: bake in a solid white card badge or invert colors."""
+    if not logo_path or not Path(logo_path).is_file():
+        return None
+    style = str(style or "").lower()
+    if not style or style in ("transparent", "none"):
+        return str(logo_path)
+
+    out_path = Path(tmp_dir) / "styled_logo.png"
+    try:
+        from PIL import Image, ImageDraw, ImageOps
+        im = Image.open(logo_path).convert("RGBA")
+        w, h = im.size
+
+        if "invert" in style:
+            # Invert RGB while preserving transparency alpha
+            r, g, b, a = im.split()
+            rgb = Image.merge("RGB", (r, g, b))
+            inv_rgb = ImageOps.invert(rgb)
+            inv_r, inv_g, inv_b = inv_rgb.split()
+            out_im = Image.merge("RGBA", (inv_r, inv_g, inv_b, a))
+            out_im.save(out_path, format="PNG")
+            return str(out_path)
+
+        elif "white" in style:
+            # Solid white rounded pill badge behind the logo (so dark video background never shows through inside)
+            pad_x = max(28, int(round(w * 0.14)))
+            pad_y = max(18, int(round(h * 0.18)))
+            card_w = w + pad_x * 2
+            card_h = h + pad_y * 2
+            radius = max(8, int(round(card_h * 0.22)))
+
+            card = Image.new("RGBA", (card_w, card_h), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(card)
+            draw.rounded_rectangle([0, 0, card_w - 1, card_h - 1], radius=radius, fill=(255, 255, 255, 255))
+            card.alpha_composite(im, dest=(pad_x, pad_y))
+            card.save(out_path, format="PNG")
+            return str(out_path)
+
+        elif "dark" in style or "black" in style:
+            pad_x = max(28, int(round(w * 0.14)))
+            pad_y = max(18, int(round(h * 0.18)))
+            card_w = w + pad_x * 2
+            card_h = h + pad_y * 2
+            radius = max(8, int(round(card_h * 0.22)))
+
+            card = Image.new("RGBA", (card_w, card_h), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(card)
+            draw.rounded_rectangle([0, 0, card_w - 1, card_h - 1], radius=radius, fill=(15, 23, 42, 230))
+            card.alpha_composite(im, dest=(pad_x, pad_y))
+            card.save(out_path, format="PNG")
+            return str(out_path)
+    except Exception as e:
+        print(f"  [LogoProcessor] Note: {e}, using original logo")
+        return str(logo_path)
+
+    return str(logo_path)
+
+
 def build_logo_filter(logo_cfg, logo_w):
-    """Build FFMPEG filter chain for logo: scale, optional invert or background badge."""
-    style = str(logo_cfg.get("style", "") or logo_cfg.get("bg_style", "")).lower()
-    scale = f"[1:v]scale={logo_w}:-1"
-    if "invert" in style:
-        # Invert black artwork into crisp white while preserving transparent alpha
-        return f"{scale},negate[logo]"
-    elif "white" in style:
-        # Crisp white background card/badge with padding (ideal for black logos on dark video)
-        pad_px = max(16, int(round(logo_w * 0.08)))
-        return f"{scale},pad=iw+{pad_px*2}:ih+{pad_px*2}:{pad_px}:{pad_px}:color=white[logo]"
-    elif "dark" in style or "black" in style:
-        # Dark card badge with padding
-        pad_px = max(16, int(round(logo_w * 0.08)))
-        return f"{scale},pad=iw+{pad_px*2}:ih+{pad_px*2}:{pad_px}:{pad_px}:color=black@0.8[logo]"
-    else:
-        return f"{scale}[logo]"
+    """Build FFMPEG filter chain for logo."""
+    return f"[1:v]scale={logo_w}:-1[logo]"
 
 
 # --------------------------------------------------------------------------
@@ -823,8 +868,9 @@ def render_clip(src, clip, srt_entries, out_dir, tmp, cfg, tighten=False):
 
     # Logo overlay
     logo_cfg = cfg.get("logo") or {}
-    logo_file = logo_cfg.get("path")
-    has_logo = logo_file and Path(logo_file).is_file()
+    raw_logo_file = logo_cfg.get("path")
+    has_logo = raw_logo_file and Path(raw_logo_file).is_file()
+    logo_file = prepare_logo_image(raw_logo_file, logo_cfg.get("style"), tmp) if has_logo else None
 
     try:
         if ass_path and has_logo:
