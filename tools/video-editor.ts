@@ -14,10 +14,70 @@
 
 import * as fs from 'fs'
 import * as path from 'path'
-import { exec } from 'child_process'
+import { exec, execFileSync } from 'child_process'
 import { promisify } from 'util'
+import * as os from 'os'
 
 const execAsync = promisify(exec)
+
+/**
+ * Process logo using Python PIL (same as story_recut_editor.py).
+ * Returns path to processed logo (or original if PIL unavailable).
+ */
+function prepareLogoWithPython(logoPath: string, style: string, tmpDir: string): string {
+  if (!style || style === 'transparent' || style === 'none') return logoPath
+  const outPath = path.join(tmpDir, `styled_logo_ve_${Date.now()}.png`)
+  const script = `
+import sys
+try:
+    from PIL import Image, ImageDraw, ImageOps
+    im = Image.open(sys.argv[1]).convert("RGBA")
+    w, h = im.size
+    style = sys.argv[2].lower()
+    out = sys.argv[3]
+    if "invert" in style:
+        r,g,b,a = im.split()
+        inv = ImageOps.invert(Image.merge("RGB",(r,g,b)))
+        ir,ig,ib = inv.split()
+        Image.merge("RGBA",(ir,ig,ib,a)).save(out,"PNG")
+    elif "white" in style:
+        px=max(28,int(round(w*0.14))); py=max(18,int(round(h*0.18)))
+        cw=w+px*2; ch=h+py*2; r=max(8,int(round(ch*0.22)))
+        card=Image.new("RGBA",(cw,ch),(0,0,0,0))
+        from PIL import ImageDraw as ID2
+        ID2.Draw(card).rounded_rectangle([0,0,cw-1,ch-1],radius=r,fill=(255,255,255,255))
+        card.alpha_composite(im,dest=(px,py))
+        card.save(out,"PNG")
+    elif "dark" in style or "black" in style:
+        px=max(28,int(round(w*0.14))); py=max(18,int(round(h*0.18)))
+        cw=w+px*2; ch=h+py*2; r=max(8,int(round(ch*0.22)))
+        card=Image.new("RGBA",(cw,ch),(0,0,0,0))
+        from PIL import ImageDraw as ID2
+        ID2.Draw(card).rounded_rectangle([0,0,cw-1,ch-1],radius=r,fill=(15,23,42,230))
+        card.alpha_composite(im,dest=(px,py))
+        card.save(out,"PNG")
+    else:
+        im.save(out,"PNG")
+    print("OK")
+except Exception as e:
+    print("ERR:"+str(e), file=sys.stderr)
+    sys.exit(1)
+`
+  const scriptPath = path.join(tmpDir, `_logo_prep_${Date.now()}.py`)
+  try {
+    fs.mkdirSync(tmpDir, { recursive: true })
+    fs.writeFileSync(scriptPath, script)
+    execFileSync('python3', [scriptPath, logoPath, style, outPath], { timeout: 15000 })
+    if (fs.existsSync(outPath) && fs.statSync(outPath).size > 100) {
+      return outPath
+    }
+  } catch (e: any) {
+    console.warn(`[VideoEditor] PIL logo prep failed (${e?.message}), using original`)
+  } finally {
+    try { fs.unlinkSync(scriptPath) } catch {}
+  }
+  return logoPath
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -354,7 +414,15 @@ export async function editVideoClip(options: VideoEditOptions): Promise<{ succes
 
   if (hookPath && fs.existsSync(hookPath)) inputs.push(`-i "${hookPath}"`)
   if (ctaPath && fs.existsSync(ctaPath)) inputs.push(`-i "${ctaPath}"`)
-  if (logoPath && fs.existsSync(logoPath)) inputs.push(`-i "${logoPath}"`)
+
+  // Pre-process logo using Python PIL (white/dark card, invert) before ffmpeg
+  let processedLogoPath = logoPath
+  if (logoPath && fs.existsSync(logoPath) && logoStyle && logoStyle !== 'transparent') {
+    const tmpLogoDir = path.join(path.dirname(outputPath), '_logo_tmp')
+    processedLogoPath = prepareLogoWithPython(logoPath, logoStyle, tmpLogoDir)
+  }
+
+  if (processedLogoPath && fs.existsSync(processedLogoPath)) inputs.push(`-i "${processedLogoPath}"`)
 
   const mainIdx = 0
   const logoIdx = inputs.length - 1
@@ -375,20 +443,10 @@ export async function editVideoClip(options: VideoEditOptions): Promise<{ succes
 
   // 4. Logo overlay
   let lastStream = 'composed'
-  if (logoPath && fs.existsSync(logoPath)) {
+  if (processedLogoPath && fs.existsSync(processedLogoPath)) {
     const logoW = Math.round(canvasWidth * (overlayWidth || 15) / 100)
-    let logoScaleFilter = `[${logoIdx}:v]scale=${logoW}:-1`
-    const style = (logoStyle || '').toLowerCase()
-    if (style.includes('invert')) {
-      logoScaleFilter += `,negate`
-    } else if (style.includes('white')) {
-      const padPx = Math.max(16, Math.round(logoW * 0.08))
-      logoScaleFilter += `,pad=iw+${padPx * 2}:ih+${padPx * 2}:${padPx}:${padPx}:color=white`
-    } else if (style.includes('dark') || style.includes('black')) {
-      const padPx = Math.max(16, Math.round(logoW * 0.08))
-      logoScaleFilter += `,pad=iw+${padPx * 2}:ih+${padPx * 2}:${padPx}:${padPx}:color=black@0.8`
-    }
-    logoScaleFilter += `[logo]`
+    // PIL has already baked in the white/dark card — just scale, no style filter needed
+    const logoScaleFilter = `[${logoIdx}:v]scale=${logoW}:-1[logo]`
     filterParts.push(logoScaleFilter)
     const xyStr = overlayPositionToXY(overlayPosition || 'top_right', canvasWidth, canvasHeight, logoW, overlayHeightPercent)
     filterParts.push(`[${lastStream}][logo]overlay=${xyStr}[with_logo]`)
