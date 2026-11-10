@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip3 install --no-cache-dir --break-system-packages -U yt-dlp && \
     pip3 install --no-cache-dir --break-system-packages torch --extra-index-url https://download.pytorch.org/whl/cpu && \
     pip3 install --no-cache-dir --break-system-packages openai-whisper && \
-    pip3 install --no-cache-dir --break-system-packages playwright requests && \
+    pip3 install --no-cache-dir --break-system-packages playwright requests pillow && \
     playwright install --with-deps chromium
 
 COPY package.json ./

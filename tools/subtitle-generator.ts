@@ -298,11 +298,15 @@ export function generateAssSubtitles(
     cleanFont = 'Dela Gothic One'
   }
 
+  // posX, posY: absolute pixel position for subtitle text (pinned with \pos tag)
+  const posX = Math.round(canvasWidth / 2)
+  const posY = Math.max(50, Math.round(canvasHeight * (Math.min(95, Math.max(5, placementHeight)) / 100)))
+
   const header = `[Script Info]
 ScriptType: v4.00+
 PlayResX: ${canvasWidth}
 PlayResY: ${canvasHeight}
-Collisions: Normal
+WrapStyle: 2
 ScaledBorderAndShadow: yes
 
 [V4+ Styles]
@@ -318,10 +322,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
   for (const segment of segments) {
     if (!segment.words || segment.words.length === 0) {
-      // No word-level timestamps — emit whole segment
+      // No word-level timestamps — emit whole segment, pinned to exact position
       const text = applyTextCase(segment.text, textCase)
       events.push(
-        `Dialogue: 0,${secondsToAssTime(segment.start)},${secondsToAssTime(segment.end)},Default,,0,0,0,,${text}`
+        `Dialogue: 0,${secondsToAssTime(segment.start)},${secondsToAssTime(segment.end)},Default,,0,0,0,,{\\pos(${posX},${posY})\\q2}${text}`
       )
       continue
     }
@@ -345,7 +349,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         })
 
         events.push(
-          `Dialogue: 0,${secondsToAssTime(word.start)},${secondsToAssTime(word.end)},Default,,0,0,0,,${lineWords.join(' ')}`
+          `Dialogue: 0,${secondsToAssTime(word.start)},${secondsToAssTime(word.end)},Default,,0,0,0,,{\\pos(${posX},${posY})\\q2}${lineWords.join(' ')}`
         )
       }
     }

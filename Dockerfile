@@ -17,7 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install latest yt-dlp & OpenAI Whisper (CPU-only PyTorch ~180MB, avoids 4.5GB of useless CUDA GPU bloat)
 RUN pip3 install --no-cache-dir --break-system-packages -U yt-dlp && \
     pip3 install --no-cache-dir --break-system-packages torch --extra-index-url https://download.pytorch.org/whl/cpu && \
-    pip3 install --no-cache-dir --break-system-packages openai-whisper
+    pip3 install --no-cache-dir --break-system-packages openai-whisper && \
+    pip3 install --no-cache-dir --break-system-packages pillow
 
 COPY package.json ./
 RUN npm install
