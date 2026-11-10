@@ -268,6 +268,7 @@ export async function maintainCampaignClipPool(
         position: cfg.overlayPosition || 'Bottom Center',
         width_percent: Number(cfg.overlayWidthPercent) || 40,
         height_percent: cfg.overlayHeightPercent !== undefined && cfg.overlayHeightPercent !== '' ? Number(cfg.overlayHeightPercent) : undefined,
+        style: cfg.logoStyle || cfg.logoBgStyle || 'transparent',
       } : undefined,
       onScreenConfig: {
         font: cfg.onScreenFontName || 'Arial',

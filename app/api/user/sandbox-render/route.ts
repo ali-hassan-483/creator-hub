@@ -78,7 +78,25 @@ async function executeSandboxRender(jobId: string, campaignId: string) {
       throw new Error('No source video files found for this campaign. Please ensure source URLs are valid or video clips are uploaded.')
     }
 
-    const sourceVideo = sourceVideos[0]
+    let sourceVideo = sourceVideos[0]
+
+    // Verify source video has audio stream; if missing from previous silent download, auto re-download with audio mux
+    try {
+      const { checkHasAudioStream } = await import('@/tools/drive-downloader')
+      const hasAudio = await checkHasAudioStream(sourceVideo)
+      if (!hasAudio && (cfg.sourceVideoUrls || cfg.driveYoutubeUrls)) {
+        update('rendering', 'Audio missing in cached video. Re-downloading with audio stream...')
+        try { fs.unlinkSync(sourceVideo) } catch {}
+        await runCampaignSetup(campaignId, {
+          ...cfg,
+          campaignName: campaign.name,
+          niche: cfg.niche || 'general',
+        })
+        sourceVideos = getExistingSourceVideos(campaignId)
+        if (sourceVideos.length > 0) sourceVideo = sourceVideos[0]
+      }
+    } catch {}
+
     update('rendering', 'Inspecting video dimensions & duration...')
     let videoDuration = 0
     try {
@@ -188,6 +206,7 @@ async function executeSandboxRender(jobId: string, campaignId: string) {
           position: cfg.overlayPosition || 'Bottom Center',
           width_percent: Number(cfg.overlayWidthPercent) || 40,
           height_percent: cfg.overlayHeightPercent !== undefined && cfg.overlayHeightPercent !== '' ? Number(cfg.overlayHeightPercent) : undefined,
+          style: cfg.logoStyle || cfg.logoBgStyle || 'transparent',
         } : undefined,
         onScreenConfig: {
           text: onScreenTextVal,

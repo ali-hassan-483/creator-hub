@@ -85,6 +85,21 @@ function getDriveClient(accessToken?: string) {
   return null
 }
 
+/**
+ * Check if a media file contains an active audio stream using ffprobe
+ */
+export async function checkHasAudioStream(filePath: string): Promise<boolean> {
+  if (!filePath || !fs.existsSync(filePath)) return false
+  try {
+    const { stdout } = await execAsync(
+      `ffprobe -v error -select_streams a:0 -show_entries stream=codec_type -of default=noprint_wrappers=1:nokey=1 "${filePath}"`
+    )
+    return stdout.trim().includes('audio')
+  } catch {
+    return false
+  }
+}
+
 export interface HttpDownloadResult {
   success: boolean
   contentType?: string
@@ -194,7 +209,8 @@ export async function downloadDriveFile(options: DriveDownloadOptions): Promise<
       : `https://drive.google.com/file/d/${fileId}/view`
 
     const outTemplate = path.join(outputDir, `${baseName}.%(ext)s`)
-    const cmd = `"${ytDlp}" "${driveUrl}" -o "${outTemplate}" --no-playlist --no-part --no-update`
+    // Specify bestvideo+bestaudio and merge-output-format mp4 so yt-dlp never drops audio streams
+    const cmd = `"${ytDlp}" "${driveUrl}" -o "${outTemplate}" --format "bestvideo+bestaudio/best" --merge-output-format mp4 --no-playlist --no-part --no-update`
     console.log(`[Drive-Downloader] Attempting yt-dlp download: ${cmd}`)
 
     await execAsync(cmd, { timeout: 600000, maxBuffer: 10 * 1024 * 1024 })
@@ -202,8 +218,37 @@ export async function downloadDriveFile(options: DriveDownloadOptions): Promise<
     const files = fs.readdirSync(outputDir).filter(f => f.startsWith(baseName) && !f.endsWith('.part'))
     if (files.length > 0) {
       const downloadedPath = path.join(outputDir, files[0])
-      console.log(`[Drive-Downloader] ✅ Downloaded via yt-dlp: ${downloadedPath}`)
-      return { success: true, filePath: downloadedPath, filename: files[0] }
+      const hasAudio = await checkHasAudioStream(downloadedPath)
+      if (hasAudio) {
+        console.log(`[Drive-Downloader] ✅ Downloaded via yt-dlp with audio: ${downloadedPath}`)
+        return { success: true, filePath: downloadedPath, filename: files[0] }
+      }
+
+      console.warn(`[Drive-Downloader] ⚠️ yt-dlp file ${downloadedPath} is missing an audio stream. Trying audio track fetch & mux...`)
+      try {
+        const audioTemplate = path.join(outputDir, `${baseName}_audio.%(ext)s`)
+        await execAsync(`"${ytDlp}" "${driveUrl}" -f "bestaudio/best" -o "${audioTemplate}" --no-playlist --no-part --no-update`, { timeout: 300000 })
+        const audioFiles = fs.readdirSync(outputDir).filter(f => f.startsWith(`${baseName}_audio`) && !f.endsWith('.part'))
+        if (audioFiles.length > 0) {
+          const audioPath = path.join(outputDir, audioFiles[0])
+          const muxedPath = path.join(outputDir, `${baseName}_muxed.mp4`)
+          await execAsync(`ffmpeg -y -i "${downloadedPath}" -i "${audioPath}" -c:v copy -c:a aac -b:a 192k -shortest "${muxedPath}"`)
+          if (fs.existsSync(muxedPath) && (await checkHasAudioStream(muxedPath))) {
+            try { fs.unlinkSync(downloadedPath) } catch {}
+            try { fs.unlinkSync(audioPath) } catch {}
+            const finalPath = path.join(outputDir, `${baseName}.mp4`)
+            fs.renameSync(muxedPath, finalPath)
+            console.log(`[Drive-Downloader] ✅ Successfully muxed video + audio: ${finalPath}`)
+            return { success: true, filePath: finalPath, filename: path.basename(finalPath) }
+          }
+        }
+      } catch (muxErr: any) {
+        console.warn(`[Drive-Downloader] Audio fetch fallback note: ${muxErr.message}`)
+      }
+
+      // If still no audio from yt-dlp, delete the silent file and fall back to direct Drive download
+      console.warn(`[Drive-Downloader] Deleting silent yt-dlp file to fall back to direct Drive download...`)
+      try { fs.unlinkSync(downloadedPath) } catch {}
     }
   } catch (ytErr: any) {
     console.warn(`[Drive-Downloader] yt-dlp download attempt note: ${ytErr?.message || ytErr}`)
@@ -273,6 +318,22 @@ export async function downloadDriveFile(options: DriveDownloadOptions): Promise<
   } catch (httpErr: any) {
     console.warn(`[Drive-Downloader] Direct HTTP download failed: ${httpErr.message}`)
   }
+
+  // ── Strategy 4: curl with cookie jar for large files ─────────────────────
+  try {
+    const cookieJar = path.join(outputDir, `cookie_${Date.now()}.txt`)
+    const tempCurl = path.join(outputDir, `${baseName}_curl.mp4`)
+    const curlCmd = `curl -c "${cookieJar}" -s -L "https://drive.google.com/uc?export=download&id=${fileId}" > /dev/null && curl -b "${cookieJar}" -L "https://drive.google.com/uc?export=download&confirm=t&id=${fileId}" -o "${tempCurl}"`
+    await execAsync(curlCmd, { timeout: 600000 })
+    try { fs.unlinkSync(cookieJar) } catch {}
+    if (fs.existsSync(tempCurl) && fs.statSync(tempCurl).size > 1024 * 50) {
+      const finalPath = path.join(outputDir, `${baseName}.mp4`)
+      try { fs.unlinkSync(finalPath) } catch {}
+      fs.renameSync(tempCurl, finalPath)
+      console.log(`[Drive-Downloader] ✅ Saved via curl cookie export: ${finalPath}`)
+      return { success: true, filePath: finalPath, filename: path.basename(finalPath) }
+    }
+  } catch {}
 
   return {
     success: false,

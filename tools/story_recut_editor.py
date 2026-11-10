@@ -307,6 +307,25 @@ def calc_logo_overlay_xy(pos_str, height_pct=None):
     return x, y
 
 
+def build_logo_filter(logo_cfg, logo_w):
+    """Build FFMPEG filter chain for logo: scale, optional invert or background badge."""
+    style = str(logo_cfg.get("style", "") or logo_cfg.get("bg_style", "")).lower()
+    scale = f"[1:v]scale={logo_w}:-1"
+    if "invert" in style:
+        # Invert black artwork into crisp white while preserving transparent alpha
+        return f"{scale},negate[logo]"
+    elif "white" in style:
+        # Crisp white background card/badge with padding (ideal for black logos on dark video)
+        pad_px = max(16, int(round(logo_w * 0.08)))
+        return f"{scale},pad=iw+{pad_px*2}:ih+{pad_px*2}:{pad_px}:{pad_px}:color=white[logo]"
+    elif "dark" in style or "black" in style:
+        # Dark card badge with padding
+        pad_px = max(16, int(round(logo_w * 0.08)))
+        return f"{scale},pad=iw+{pad_px*2}:ih+{pad_px*2}:{pad_px}:{pad_px}:color=black@0.8[logo]"
+    else:
+        return f"{scale}[logo]"
+
+
 # --------------------------------------------------------------------------
 # SRT -> re-timed, keyword-highlighted ASS for ONE clip
 # --------------------------------------------------------------------------
@@ -714,12 +733,13 @@ def render_segment(src, seg, out_path, aspect_ratio="9:16", bg_color="black"):
 
     preset = os.environ.get("FFMPEG_PRESET", "ultrafast")
     crf = os.environ.get("FFMPEG_CRF", "22")
-    # -ss before -i for fast keyframe seek, -t after -i for exact duration cut
+    # -ss before -i for fast keyframe seek, -t after -i for exact duration cut, -avoid_negative_ts make_zero for audio sync
     run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
          "-ss", f"{start:.3f}", "-i", str(src), "-t", f"{dur:.3f}",
          "-vf", vf,
          "-c:v", "libx264", "-preset", preset, "-crf", crf, "-threads", "0",
          "-c:a", "aac", "-b:a", "128k", "-ar", "48000",
+         "-avoid_negative_ts", "make_zero",
          str(out_path)])
     return dur
 
@@ -811,10 +831,11 @@ def render_clip(src, clip, srt_entries, out_dir, tmp, cfg, tighten=False):
             ass_esc = str(ass_path).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
             logo_w = max(20, min(1000, int(round(WIDTH * (float(logo_cfg.get("width_percent", 40)) / 100)))))
             lx, ly = calc_logo_overlay_xy(logo_cfg.get("position", "Bottom Center"), logo_cfg.get("height_percent"))
+            logo_f = build_logo_filter(logo_cfg, logo_w)
             run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
                  "-i", str(joined),
                  "-i", str(logo_file),
-                 "-filter_complex", f"[1:v]scale={logo_w}:-1[logo];[0:v]ass='{ass_esc}'[v_ass];[v_ass][logo]overlay={lx}:{ly}[final_v]",
+                 "-filter_complex", f"{logo_f};[0:v]ass='{ass_esc}'[v_ass];[v_ass][logo]overlay={lx}:{ly}[final_v]",
                  "-map", "[final_v]",
                  "-c:v", "libx264", "-preset", preset, "-crf", crf, "-threads", "0",
                  "-map", "0:a?", "-c:a", "copy",
@@ -825,15 +846,16 @@ def render_clip(src, clip, srt_entries, out_dir, tmp, cfg, tighten=False):
                  "-i", str(joined),
                  "-vf", f"ass='{ass_esc}'",
                  "-c:v", "libx264", "-preset", preset, "-crf", crf, "-threads", "0",
-                 "-c:a", "copy",
+                 "-map", "0:v", "-map", "0:a?", "-c:a", "copy",
                  str(final)])
         elif has_logo:
             logo_w = max(20, min(1000, int(round(WIDTH * (float(logo_cfg.get("width_percent", 40)) / 100)))))
             lx, ly = calc_logo_overlay_xy(logo_cfg.get("position", "Bottom Center"), logo_cfg.get("height_percent"))
+            logo_f = build_logo_filter(logo_cfg, logo_w)
             run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
                  "-i", str(joined),
                  "-i", str(logo_file),
-                 "-filter_complex", f"[1:v]scale={logo_w}:-1[logo];[0:v][logo]overlay={lx}:{ly}[final_v]",
+                 "-filter_complex", f"{logo_f};[0:v][logo]overlay={lx}:{ly}[final_v]",
                  "-map", "[final_v]",
                  "-c:v", "libx264", "-preset", preset, "-crf", crf, "-threads", "0",
                  "-map", "0:a?", "-c:a", "copy",

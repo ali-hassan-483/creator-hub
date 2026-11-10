@@ -60,6 +60,7 @@ export interface VideoEditOptions {
   
   // Logo overlay
   logoPath?: string           // local path to logo image
+  logoStyle?: string          // 'transparent' | 'white_card' | 'invert' | 'dark_card'
   overlayPosition?: string    // 'Top Left' | 'top_left' | 'Bottom Center' | etc.
   overlayWidth?: number       // % of canvas width (e.g. 15 or 60)
   overlayHeightPercent?: number // % from top to bottom (0-100)
@@ -328,6 +329,7 @@ export async function editVideoClip(options: VideoEditOptions): Promise<{ succes
     cornerStyles,
     volumeMultiplier,
     logoPath,
+    logoStyle,
     overlayPosition,
     overlayWidth,
     overlayHeightPercent,
@@ -375,7 +377,18 @@ export async function editVideoClip(options: VideoEditOptions): Promise<{ succes
   let lastStream = 'composed'
   if (logoPath && fs.existsSync(logoPath)) {
     const logoW = Math.round(canvasWidth * (overlayWidth || 15) / 100)
-    const logoScaleFilter = `[${logoIdx}:v]scale=${logoW}:-1[logo]`
+    let logoScaleFilter = `[${logoIdx}:v]scale=${logoW}:-1`
+    const style = (logoStyle || '').toLowerCase()
+    if (style.includes('invert')) {
+      logoScaleFilter += `,negate`
+    } else if (style.includes('white')) {
+      const padPx = Math.max(16, Math.round(logoW * 0.08))
+      logoScaleFilter += `,pad=iw+${padPx * 2}:ih+${padPx * 2}:${padPx}:${padPx}:color=white`
+    } else if (style.includes('dark') || style.includes('black')) {
+      const padPx = Math.max(16, Math.round(logoW * 0.08))
+      logoScaleFilter += `,pad=iw+${padPx * 2}:ih+${padPx * 2}:${padPx}:${padPx}:color=black@0.8`
+    }
+    logoScaleFilter += `[logo]`
     filterParts.push(logoScaleFilter)
     const xyStr = overlayPositionToXY(overlayPosition || 'top_right', canvasWidth, canvasHeight, logoW, overlayHeightPercent)
     filterParts.push(`[${lastStream}][logo]overlay=${xyStr}[with_logo]`)

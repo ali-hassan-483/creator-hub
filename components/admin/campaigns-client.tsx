@@ -116,6 +116,7 @@ const defaultFormState = {
 
   // Visual Overlay (Logo)
   logoOverlayUrl: '',
+  logoStyle: 'transparent',
   overlayPosition: 'Bottom Center',
   overlayWidthPercent: 60,
   overlayHeightPercent: 50,
@@ -559,6 +560,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
       useOnlyPredefinedDesc: formData.useOnlyPredefinedDesc,
       linksInDescription: formData.linksInDescription.trim(),
       logoOverlayUrl: formData.logoOverlayUrl.trim(),
+      logoStyle: formData.logoStyle || 'transparent',
       overlayPosition: formData.overlayPosition,
       overlayWidthPercent: Number(formData.overlayWidthPercent) || 60,
       overlayHeightPercent: Number(formData.overlayHeightPercent) || 50,
@@ -711,6 +713,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
       onScreenStyledWordsColor: cfg.onScreenStyledWordsColor || 'yellow',
       useSameForSpeakingWordHighlight: cfg.useSameForSpeakingWordHighlight ?? false,
       logoOverlayUrl: cfg.logoOverlayUrl || '',
+      logoStyle: cfg.logoStyle || cfg.logoBgStyle || 'transparent',
       overlayPosition: cfg.overlayPosition || 'Bottom Center',
       overlayWidthPercent: cfg.overlayWidthPercent ?? 60,
       overlayHeightPercent: cfg.overlayHeightPercent ?? 50,
@@ -1887,7 +1890,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
                   <div>
                     <label className="block text-xs font-medium text-foreground mb-1">Overlay Position</label>
                     <select
@@ -1904,6 +1907,20 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                       <option value="Bottom Left">Bottom Left</option>
                       <option value="Bottom Center">Bottom Center</option>
                       <option value="Bottom Right">Bottom Right</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Logo Card / Style</label>
+                    <select
+                      value={formData.logoStyle}
+                      onChange={(e) => setFormData({ ...formData, logoStyle: e.target.value })}
+                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring font-medium"
+                    >
+                      <option value="transparent">Transparent (As-Is)</option>
+                      <option value="white_card">White Card Badge (For Black Logo)</option>
+                      <option value="invert">Invert Color (Black → White)</option>
+                      <option value="dark_card">Dark Card Badge (For White Logo)</option>
                     </select>
                   </div>
 

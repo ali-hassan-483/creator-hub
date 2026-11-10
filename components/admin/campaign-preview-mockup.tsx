@@ -22,6 +22,7 @@ export interface CampaignPreviewMockupProps {
     tightenSilence?: boolean
     audioNotes?: string
     logoOverlayUrl?: string
+    logoStyle?: string
     overlayPosition?: string
     overlayWidthPercent?: number | string
     overlayHeightPercent?: number | string
@@ -305,10 +306,17 @@ export function CampaignPreviewMockup({ formData }: CampaignPreviewMockupProps) 
           {/* LOGO OVERLAY */}
           {formData.logoOverlayUrl ? (
             <div style={getLogoStyle()}>
-              <div className="relative group">
+              <div className={`relative group flex items-center justify-center ${
+                formData.logoStyle === 'white_card'
+                  ? 'bg-white px-2.5 py-1.5 rounded-lg shadow-xl'
+                  : formData.logoStyle === 'dark_card'
+                  ? 'bg-black/85 px-2.5 py-1.5 rounded-lg border border-white/20 shadow-xl'
+                  : ''
+              }`}>
                 <img
                   src={formData.logoOverlayUrl}
                   alt="Logo Overlay"
+                  style={formData.logoStyle === 'invert' ? { filter: 'invert(1) brightness(2)' } : undefined}
                   className="w-full h-auto max-h-12 object-contain drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]"
                   onError={(e) => {
                     // Fallback to stylized logo badge if external image fails to load in preview

@@ -39,6 +39,7 @@ export interface StoryRecutLogoConfig {
   position?: string
   width_percent?: number
   height_percent?: number
+  style?: string // 'transparent' | 'white_card' | 'invert' | 'dark_card'
 }
 
 export interface StoryRecutOnScreenTextConfig {
