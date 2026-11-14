@@ -69,6 +69,7 @@ services:
       GEMINI_API_KEYS: ${GEMINI_API_KEYS:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
+      PRISMA_OPENSSL_VERSION: "3.0.x"
       NODE_OPTIONS: "--max-old-space-size=4096 --dns-result-order=ipv4first"
     depends_on:
       postgres:
@@ -101,6 +102,7 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://redis:6379
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      PRISMA_OPENSSL_VERSION: "3.0.x"
       NODE_OPTIONS: "--dns-result-order=ipv4first"
     depends_on:
       postgres:
@@ -137,6 +139,7 @@ services:
       GEMINI_API_KEYS: ${GEMINI_API_KEYS:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
+      PRISMA_OPENSSL_VERSION: "3.0.x"
       NODE_OPTIONS: "--dns-result-order=ipv4first"
     depends_on:
       redis:
@@ -167,6 +170,7 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://redis:6379
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      PRISMA_OPENSSL_VERSION: "3.0.x"
       NODE_OPTIONS: "--dns-result-order=ipv4first"
     depends_on:
       redis:
@@ -201,6 +205,7 @@ services:
       GEMINI_API_KEYS: ${GEMINI_API_KEYS:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
+      PRISMA_OPENSSL_VERSION: "3.0.x"
       NODE_OPTIONS: "--dns-result-order=ipv4first"
     depends_on:
       redis:
