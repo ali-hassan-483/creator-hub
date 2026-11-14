@@ -175,9 +175,9 @@ export async function fetchChannelLatestVideos(
       videoIdExt: v.id,
       title: v.snippet?.title || 'Untitled',
       publishedAt: v.snippet?.publishedAt || new Date().toISOString(),
-      viewCount: parseInt(v.statistics?.viewCount || '0', 10),
-      likeCount: parseInt(v.statistics?.likeCount || '0', 10),
-      commentCount: parseInt(v.statistics?.commentCount || '0', 10),
+      viewCount: Math.max(0, parseInt(v.statistics?.viewCount || '0', 10) || 0),
+      likeCount: Math.max(0, parseInt(v.statistics?.likeCount || '0', 10) || 0),
+      commentCount: Math.max(0, parseInt(v.statistics?.commentCount || '0', 10) || 0),
       thumbnail: v.snippet?.thumbnails?.medium?.url || v.snippet?.thumbnails?.default?.url,
     }))
 
@@ -214,16 +214,31 @@ export async function syncUserYouTubeAnalytics(userId: string) {
   let channelSuccessCount = 0
 
   for (const ch of channels) {
-    const clientId = ch.clientId || ''
-    const clientSecret = decryptIfPresent(ch.clientSecretEnc) || ''
-    const refreshToken = decryptIfPresent(ch.refreshTokenEnc) || ''
+    let clientId = ch.clientId || ''
+    let clientSecret = ''
+    let refreshToken = ''
+
+    try {
+      clientSecret = decryptIfPresent(ch.clientSecretEnc) || ''
+      refreshToken = decryptIfPresent(ch.refreshTokenEnc) || ''
+    } catch (e: any) {
+      console.warn(`[YouTube Analytics] Decrypt failed for channel "${ch.channelName || ch.id}":`, e.message)
+      continue
+    }
 
     if (!clientId || !clientSecret || !refreshToken) {
+      console.log(`[YouTube Analytics] Skipping channel "${ch.channelName || ch.id}" (missing OAuth credentials)`)
       continue
     }
 
     const res = await fetchChannelLatestVideos(clientId, clientSecret, refreshToken, ch.channelIdExt)
-    if (!res.success || res.videos.length === 0) {
+    if (!res.success) {
+      console.warn(`[YouTube Analytics] Channel "${ch.channelName || ch.id}" fetch error:`, res.error)
+      continue
+    }
+
+    if (res.videos.length === 0) {
+      console.log(`[YouTube Analytics] Channel "${ch.channelName || ch.id}" returned 0 videos.`)
       continue
     }
 
@@ -247,6 +262,8 @@ export async function syncUserYouTubeAnalytics(userId: string) {
         thumbnail: v.thumbnail,
       }
 
+      const safeViews = BigInt(Math.max(0, Math.floor(v.viewCount || 0)))
+
       await prisma.videoAnalytic.upsert({
         where: {
           channelId_videoIdExt: {
@@ -259,14 +276,14 @@ export async function syncUserYouTubeAnalytics(userId: string) {
           videoIdExt: v.videoIdExt,
           title: v.title,
           publishedAt: new Date(v.publishedAt),
-          viewCount: BigInt(v.viewCount),
+          viewCount: safeViews,
           lastFetchedAt: new Date(),
           extraData: updatedExtra,
         },
         update: {
           title: v.title,
           publishedAt: new Date(v.publishedAt),
-          viewCount: BigInt(v.viewCount),
+          viewCount: safeViews,
           lastFetchedAt: new Date(),
           extraData: updatedExtra,
         },
@@ -285,9 +302,10 @@ export async function syncUserYouTubeAnalytics(userId: string) {
   const videoCampaignMap = new Map<string, string>()
 
   for (const auto of userAutomations) {
-    const opts = (auto.options as any) || {}
-    const whopList = (opts.mockWhopSubmissions || []) as any[]
+    const opts = (auto.options && typeof auto.options === 'object') ? (auto.options as any) : {}
+    const whopList = Array.isArray(opts.mockWhopSubmissions) ? opts.mockWhopSubmissions : []
     for (const item of whopList) {
+      if (!item || typeof item !== 'object') continue
       const vidId = extractVidId(item.youtubeLink)
       if (vidId) {
         if (item.status === 'submitted') {
@@ -298,8 +316,9 @@ export async function syncUserYouTubeAnalytics(userId: string) {
         }
       }
     }
-    const videoUploads = (opts.mockVideoUploads || []) as any[]
+    const videoUploads = Array.isArray(opts.mockVideoUploads) ? opts.mockVideoUploads : []
     for (const up of videoUploads) {
+      if (!up || typeof up !== 'object') continue
       const vidId = extractVidId(up.youtubeLink)
       if (vidId && auto.campaignId) {
         videoCampaignMap.set(vidId, auto.campaignId)

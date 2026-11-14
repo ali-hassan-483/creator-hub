@@ -86,6 +86,16 @@ services:
     dns:
       - 8.8.8.8
       - 1.1.1.1
+    env_file:
+      - .env
+    volumes:
+      - ./storage:/app/storage
+      - ./tools:/app/tools
+      - ./workers:/app/workers
+      - ./lib:/app/lib
+      - ./scripts:/app/scripts
+      - ./components:/app/components
+      - ./app:/app/app
     command: npm run worker:analytics
     environment:
       DATABASE_URL: ${DATABASE_URL}
@@ -93,6 +103,8 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       NODE_OPTIONS: "--dns-result-order=ipv4first"
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
 
@@ -140,6 +152,16 @@ services:
     dns:
       - 8.8.8.8
       - 1.1.1.1
+    env_file:
+      - .env
+    volumes:
+      - ./storage:/app/storage
+      - ./tools:/app/tools
+      - ./workers:/app/workers
+      - ./lib:/app/lib
+      - ./scripts:/app/scripts
+      - ./components:/app/components
+      - ./app:/app/app
     command: npm run worker:scheduler
     environment:
       DATABASE_URL: ${DATABASE_URL}

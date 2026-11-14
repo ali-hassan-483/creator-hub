@@ -5,7 +5,7 @@
  * Automatically updates live views, likes, and comments in the VideoAnalytic table.
  * Automatically promotes videos crossing minimum views with verified Whop submissions to Pending Tasks.
  */
-import { Worker } from 'bullmq'
+import { Queue, Worker } from 'bullmq'
 import { redis } from '../lib/redis'
 import { runAllUsersAnalyticsSync, syncUserYouTubeAnalytics } from '../lib/youtube-analytics'
 
@@ -13,11 +13,19 @@ const SIX_HOURS_MS = 6 * 60 * 60 * 1000
 
 console.log('📊 [Analytics Worker] Started — scheduled for automatic 6-hour refresh cycles.')
 
+process.on('unhandledRejection', (reason) => {
+  console.error('📊 [Analytics Worker] Unhandled Rejection caught:', reason)
+})
+
+process.on('uncaughtException', (err) => {
+  console.error('📊 [Analytics Worker] Uncaught Exception caught:', err)
+})
+
 let isSyncRunning = false
 
 async function triggerSyncSafely(source = 'timer') {
   if (isSyncRunning) {
-    console.log(`📊 [Analytics Worker] Sync already in progress, skipping trigger from ${source}.`)
+    console.log(`📊 [Analytics Worker] Sync already in progress, skipping trigger from: ${source}`)
     return
   }
   isSyncRunning = true
@@ -39,13 +47,37 @@ setTimeout(() => {
   triggerSyncSafely('worker-startup')
 }, 15000)
 
-// 2. Exact 6-hour recurring interval timer
+// 2. Exact 6-hour recurring interval timer (in-memory fallback)
 setInterval(() => {
-  console.log('📊 [Analytics Worker] 6-hour interval reached. Triggering automatic refresh...')
-  triggerSyncSafely('6h-interval')
+  console.log('📊 [Analytics Worker] 6-hour interval timer reached. Triggering refresh...')
+  triggerSyncSafely('6h-interval-timer')
 }, SIX_HOURS_MS)
 
-// 3. Also consume on-demand jobs from BullMQ 'analytics' queue (manual triggers from UI)
+// 3. Persistent BullMQ Queue & Worker (Redis-backed so schedule survives restarts)
+const analyticsQueue = new Queue('analytics', { connection: redis })
+
+async function registerRepeatableSchedule() {
+  try {
+    await analyticsQueue.add(
+      'auto-6h-sync',
+      { source: 'bullmq-recurring-6h' },
+      {
+        repeat: {
+          every: SIX_HOURS_MS,
+        },
+        jobId: 'analytics-repeatable-6h',
+        removeOnComplete: true,
+        removeOnFail: true,
+      }
+    )
+    console.log('📊 [Analytics Worker] Persistent 6-hour repeat schedule confirmed in Redis.')
+  } catch (err: any) {
+    console.warn('📊 [Analytics Worker] BullMQ repeat registration note:', err?.message || err)
+  }
+}
+
+registerRepeatableSchedule()
+
 const worker = new Worker(
   'analytics',
   async (job) => {
@@ -54,7 +86,7 @@ const worker = new Worker(
       const res = await syncUserYouTubeAnalytics(job.data.userId)
       console.log(`📊 [Analytics Worker] Synced user ${job.data.userId}: ${res.totalUpdatedVideos} videos updated, ${res.promotedCount} promoted.`)
     } else {
-      await triggerSyncSafely(`bullmq-job-${job.id}`)
+      await triggerSyncSafely(job.data?.source || `bullmq-job-${job.id}`)
     }
   },
   { connection: redis, concurrency: 1 }

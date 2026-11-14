@@ -37,5 +37,10 @@ export function encryptIfPresent(value: string | null | undefined): string | nul
 
 export function decryptIfPresent(value: string | null | undefined): string | null {
   if (!value) return null
-  return decrypt(value)
+  try {
+    return decrypt(value)
+  } catch {
+    // If decryption fails (e.g. key mismatch or unencrypted raw token), return raw value
+    return value
+  }
 }
