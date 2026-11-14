@@ -301,6 +301,7 @@ export async function syncUserYouTubeAnalytics(userId: string) {
   })
 
   const submittedVideoIds = new Set<string>()
+  const submittedTitles = new Set<string>()
   const videoCampaignMap = new Map<string, string>()
 
   for (const auto of allAutomations) {
@@ -310,14 +311,20 @@ export async function syncUserYouTubeAnalytics(userId: string) {
       if (!item || typeof item !== 'object') continue
       const rawUrl = item.youtubeLink || item.youtubeVideoId || item.videoId || item.url || item.link
       const vidId = extractVidId(rawUrl)
+      const itemStatus = String(item.status || '').toLowerCase()
+      // Accept any Whop entry that has not explicitly failed (e.g. submitted, pending, queued, success, completed)
+      const isValidWhop = itemStatus !== 'failed'
+
       if (vidId) {
-        const itemStatus = String(item.status || '').toLowerCase()
-        if (itemStatus === 'submitted' || itemStatus === 'completed' || itemStatus === 'success') {
+        if (isValidWhop) {
           submittedVideoIds.add(vidId)
         }
         if (auto.campaignId) {
           videoCampaignMap.set(vidId, auto.campaignId)
         }
+      }
+      if (item.videoTitle && isValidWhop) {
+        submittedTitles.add(String(item.videoTitle).trim().toLowerCase())
       }
     }
     const videoUploads = Array.isArray(opts.mockVideoUploads) ? opts.mockVideoUploads : []
@@ -325,8 +332,16 @@ export async function syncUserYouTubeAnalytics(userId: string) {
       if (!up || typeof up !== 'object') continue
       const rawUploadUrl = up.youtubeLink || up.youtubeVideoId || up.videoId || up.url
       const vidId = extractVidId(rawUploadUrl)
-      if (vidId && auto.campaignId) {
-        videoCampaignMap.set(vidId, auto.campaignId)
+      if (vidId) {
+        if (auto.campaignId) {
+          videoCampaignMap.set(vidId, auto.campaignId)
+        }
+        if (up.whopSubmitted === true || up.whopStatus === 'submitted' || up.stage === 'Whop Submitted') {
+          submittedVideoIds.add(vidId)
+        }
+      }
+      if (up.videoTitle && (up.whopSubmitted === true || up.whopStatus === 'submitted' || up.stage === 'Whop Submitted')) {
+        submittedTitles.add(String(up.videoTitle).trim().toLowerCase())
       }
     }
   }
@@ -349,11 +364,24 @@ export async function syncUserYouTubeAnalytics(userId: string) {
     const views = Number(vid.viewCount || 0)
     const extra = (vid.extraData as any) || {}
 
-    const campaignId = extra.campaignId || videoCampaignMap.get(vid.videoIdExt) || defaultCampaign?.id
-    if (!campaignId) continue
+    // Ensure campaign exists in DB to prevent foreign key violations
+    let validCampaign =
+      (extra.campaignId && campaignMap.get(extra.campaignId))
+        ? campaignMap.get(extra.campaignId)
+        : (videoCampaignMap.get(vid.videoIdExt) && campaignMap.get(videoCampaignMap.get(vid.videoIdExt)!))
+        ? campaignMap.get(videoCampaignMap.get(vid.videoIdExt)!)
+        : defaultCampaign
 
-    const campaign = campaignMap.get(campaignId) || defaultCampaign
-    const threshold = campaign?.minViews || 10000
+    if (!validCampaign && allCampaigns.length > 0) {
+      validCampaign = allCampaigns[0]
+    }
+    if (!validCampaign) {
+      console.warn(`[Promotion Check] Skipping video ${vid.videoIdExt} - no valid campaign found in DB`)
+      continue
+    }
+
+    const campaignId = validCampaign.id
+    const threshold = validCampaign.minViews || 10000
 
     // CONDITION 1: Minimum views crossed
     const isThresholdCrossed = views >= threshold
@@ -362,7 +390,9 @@ export async function syncUserYouTubeAnalytics(userId: string) {
     const isWhopSubmitted =
       extra.whopSubmitted === true ||
       submittedVideoIds.has(vid.videoIdExt) ||
-      String(extra.whopStatus || '').toLowerCase() === 'submitted'
+      (vid.title && submittedTitles.has(vid.title.trim().toLowerCase())) ||
+      String(extra.whopStatus || '').toLowerCase() === 'submitted' ||
+      String(extra.whopStatus || '').toLowerCase() === 'pending'
 
     console.log(`📊 [Promotion Check] User ${userId} | Video ${vid.videoIdExt} ("${vid.title}"): ${views}/${threshold} views, whopSubmitted=${isWhopSubmitted}`)
 
@@ -370,33 +400,36 @@ export async function syncUserYouTubeAnalytics(userId: string) {
       const existingTask = await prisma.pendingTask.findFirst({
         where: {
           userId,
-          channelId: vid.channelId,
           videoIdExt: vid.videoIdExt,
         },
       })
 
       if (!existingTask) {
-        await prisma.pendingTask.create({
-          data: {
-            userId,
-            campaignId,
-            channelId: vid.channelId,
-            videoId: vid.id,
-            videoIdExt: vid.videoIdExt,
-            viewCountAtTrigger: vid.viewCount,
-            status: 'pending',
-            notes: `Auto-promoted by Analytics: ${views.toLocaleString()} views crossed ${threshold.toLocaleString()} min views & Whop submission verified.`,
-            requirementsData: {
-              thresholdMet: threshold,
-              actualViews: views,
-              actualLikes: Number(extra.likes || 0),
-              whopSubmitted: true,
-              promotedAt: new Date().toISOString(),
+        try {
+          await prisma.pendingTask.create({
+            data: {
+              userId,
+              campaignId,
+              channelId: vid.channelId,
+              videoId: vid.id,
+              videoIdExt: vid.videoIdExt,
+              viewCountAtTrigger: vid.viewCount,
+              status: 'pending',
+              notes: `Auto-promoted by Analytics: ${views.toLocaleString()} views crossed ${threshold.toLocaleString()} min views & Whop submission verified.`,
+              requirementsData: {
+                thresholdMet: threshold,
+                actualViews: views,
+                actualLikes: Number(extra.likes || 0),
+                whopSubmitted: true,
+                promotedAt: new Date().toISOString(),
+              },
             },
-          },
-        })
-        promotedCount++
-        console.log(`📊 [Promotion Check] ✅ PROMOTED Video ${vid.videoIdExt} to Pending Tasks!`)
+          })
+          promotedCount++
+          console.log(`📊 [Promotion Check] ✅ PROMOTED Video ${vid.videoIdExt} ("${vid.title}") to Pending Tasks!`)
+        } catch (createErr: any) {
+          console.error(`📊 [Promotion Check] ❌ Failed to create pending task for ${vid.videoIdExt}:`, createErr.message)
+        }
       }
     }
   }
