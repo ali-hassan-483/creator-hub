@@ -304,6 +304,7 @@ function formatAutomationRow(auto: any) {
 export async function GET(req: NextRequest) {
   const session = await requireAuth()
   const userId = session.user.id
+  const isAdmin = (session.user as any)?.role === 'admin'
 
   const { searchParams } = new URL(req.url)
   const singleId = searchParams.get('id')
@@ -312,7 +313,7 @@ export async function GET(req: NextRequest) {
     // 1. Single automation fetch for real-time live modal polling
     if (singleId) {
       const auto = await prisma.automation.findFirst({
-        where: { id: singleId, userId },
+        where: isAdmin ? { id: singleId } : { id: singleId, userId },
         include: {
           campaign: { select: { id: true, name: true } },
           channels: {
@@ -338,14 +339,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, row: formatAutomationRow(auto) })
     }
 
-    // 2. Paginated list fetch
+    // 2. Paginated list fetch (Admins see all runs, users see their own)
     const page = parseInt(searchParams.get('page') || '1', 10)
     const limit = parseInt(searchParams.get('limit') || '20', 10)
     const skip = (page - 1) * limit
+    const filterWhere = isAdmin ? {} : { userId }
 
     const [automations, total] = await Promise.all([
       prisma.automation.findMany({
-        where: { userId },
+        where: filterWhere,
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
@@ -366,7 +368,7 @@ export async function GET(req: NextRequest) {
           },
         },
       }),
-      prisma.automation.count({ where: { userId } }),
+      prisma.automation.count({ where: filterWhere }),
     ])
 
     const rows = automations.map(formatAutomationRow)

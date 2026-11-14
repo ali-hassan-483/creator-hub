@@ -292,16 +292,16 @@ export async function syncUserYouTubeAnalytics(userId: string) {
     }
   }
 
-  // 2. Map submitted Whop videos and linked campaigns across user automations
-  const userAutomations = await prisma.automation.findMany({
-    where: { userId },
+  // 2. Map submitted Whop videos and linked campaigns across all automations
+  // (Ensures videos submitted via Admin or scheduled runs are correctly recognized)
+  const allAutomations = await prisma.automation.findMany({
     select: { id: true, campaignId: true, options: true },
   })
 
   const submittedVideoIds = new Set<string>()
   const videoCampaignMap = new Map<string, string>()
 
-  for (const auto of userAutomations) {
+  for (const auto of allAutomations) {
     const opts = (auto.options && typeof auto.options === 'object') ? (auto.options as any) : {}
     const whopList = Array.isArray(opts.mockWhopSubmissions) ? opts.mockWhopSubmissions : []
     for (const item of whopList) {
@@ -327,16 +327,9 @@ export async function syncUserYouTubeAnalytics(userId: string) {
   }
 
   // 3. Check for Pending Tasks Promotion with the 2 STRICT CONDITIONS
-  const campaigns = await prisma.campaign.findMany({
-    where: {
-      OR: [
-        { userAccess: { some: { userId } } },
-        { automations: { some: { userId } } },
-      ],
-    },
-  })
-  const campaignMap = new Map(campaigns.map((c) => [c.id, c]))
-  const defaultCampaign = campaigns[0]
+  const allCampaigns = await prisma.campaign.findMany()
+  const campaignMap = new Map(allCampaigns.map((c) => [c.id, c]))
+  const defaultCampaign = allCampaigns[0]
 
   const allUserVideos = await prisma.videoAnalytic.findMany({
     where: {
