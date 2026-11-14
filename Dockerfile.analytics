@@ -1,0 +1,18 @@
+FROM node:20-slim
+WORKDIR /app
+
+# Install system dependencies + OpenSSL for Prisma
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssl \
+    libssl3 \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY package.json ./
+RUN npm install
+COPY . .
+
+RUN npx prisma generate
+
+CMD ["npm", "run", "worker:analytics"]

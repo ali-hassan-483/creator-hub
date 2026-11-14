@@ -82,7 +82,7 @@ services:
     container_name: cap_worker_analytics
     build:
       context: .
-      dockerfile: Dockerfile.worker
+      dockerfile: Dockerfile.analytics
     restart: unless-stopped
     dns:
       - 8.8.8.8
