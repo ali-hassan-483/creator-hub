@@ -10,7 +10,13 @@ export default async function UserDashboardPage() {
     prisma.channel.count({ where: { userId, removedAt: null } }),
     prisma.automation.count({ where: { userId, status: 'running' } }),
     prisma.scheduledAutomation.count({ where: { userId, status: 'active' } }),
-    prisma.pendingTask.count({ where: { userId, status: { in: ['pending', 'requirements_completed', 'ready_for_review'] } } }),
+    prisma.pendingTask.count({
+      where: {
+        userId,
+        status: { in: ['pending', 'requirements_completed', 'ready_for_review'] },
+        campaign: { status: { not: 'ended' } },
+      },
+    }),
     prisma.earning.aggregate({
       _sum: { amount: true },
       where: { userId, status: { in: ['confirmed', 'paid'] } },

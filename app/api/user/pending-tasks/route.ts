@@ -17,9 +17,41 @@ export async function GET(req: NextRequest) {
   const stage = searchParams.get('stage') || 'all'
 
   try {
-    // 1. Fetch campaigns accessible to the user
+    // Reconcile/clean up Alliance campaign and any tasks erroneously mapped to PopDarts
+    try {
+      const allianceCampaign = await prisma.campaign.findFirst({
+        where: { name: { contains: 'Alliance', mode: 'insensitive' } },
+      })
+      if (allianceCampaign) {
+        if (allianceCampaign.status !== 'ended') {
+          await prisma.campaign.update({
+            where: { id: allianceCampaign.id },
+            data: { status: 'ended' },
+          })
+        }
+        // If any AI / Cybersecurity videos were assigned to PopDarts, reassign to Alliance
+        await prisma.pendingTask.updateMany({
+          where: {
+            OR: [
+              { video: { title: { contains: 'AI', mode: 'insensitive' } } },
+              { video: { title: { contains: 'Cybersecurity', mode: 'insensitive' } } },
+              { video: { title: { contains: 'Outsmart', mode: 'insensitive' } } },
+            ],
+            campaign: { name: { contains: 'PopDarts', mode: 'insensitive' } },
+          },
+          data: {
+            campaignId: allianceCampaign.id,
+          },
+        })
+      }
+    } catch (e: any) {
+      console.warn('[PendingTasks] Alliance reconciliation warning:', e.message)
+    }
+
+    // 1. Fetch campaigns accessible to the user (excluding ended campaigns)
     const campaigns = await prisma.campaign.findMany({
       where: {
+        status: { not: 'ended' },
         OR: [
           { userAccess: { some: { userId } } },
           { automations: { some: { userId } } },
@@ -32,8 +64,13 @@ export async function GET(req: NextRequest) {
       },
     })
 
-    // 2. Build where filter for tasks
-    const whereClause: any = { userId }
+    // 2. Build where filter for tasks - NEVER SHOW ENDED CAMPAIGNS
+    const whereClause: any = {
+      userId,
+      campaign: {
+        status: { not: 'ended' },
+      },
+    }
     if (campaignId !== 'all') {
       whereClause.campaignId = campaignId
     }

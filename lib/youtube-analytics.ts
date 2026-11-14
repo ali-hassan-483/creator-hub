@@ -364,20 +364,41 @@ export async function syncUserYouTubeAnalytics(userId: string) {
     const views = Number(vid.viewCount || 0)
     const extra = (vid.extraData as any) || {}
 
-    // Ensure campaign exists in DB to prevent foreign key violations
-    let validCampaign =
-      (extra.campaignId && campaignMap.get(extra.campaignId))
-        ? campaignMap.get(extra.campaignId)
-        : (videoCampaignMap.get(vid.videoIdExt) && campaignMap.get(videoCampaignMap.get(vid.videoIdExt)!))
-        ? campaignMap.get(videoCampaignMap.get(vid.videoIdExt)!)
-        : defaultCampaign
+    // Ensure campaign exists in DB and is active
+    const targetCampaignId = extra.campaignId || videoCampaignMap.get(vid.videoIdExt)
+    const validCampaign = targetCampaignId ? campaignMap.get(targetCampaignId) : null
 
-    if (!validCampaign && allCampaigns.length > 0) {
-      validCampaign = allCampaigns[0]
-    }
-    if (!validCampaign) {
-      console.warn(`[Promotion Check] Skipping video ${vid.videoIdExt} - no valid campaign found in DB`)
+    // Check if an existing task was already recorded
+    const existingTask = await prisma.pendingTask.findFirst({
+      where: {
+        userId,
+        videoIdExt: vid.videoIdExt,
+      },
+    })
+
+    // If campaign has ended, DO NOT promote to Pending Tasks, and fix any mismatched campaignId
+    if (validCampaign?.status === 'ended') {
+      if (existingTask && existingTask.campaignId !== validCampaign.id) {
+        await prisma.pendingTask.update({
+          where: { id: existingTask.id },
+          data: { campaignId: validCampaign.id },
+        })
+      }
+      console.log(`📊 [Promotion Check] Skipping video ${vid.videoIdExt} - campaign "${validCampaign.name}" has ended.`)
       continue
+    }
+
+    if (!validCampaign) {
+      console.log(`📊 [Promotion Check] Skipping video ${vid.videoIdExt} - no valid active campaign associated.`)
+      continue
+    }
+
+    // Fix campaignId on existing task if it was erroneously linked to the wrong campaign
+    if (existingTask && existingTask.campaignId !== validCampaign.id) {
+      await prisma.pendingTask.update({
+        where: { id: existingTask.id },
+        data: { campaignId: validCampaign.id },
+      })
     }
 
     const campaignId = validCampaign.id
@@ -397,13 +418,6 @@ export async function syncUserYouTubeAnalytics(userId: string) {
     console.log(`📊 [Promotion Check] User ${userId} | Video ${vid.videoIdExt} ("${vid.title}"): ${views}/${threshold} views, whopSubmitted=${isWhopSubmitted}`)
 
     if (isThresholdCrossed && isWhopSubmitted) {
-      const existingTask = await prisma.pendingTask.findFirst({
-        where: {
-          userId,
-          videoIdExt: vid.videoIdExt,
-        },
-      })
-
       if (!existingTask) {
         try {
           await prisma.pendingTask.create({
