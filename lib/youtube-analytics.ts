@@ -20,7 +20,9 @@ export interface FetchChannelStatsResult {
 
 export function extractVidId(url: string | null | undefined): string | null {
   if (!url) return null
-  const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|(?:embed|v|shorts)\/))([\w-]{11})/)
+  const trimmed = String(url).trim()
+  if (/^[\w-]{11}$/.test(trimmed)) return trimmed
+  const m = trimmed.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|(?:embed|v|shorts)\/))([\w-]{11})/)
   return m ? m[1] : null
 }
 
@@ -306,9 +308,11 @@ export async function syncUserYouTubeAnalytics(userId: string) {
     const whopList = Array.isArray(opts.mockWhopSubmissions) ? opts.mockWhopSubmissions : []
     for (const item of whopList) {
       if (!item || typeof item !== 'object') continue
-      const vidId = extractVidId(item.youtubeLink)
+      const rawUrl = item.youtubeLink || item.youtubeVideoId || item.videoId || item.url || item.link
+      const vidId = extractVidId(rawUrl)
       if (vidId) {
-        if (item.status === 'submitted') {
+        const itemStatus = String(item.status || '').toLowerCase()
+        if (itemStatus === 'submitted' || itemStatus === 'completed' || itemStatus === 'success') {
           submittedVideoIds.add(vidId)
         }
         if (auto.campaignId) {
@@ -319,7 +323,8 @@ export async function syncUserYouTubeAnalytics(userId: string) {
     const videoUploads = Array.isArray(opts.mockVideoUploads) ? opts.mockVideoUploads : []
     for (const up of videoUploads) {
       if (!up || typeof up !== 'object') continue
-      const vidId = extractVidId(up.youtubeLink)
+      const rawUploadUrl = up.youtubeLink || up.youtubeVideoId || up.videoId || up.url
+      const vidId = extractVidId(rawUploadUrl)
       if (vidId && auto.campaignId) {
         videoCampaignMap.set(vidId, auto.campaignId)
       }
@@ -354,7 +359,12 @@ export async function syncUserYouTubeAnalytics(userId: string) {
     const isThresholdCrossed = views >= threshold
 
     // CONDITION 2: Whop submission verified
-    const isWhopSubmitted = extra.whopSubmitted === true || submittedVideoIds.has(vid.videoIdExt)
+    const isWhopSubmitted =
+      extra.whopSubmitted === true ||
+      submittedVideoIds.has(vid.videoIdExt) ||
+      String(extra.whopStatus || '').toLowerCase() === 'submitted'
+
+    console.log(`📊 [Promotion Check] User ${userId} | Video ${vid.videoIdExt} ("${vid.title}"): ${views}/${threshold} views, whopSubmitted=${isWhopSubmitted}`)
 
     if (isThresholdCrossed && isWhopSubmitted) {
       const existingTask = await prisma.pendingTask.findFirst({
@@ -386,6 +396,7 @@ export async function syncUserYouTubeAnalytics(userId: string) {
           },
         })
         promotedCount++
+        console.log(`📊 [Promotion Check] ✅ PROMOTED Video ${vid.videoIdExt} to Pending Tasks!`)
       }
     }
   }
