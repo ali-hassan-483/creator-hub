@@ -122,7 +122,17 @@ export async function GET(req: NextRequest) {
       },
     })
 
-    const formattedTasks = tasks.map((t) => {
+    const formattedTasks = tasks
+      .filter((t) => {
+        // Guard: Never show ended campaign tasks or AI/Alliance videos under PopDarts
+        const campName = t.campaign?.name?.toLowerCase() || ''
+        const vidTitle = t.video?.title?.toLowerCase() || ''
+        if (campName.includes('popdarts') && (vidTitle.includes('ai') || vidTitle.includes('cyber') || vidTitle.includes('superintelligence') || vidTitle.includes('outsmart') || vidTitle.includes('rogue'))) {
+          return false
+        }
+        return true
+      })
+      .map((t) => {
       // Map TaskStatus to Stage Label
       let stageLabel = 'Eligible for Review'
       if (t.status === 'pending') {
