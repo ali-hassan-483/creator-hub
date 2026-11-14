@@ -96,7 +96,7 @@ services:
       - ./scripts:/app/scripts
       - ./components:/app/components
       - ./app:/app/app
-    command: npm run worker:analytics
+    command: sh -c "npx prisma generate && npm run worker:analytics"
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://redis:6379
@@ -128,7 +128,7 @@ services:
       - ./scripts:/app/scripts
       - ./components:/app/components
       - ./app:/app/app
-    command: npm run worker:automation
+    command: sh -c "npx prisma generate && npm run worker:automation"
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://redis:6379
@@ -162,7 +162,7 @@ services:
       - ./scripts:/app/scripts
       - ./components:/app/components
       - ./app:/app/app
-    command: npm run worker:scheduler
+    command: sh -c "npx prisma generate && npm run worker:scheduler"
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://redis:6379
@@ -192,7 +192,7 @@ services:
       - ./scripts:/app/scripts
       - ./components:/app/components
       - ./app:/app/app
-    command: npm run worker:editor
+    command: sh -c "npx prisma generate && npm run worker:editor"
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://redis:6379
