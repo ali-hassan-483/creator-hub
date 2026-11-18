@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { MultiSelectDropdown } from './multi-select-dropdown'
 import {
   Tv, Plus, Search, FileText, Upload, Copy,
   Check, ExternalLink, Trash2, Edit3, ArrowUpRight,
@@ -41,9 +42,9 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
   const [channels, setChannels] = useState<ChannelItem[]>(initialChannels)
   const [stats, setStats] = useState(initialStats)
   const [search, setSearch] = useState('')
-  const [nicheFilter, setNicheFilter] = useState<string>('all')
-  const [emailFilter, setEmailFilter] = useState<string>('all')
-  const [whopEmailFilter, setWhopEmailFilter] = useState<string>('all')
+  const [selectedNiches, setSelectedNiches] = useState<string[]>([])
+  const [selectedEmails, setSelectedEmails] = useState<string[]>([])
+  const [selectedWhopEmails, setSelectedWhopEmails] = useState<string[]>([])
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table')
 
@@ -273,9 +274,9 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
       (c.niche && c.niche.toLowerCase().includes(q)) ||
       (c.channelEmail && c.channelEmail.toLowerCase().includes(q))
 
-    const matchesNiche = nicheFilter === 'all' || c.niche === nicheFilter
-    const matchesEmail = emailFilter === 'all' || c.channelEmail === emailFilter
-    const matchesWhopEmail = whopEmailFilter === 'all' || c.whopEmail === whopEmailFilter
+    const matchesNiche = selectedNiches.length === 0 || (c.niche && selectedNiches.includes(c.niche))
+    const matchesEmail = selectedEmails.length === 0 || (c.channelEmail && selectedEmails.includes(c.channelEmail))
+    const matchesWhopEmail = selectedWhopEmails.length === 0 || (c.whopEmail && selectedWhopEmails.includes(c.whopEmail))
 
     const matchesStatus =
       statusFilter === 'all'
@@ -590,56 +591,32 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
       {/* Filter and Action Bar */}
       <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-3">
         <div className="flex flex-wrap items-center gap-3 text-sm">
-          {/* Niche Filter */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-[var(--text-muted)] whitespace-nowrap">Niche:</span>
-            <select
-              value={nicheFilter}
-              onChange={(e) => setNicheFilter(e.target.value)}
-              className="px-3 py-1.5 rounded-xl neu-pressed text-xs font-semibold text-[var(--text-primary)] focus:outline-none"
-            >
-              <option value="all">All Niches</option>
-              {uniqueNiches.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Niche Multi-Select */}
+          <MultiSelectDropdown
+            label="Niche"
+            placeholder="All Niches"
+            options={uniqueNiches}
+            selected={selectedNiches}
+            onChange={setSelectedNiches}
+          />
 
-          {/* Email Filter */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-[var(--text-muted)] whitespace-nowrap">Email:</span>
-            <select
-              value={emailFilter}
-              onChange={(e) => setEmailFilter(e.target.value)}
-              className="px-3 py-1.5 rounded-xl neu-pressed text-xs font-semibold text-[var(--text-primary)] focus:outline-none max-w-[200px]"
-            >
-              <option value="all">All Emails</option>
-              {uniqueEmails.map((em) => (
-                <option key={em} value={em}>
-                  {em}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Email Multi-Select */}
+          <MultiSelectDropdown
+            label="Email"
+            placeholder="All Emails"
+            options={uniqueEmails}
+            selected={selectedEmails}
+            onChange={setSelectedEmails}
+          />
 
-          {/* Whop Email Filter */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-[var(--text-muted)] whitespace-nowrap">Whop Email:</span>
-            <select
-              value={whopEmailFilter}
-              onChange={(e) => setWhopEmailFilter(e.target.value)}
-              className="px-3 py-1.5 rounded-xl neu-pressed text-xs font-semibold text-[var(--text-primary)] focus:outline-none max-w-[200px]"
-            >
-              <option value="all">All Whop Emails</option>
-              {uniqueWhopEmails.map((wem) => (
-                <option key={wem} value={wem}>
-                  {wem}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Whop Email Multi-Select */}
+          <MultiSelectDropdown
+            label="Whop Email"
+            placeholder="All Whop Emails"
+            options={uniqueWhopEmails}
+            selected={selectedWhopEmails}
+            onChange={setSelectedWhopEmails}
+          />
 
           {/* Search channel name */}
           <div className="flex items-center gap-2">
@@ -649,7 +626,7 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
               placeholder="Search channel name..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="px-3 py-1.5 rounded-xl neu-pressed text-xs text-[var(--text-primary)] focus:outline-none w-48 sm:w-56"
+              className="px-3 py-1.5 rounded-xl neu-pressed text-xs text-[var(--text-primary)] focus:outline-none w-44 sm:w-52"
             />
           </div>
         </div>
@@ -727,30 +704,29 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
       {viewMode === 'table' ? (
         <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border bg-muted/40 text-muted-foreground">
-                  <th className="w-10 px-3 py-3.5">
+                  <th className="w-8 px-2 py-3 text-center">
                     <input
                       type="checkbox"
                       checked={filteredChannels.length > 0 && selectedIds.size === filteredChannels.length}
                       onChange={toggleSelectAll}
-                      className="w-4 h-4 rounded border-border text-primary focus:ring-primary/30 cursor-pointer"
+                      className="w-3.5 h-3.5 rounded border-border text-primary focus:ring-primary/30 cursor-pointer"
                     />
                   </th>
-                  <th className="text-left px-5 py-3.5 font-medium">Channel Name</th>
-                  <th className="text-left px-5 py-3.5 font-medium">Channel Handler</th>
-                  <th className="text-left px-5 py-3.5 font-medium">Niche</th>
-                  <th className="text-left px-5 py-3.5 font-medium">Email</th>
-                  <th className="text-left px-5 py-3.5 font-medium">Whop Email</th>
-                  <th className="text-left px-5 py-3.5 font-medium">Status</th>
-                  <th className="text-right px-5 py-3.5 font-medium">Actions</th>
+                  <th className="text-left px-3 py-3 font-medium">Channel & Handle</th>
+                  <th className="text-left px-3 py-3 font-medium">Niche</th>
+                  <th className="text-left px-3 py-3 font-medium">YouTube Email</th>
+                  <th className="text-left px-3 py-3 font-medium">Whop Email</th>
+                  <th className="text-left px-3 py-3 font-medium">Status</th>
+                  <th className="text-right px-3 py-3 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {filteredChannels.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-5 py-12 text-center text-muted-foreground">
+                    <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
                       No channels found. Click "+ Add Channel" to register a YouTube channel.
                     </td>
                   </tr>
@@ -758,70 +734,68 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
                   filteredChannels.map((ch) => (
                     <tr key={ch.id} className={`hover:bg-muted/20 transition-colors ${selectedIds.has(ch.id) ? 'bg-primary/5' : ''}`}>
                       {/* Checkbox */}
-                      <td className="w-10 px-3 py-4">
+                      <td className="w-8 px-2 py-2.5 text-center">
                         <input
                           type="checkbox"
                           checked={selectedIds.has(ch.id)}
                           onChange={() => toggleSelect(ch.id)}
-                          className="w-4 h-4 rounded border-border text-primary focus:ring-primary/30 cursor-pointer"
+                          className="w-3.5 h-3.5 rounded border-border text-primary focus:ring-primary/30 cursor-pointer"
                         />
                       </td>
-                      {/* Name */}
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 flex items-center justify-center font-bold">
-                            <Tv size={18} />
-                          </div>
-                          <div>
-                            <p className="font-semibold text-foreground text-sm">{ch.channelName || 'YouTube Channel'}</p>
-                            <span className="text-[11px] text-muted-foreground capitalize">YouTube</span>
-                          </div>
-                        </div>
-                      </td>
 
-                      {/* Handler */}
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-1.5 font-mono text-xs font-semibold text-primary">
-                          <span>{ch.channelHandle || '—'}</span>
-                          {ch.channelHandle && (
-                            <button
-                              onClick={() => handleCopy(ch.channelHandle!, `hnd-${ch.id}`)}
-                              className="text-muted-foreground hover:text-foreground"
-                              title="Copy Handler"
-                            >
-                              {copiedId === `hnd-${ch.id}` ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
-                            </button>
-                          )}
+                      {/* Name & Handler Consolidated */}
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0">
+                            <Tv size={16} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-semibold text-foreground text-xs truncate max-w-[170px]" title={ch.channelName || ''}>
+                              {ch.channelName || 'YouTube Channel'}
+                            </p>
+                            <div className="flex items-center gap-1 font-mono text-[11px] text-primary">
+                              <span className="truncate max-w-[130px]">{ch.channelHandle || '—'}</span>
+                              {ch.channelHandle && (
+                                <button
+                                  onClick={() => handleCopy(ch.channelHandle!, `hnd-${ch.id}`)}
+                                  className="text-muted-foreground hover:text-foreground shrink-0 p-0.5"
+                                  title="Copy Handler"
+                                >
+                                  {copiedId === `hnd-${ch.id}` ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
+                                </button>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </td>
 
                       {/* Niche */}
-                      <td className="px-5 py-4">
-                        <span className="text-xs px-2.5 py-1 rounded-md bg-muted font-medium text-foreground">
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <span className="text-[11px] px-2 py-0.5 rounded-md bg-muted font-medium text-foreground">
                           {ch.niche || 'General'}
                         </span>
                       </td>
 
-                      {/* Email */}
-                      <td className="px-5 py-4">
-                        <span className="text-xs text-muted-foreground truncate max-w-[160px] block" title={ch.channelEmail || ''}>
+                      {/* YouTube Email */}
+                      <td className="px-3 py-2.5">
+                        <span className="text-[11px] font-mono text-muted-foreground truncate max-w-[140px] block" title={ch.channelEmail || ''}>
                           {ch.channelEmail || '—'}
                         </span>
                       </td>
 
                       {/* Whop Email */}
-                      <td className="px-5 py-4">
-                        <span className="text-xs text-muted-foreground truncate max-w-[160px] block" title={ch.whopEmail || ''}>
+                      <td className="px-3 py-2.5">
+                        <span className="text-[11px] font-mono text-purple-600 dark:text-purple-400 font-medium truncate max-w-[140px] block" title={ch.whopEmail || ''}>
                           {ch.whopEmail || '—'}
                         </span>
                       </td>
 
                       {/* Status */}
-                      <td className="px-5 py-4">
+                      <td className="px-3 py-2.5 whitespace-nowrap">
                         <select
                           value={ch.status === 'active' ? 'active' : 'inactive'}
                           onChange={(e) => handleStatusChange(ch.id, e.target.value)}
-                          className={`text-xs font-semibold px-2.5 py-1 rounded-full border cursor-pointer ${
+                          className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border cursor-pointer ${
                             ch.status === 'active'
                               ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
                               : 'bg-muted text-muted-foreground border-border'
@@ -833,24 +807,24 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
                       </td>
 
                       {/* Actions */}
-                      <td className="px-5 py-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
+                      <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1">
                           <button
                             type="button"
                             onClick={() => openEditModal(ch)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-md border border-border bg-background hover:bg-muted text-foreground transition-colors shadow-2xs"
+                            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded-md border border-border bg-background hover:bg-muted text-foreground transition-colors shadow-2xs"
                             title="Edit Channel"
                           >
-                            <Edit3 size={13} className="text-primary" />
+                            <Edit3 size={12} className="text-primary" />
                             <span>Edit</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => handleRemoveChannel(ch.id)}
-                            className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
+                            className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
                             title="Remove Channel"
                           >
-                            <Trash2 size={15} />
+                            <Trash2 size={13} />
                           </button>
                         </div>
                       </td>

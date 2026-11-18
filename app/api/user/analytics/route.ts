@@ -115,11 +115,25 @@ export async function GET(req: NextRequest) {
     // Extract unique niches for filter
     const allNiches = Array.from(new Set(channels.map((c) => c.niche).filter(Boolean))) as string[]
 
+    // Calculate real next sync time (based on 6h cycle)
+    const latestVideo = await prisma.videoAnalytic.findFirst({
+      where: { channel: { userId, removedAt: null } },
+      orderBy: { lastFetchedAt: 'desc' },
+      select: { lastFetchedAt: true },
+    })
+
+    const SIX_HOURS_MS = 6 * 60 * 60 * 1000
+    const lastSyncTime = latestVideo?.lastFetchedAt ? new Date(latestVideo.lastFetchedAt).getTime() : Date.now()
+    const nextSyncTimestamp = lastSyncTime + SIX_HOURS_MS
+    const secondsRemaining = Math.max(0, Math.floor((nextSyncTimestamp - Date.now()) / 1000))
+
     return NextResponse.json({
       rows: channelRows,
       niches: allNiches,
       defaultThreshold,
       totalChannels: channelRows.length,
+      nextSyncAt: new Date(nextSyncTimestamp).toISOString(),
+      secondsRemaining,
     })
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Failed to fetch analytics' }, { status: 500 })
@@ -151,10 +165,13 @@ export async function POST(req: NextRequest) {
 
     if (action === 'refresh_all' || action === 'cron_6h') {
       const result = await syncUserYouTubeAnalytics(userId)
+      const SIX_HOURS_MS = 6 * 60 * 60 * 1000
 
       return NextResponse.json({
         success: true,
         message: `Synced ${result.channelSuccessCount} channel(s) and ${result.totalUpdatedVideos} video(s) from YouTube. ${result.promotedCount} qualifying video(s) promoted to Pending Tasks!`,
+        nextSyncAt: new Date(Date.now() + SIX_HOURS_MS).toISOString(),
+        secondsRemaining: 21600,
         ...result,
       })
     }

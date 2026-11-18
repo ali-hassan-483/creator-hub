@@ -7,7 +7,7 @@ export default async function UserDashboardPage() {
   const userId = session.user.id
 
   const [channels, runningAutos, scheduledAutos, pendingTasks, earnings] = await Promise.all([
-    prisma.channel.count({ where: { userId, removedAt: null } }),
+    prisma.channel.count({ where: { userId, removedAt: null, status: 'active' } }),
     prisma.automation.count({ where: { userId, status: 'running' } }),
     prisma.scheduledAutomation.count({ where: { userId, status: 'active' } }),
     prisma.pendingTask.count({

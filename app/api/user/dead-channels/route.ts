@@ -96,14 +96,15 @@ async function scanAndFlagDeadChannels(userId: string, forceFetchYouTube = false
     }
 
     // Evaluate Dead Status:
-    // Has at least 1 video, and ALL videos in the latest up to 10 videos have < 100 views
+    // Has at least 1 video, and sum of views across latest up to 10 videos is under 100 (< 100)
     const hasVideos = videos.length > 0
     const viewCounts = videos.map((v) => Number(v.viewCount))
+    const totalViews = hasVideos ? viewCounts.reduce((a, b) => a + b, 0) : 0
     const maxViews = hasVideos ? Math.max(...viewCounts) : 0
-    const avgViews = hasVideos ? Math.round(viewCounts.reduce((a, b) => a + b, 0) / viewCounts.length) : 0
-    const isDead = hasVideos && viewCounts.every((cnt) => cnt < 100)
+    const avgViews = hasVideos ? Math.round(totalViews / viewCounts.length) : 0
+    const isDead = hasVideos && totalViews < 100
 
-    // If channel is dead and was not previously marked or was active, automatically deactivate it
+    // If channel is dead, automatically deactivate it so it is excluded from Channels page & automations
     if (isDead) {
       if (channel.status === 'active' || !extra.isDead) {
         await prisma.channel.update({
@@ -113,7 +114,7 @@ async function scanAndFlagDeadChannels(userId: string, forceFetchYouTube = false
             extraData: {
               ...extra,
               isDead: true,
-              deadReason: 'Latest 10 videos all under 100 views',
+              deadReason: `Latest ${videos.length} videos total views (${totalViews}) is under 100`,
               deadDetectedAt: extra.deadDetectedAt || now.toISOString(),
               lastDeadScanAt: now.toISOString(),
             },
@@ -148,8 +149,22 @@ async function scanAndFlagDeadChannels(userId: string, forceFetchYouTube = false
         }),
       })
     } else {
-      // If channel is not dead, update scan timestamp
-      if (shouldFetch) {
+      // If channel is not dead (sum of views >= 100 or no videos yet)
+      if (extra.isDead === true) {
+        // Channel was previously flagged dead but now has crossed 100 views -> restore active!
+        await prisma.channel.update({
+          where: { id: channel.id },
+          data: {
+            status: 'active',
+            extraData: {
+              ...extra,
+              isDead: false,
+              deadReason: null,
+              lastDeadScanAt: now.toISOString(),
+            },
+          },
+        })
+      } else if (shouldFetch) {
         await prisma.channel.update({
           where: { id: channel.id },
           data: {

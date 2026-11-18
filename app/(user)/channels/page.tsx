@@ -12,8 +12,8 @@ export default async function ChannelsPage() {
   const todayStart = new Date()
   todayStart.setHours(0, 0, 0, 0)
 
-  // Strictly isolate data to this authenticated user only
-  const channels = await prisma.channel.findMany({
+  // Strictly isolate data to this authenticated user only (excluding dead channels)
+  const rawChannels = await prisma.channel.findMany({
     where: { userId, removedAt: null },
     orderBy: { addedAt: 'desc' },
     select: {
@@ -29,10 +29,28 @@ export default async function ChannelsPage() {
       status: true,
       extraData: true,
       addedAt: true,
+      videoAnalytics: {
+        orderBy: { publishedAt: 'desc' },
+        take: 10,
+        select: { viewCount: true },
+      },
       _count: {
         select: { videoAnalytics: true, automationChannels: true },
       },
     },
+  })
+
+  // Filter out dead channels
+  const channels = rawChannels.filter((c) => {
+    const extra = (c.extraData as Record<string, any>) || {}
+    if (extra.isDead === true || c.status === 'inactive') return false
+
+    const videos = c.videoAnalytics || []
+    if (videos.length > 0) {
+      const totalViews = videos.reduce((acc, v) => acc + Number(v.viewCount || 0), 0)
+      if (totalViews < 100) return false
+    }
+    return true
   })
 
   const addedToday = await prisma.channel.count({

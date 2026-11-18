@@ -147,6 +147,8 @@ export async function GET(req: NextRequest) {
         stageLabel = 'Rejected'
       }
 
+      const reqData = (t.requirementsData as Record<string, any>) || {}
+
       return {
         id: t.id,
         campaignId: t.campaignId,
@@ -161,6 +163,8 @@ export async function GET(req: NextRequest) {
         status: t.status,
         stageLabel,
         requirementsData: t.requirementsData,
+        earningAmount: typeof reqData.earningAmount === 'number' ? reqData.earningAmount : null,
+        publishedAt: t.video?.publishedAt ? t.video.publishedAt.toISOString() : null,
         notes: t.notes,
         createdAt: t.createdAt,
         reviewedAt: t.reviewedAt,
@@ -239,6 +243,123 @@ export async function POST(req: NextRequest) {
           id: updated.id,
           status: updated.status,
           viewCountAtTrigger: updated.viewCountAtTrigger ? Number(updated.viewCountAtTrigger) : null,
+        },
+      })
+    }
+
+    if (action === 'approve_task') {
+      const { taskId, earningAmount, notes } = body
+      if (!taskId) return NextResponse.json({ error: 'taskId is required' }, { status: 400 })
+      const amountNum = parseFloat(String(earningAmount ?? '0'))
+      if (isNaN(amountNum) || amountNum < 0) {
+        return NextResponse.json({ error: 'Please enter a valid positive earning amount ($)' }, { status: 400 })
+      }
+
+      const task = await prisma.pendingTask.findFirst({
+        where: { id: taskId, userId },
+        include: { video: true, campaign: true },
+      })
+      if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 })
+
+      const currentReq = (task.requirementsData as Record<string, any>) || {}
+
+      // 1. Update task to approved with recorded earning
+      const updatedTask = await prisma.pendingTask.update({
+        where: { id: taskId },
+        data: {
+          status: 'approved',
+          reviewedAt: new Date(),
+          notes: notes || task.notes,
+          requirementsData: {
+            ...currentReq,
+            earningAmount: amountNum,
+            approvedAt: new Date().toISOString(),
+          },
+        },
+      })
+
+      // 2. Create or update Earning record with status 'confirmed'
+      // This immediately credits user balance and reflects on User Dashboard and Admin Dashboard
+      const existingEarning = await prisma.earning.findFirst({
+        where: { taskId: task.id },
+      })
+
+      let earningRecord
+      if (existingEarning) {
+        earningRecord = await prisma.earning.update({
+          where: { id: existingEarning.id },
+          data: {
+            amount: amountNum,
+            status: 'confirmed',
+            notes: notes || `Approved clip: ${task.video?.title || task.videoIdExt || 'Video'}`,
+            earnedAt: new Date(),
+          },
+        })
+      } else {
+        earningRecord = await prisma.earning.create({
+          data: {
+            userId,
+            campaignId: task.campaignId,
+            taskId: task.id,
+            amount: amountNum,
+            currency: 'USD',
+            status: 'confirmed',
+            notes: notes || `Approved clip: ${task.video?.title || task.videoIdExt || 'Video'}`,
+            earnedAt: new Date(),
+          },
+        })
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Video approved! $${amountNum.toFixed(2)} added to your balance.`,
+        task: {
+          id: updatedTask.id,
+          status: updatedTask.status,
+          earningAmount: amountNum,
+          viewCountAtTrigger: updatedTask.viewCountAtTrigger ? Number(updatedTask.viewCountAtTrigger) : null,
+        },
+        earning: earningRecord,
+      })
+    }
+
+    if (action === 'reject_task') {
+      const { taskId, reason } = body
+      if (!taskId) return NextResponse.json({ error: 'taskId is required' }, { status: 400 })
+
+      const task = await prisma.pendingTask.findFirst({
+        where: { id: taskId, userId },
+      })
+      if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 })
+
+      const currentReq = (task.requirementsData as Record<string, any>) || {}
+
+      const updatedTask = await prisma.pendingTask.update({
+        where: { id: taskId },
+        data: {
+          status: 'rejected',
+          reviewedAt: new Date(),
+          notes: reason || task.notes || 'Clip rejected',
+          requirementsData: {
+            ...currentReq,
+            rejectedAt: new Date().toISOString(),
+            rejectReason: reason || null,
+          },
+        },
+      })
+
+      // If an earning was previously attached, cancel/delete it
+      await prisma.earning.deleteMany({
+        where: { taskId: task.id },
+      })
+
+      return NextResponse.json({
+        success: true,
+        message: 'Task marked as rejected.',
+        task: {
+          id: updatedTask.id,
+          status: updatedTask.status,
+          viewCountAtTrigger: updatedTask.viewCountAtTrigger ? Number(updatedTask.viewCountAtTrigger) : null,
         },
       })
     }

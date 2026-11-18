@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { MultiSelectDropdown } from './multi-select-dropdown'
 import {
   Zap, Calendar, Clock, CheckSquare, Square,
   Filter, AlertCircle, CheckCircle2, Trash2,
@@ -42,9 +43,9 @@ export default function QueueClippingAutomationClient() {
   const [schedules, setSchedules] = useState<ScheduleItem[]>([])
 
   // Filter States
-  const [nicheFilter, setNicheFilter] = useState('All Niches')
-  const [emailFilter, setEmailFilter] = useState('All Emails')
-  const [whopEmailFilter, setWhopEmailFilter] = useState('All Whop Emails')
+  const [selectedNiches, setSelectedNiches] = useState<string[]>([])
+  const [selectedEmails, setSelectedEmails] = useState<string[]>([])
+  const [selectedWhopEmails, setSelectedWhopEmails] = useState<string[]>([])
 
   // Selection States
   const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([])
@@ -100,15 +101,15 @@ export default function QueueClippingAutomationClient() {
   }
 
   // Filter options derived from channel accounts
-  const niches = ['All Niches', ...Array.from(new Set(channels.map((c) => c.niche).filter(Boolean)))]
-  const emails = ['All Emails', ...Array.from(new Set(channels.map((c) => c.email).filter(Boolean)))]
-  const whopEmails = ['All Whop Emails', ...Array.from(new Set(channels.map((c) => c.whopEmail).filter(Boolean)))]
+  const niches = Array.from(new Set(channels.map((c) => c.niche).filter(Boolean))) as string[]
+  const emails = Array.from(new Set(channels.map((c) => c.email).filter(Boolean))) as string[]
+  const whopEmails = Array.from(new Set(channels.map((c) => c.whopEmail).filter(Boolean))) as string[]
 
   // Filtered channels list
   const filteredChannels = channels.filter((c) => {
-    const matchesNiche = nicheFilter === 'All Niches' || c.niche === nicheFilter
-    const matchesEmail = emailFilter === 'All Emails' || c.email === emailFilter
-    const matchesWhopEmail = whopEmailFilter === 'All Whop Emails' || c.whopEmail === whopEmailFilter
+    const matchesNiche = selectedNiches.length === 0 || (c.niche && selectedNiches.includes(c.niche))
+    const matchesEmail = selectedEmails.length === 0 || (c.email && selectedEmails.includes(c.email))
+    const matchesWhopEmail = selectedWhopEmails.length === 0 || (c.whopEmail && selectedWhopEmails.includes(c.whopEmail))
     return matchesNiche && matchesEmail && matchesWhopEmail
   })
 
@@ -308,51 +309,39 @@ export default function QueueClippingAutomationClient() {
               <span className="text-[#6c7a9c] dark:text-[#94a3b8] text-[11px] font-medium w-28 shrink-0">
                 Filter by Niche:
               </span>
-              <select
-                value={nicheFilter}
-                onChange={(e) => setNicheFilter(e.target.value)}
-                className="neu-pressed w-full rounded-xl px-3 py-2 text-xs text-foreground cursor-pointer"
-              >
-                {niches.map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
+              <MultiSelectDropdown
+                placeholder="All Niches"
+                options={niches}
+                selected={selectedNiches}
+                onChange={setSelectedNiches}
+                className="w-full"
+              />
             </div>
 
             <div className="flex items-center justify-between gap-3">
               <span className="text-[#6c7a9c] dark:text-[#94a3b8] text-[11px] font-medium w-28 shrink-0">
                 Filter by Email:
               </span>
-              <select
-                value={emailFilter}
-                onChange={(e) => setEmailFilter(e.target.value)}
-                className="neu-pressed w-full rounded-xl px-3 py-2 text-xs text-foreground cursor-pointer"
-              >
-                {emails.map((em) => (
-                  <option key={em} value={em}>
-                    {em}
-                  </option>
-                ))}
-              </select>
+              <MultiSelectDropdown
+                placeholder="All Emails"
+                options={emails}
+                selected={selectedEmails}
+                onChange={setSelectedEmails}
+                className="w-full"
+              />
             </div>
 
             <div className="flex items-center justify-between gap-3">
               <span className="text-[#6c7a9c] dark:text-[#94a3b8] text-[11px] font-medium w-28 shrink-0">
                 Filter by Whop Email:
               </span>
-              <select
-                value={whopEmailFilter}
-                onChange={(e) => setWhopEmailFilter(e.target.value)}
-                className="neu-pressed w-full rounded-xl px-3 py-2 text-xs text-foreground cursor-pointer"
-              >
-                {whopEmails.map((we) => (
-                  <option key={we} value={we}>
-                    {we}
-                  </option>
-                ))}
-              </select>
+              <MultiSelectDropdown
+                placeholder="All Whop Emails"
+                options={whopEmails}
+                selected={selectedWhopEmails}
+                onChange={setSelectedWhopEmails}
+                className="w-full"
+              />
             </div>
           </div>
 
