@@ -194,7 +194,7 @@ export function DeadChannelsClient({ initialChannels, initialStats }: DeadChanne
                 </span>
               </h1>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Channels whose latest 10 videos have under 100 views are automatically deactivated to protect posting limits.
+                Channels with at least 10 uploaded videos whose latest 10 videos total under 100 views are automatically deactivated to protect posting limits.
               </p>
             </div>
           </div>

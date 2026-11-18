@@ -46,7 +46,7 @@ export default async function ChannelsPage() {
     if (extra.isDead === true || c.status === 'inactive') return false
 
     const videos = c.videoAnalytics || []
-    if (videos.length > 0) {
+    if (videos.length >= 10) {
       const totalViews = videos.reduce((acc, v) => acc + Number(v.viewCount || 0), 0)
       if (totalViews < 100) return false
     }

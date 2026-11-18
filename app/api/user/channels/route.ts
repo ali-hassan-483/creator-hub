@@ -56,13 +56,13 @@ export async function GET() {
     })
 
     // Exclude dead channels:
-    // A channel is dead if extraData.isDead === true OR (has >= 1 video and sum of views across latest 10 videos < 100)
+    // A channel is dead if extraData.isDead === true OR (has >= 10 videos and sum of views across latest 10 videos < 100)
     const channels = rawChannels.filter((c) => {
       const extra = (c.extraData as Record<string, any>) || {}
       if (extra.isDead === true || c.status === 'inactive') return false
 
       const videos = c.videoAnalytics || []
-      if (videos.length > 0) {
+      if (videos.length >= 10) {
         const totalViews = videos.reduce((acc, v) => acc + Number(v.viewCount || 0), 0)
         if (totalViews < 100) {
           return false

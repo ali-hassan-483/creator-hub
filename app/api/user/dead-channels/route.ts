@@ -9,8 +9,8 @@ export const dynamic = 'force-dynamic'
 /**
  * Helper to evaluate and sync dead channels for a user.
  * Condition:
- * Channel has at least 1 recorded video, and ALL videos in its latest 10 videos
- * have fewer than 100 views (< 100).
+ * Channel has at least 10 recorded videos, AND the sum of views across its latest 10 videos
+ * is fewer than 100 (< 100).
  * Dead channels have their status automatically set to 'inactive' to block uploads.
  */
 async function scanAndFlagDeadChannels(userId: string, forceFetchYouTube = false) {
@@ -96,13 +96,13 @@ async function scanAndFlagDeadChannels(userId: string, forceFetchYouTube = false
     }
 
     // Evaluate Dead Status:
-    // Has at least 1 video, and sum of views across latest up to 10 videos is under 100 (< 100)
-    const hasVideos = videos.length > 0
+    // Channel must have at least 10 videos, AND sum of views across latest 10 videos is under 100 (< 100)
+    const hasEnoughVideos = videos.length >= 10
     const viewCounts = videos.map((v) => Number(v.viewCount))
-    const totalViews = hasVideos ? viewCounts.reduce((a, b) => a + b, 0) : 0
-    const maxViews = hasVideos ? Math.max(...viewCounts) : 0
-    const avgViews = hasVideos ? Math.round(totalViews / viewCounts.length) : 0
-    const isDead = hasVideos && totalViews < 100
+    const totalViews = hasEnoughVideos ? viewCounts.reduce((a, b) => a + b, 0) : 0
+    const maxViews = videos.length > 0 ? Math.max(...viewCounts) : 0
+    const avgViews = videos.length > 0 ? Math.round(viewCounts.reduce((a, b) => a + b, 0) / viewCounts.length) : 0
+    const isDead = hasEnoughVideos && totalViews < 100
 
     // If channel is dead, automatically deactivate it so it is excluded from Channels page & automations
     if (isDead) {
@@ -114,7 +114,7 @@ async function scanAndFlagDeadChannels(userId: string, forceFetchYouTube = false
             extraData: {
               ...extra,
               isDead: true,
-              deadReason: `Latest ${videos.length} videos total views (${totalViews}) is under 100`,
+              deadReason: `Latest ${videos.length} videos total views (${totalViews}) is under 100 (requires ≥ 10 videos)`,
               deadDetectedAt: extra.deadDetectedAt || now.toISOString(),
               lastDeadScanAt: now.toISOString(),
             },

@@ -28,11 +28,12 @@ export default async function DeadChannelsPage() {
     const extra = (ch.extraData as Record<string, any>) || {}
     const videos = ch.videoAnalytics
 
-    const hasVideos = videos.length > 0
+    const hasEnoughVideos = videos.length >= 10
     const viewCounts = videos.map((v) => Number(v.viewCount))
-    const maxViews = hasVideos ? Math.max(...viewCounts) : 0
-    const avgViews = hasVideos ? Math.round(viewCounts.reduce((a, b) => a + b, 0) / viewCounts.length) : 0
-    const isDead = (hasVideos && viewCounts.every((cnt) => cnt < 100)) || extra.isDead === true
+    const totalViews = hasEnoughVideos ? viewCounts.reduce((a, b) => a + b, 0) : 0
+    const maxViews = videos.length > 0 ? Math.max(...viewCounts) : 0
+    const avgViews = videos.length > 0 ? Math.round(viewCounts.reduce((a, b) => a + b, 0) / viewCounts.length) : 0
+    const isDead = (hasEnoughVideos && viewCounts.reduce((a, b) => a + b, 0) < 100) || extra.isDead === true
 
     if (isDead) {
       initialDeadChannels.push({
