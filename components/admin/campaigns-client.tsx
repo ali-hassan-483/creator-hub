@@ -266,7 +266,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
   const [isPruning, setIsPruning] = useState<Record<string, boolean>>({})
 
   async function handlePruneExcessClips(campaignId: string) {
-    if (!confirm('Kya aap excess clips delete karke exactly 100 clips rakhna chahte hain?')) return
+    if (!confirm('Are you sure you want to delete excess clips and keep exactly 100?')) return
     setIsPruning((prev) => ({ ...prev, [campaignId]: true }))
     try {
       const res = await fetch('/api/admin/campaigns/setup-status', {

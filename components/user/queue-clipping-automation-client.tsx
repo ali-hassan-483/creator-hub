@@ -252,7 +252,7 @@ export default function QueueClippingAutomationClient() {
   // Cancel a specific schedule
   const [cancellingScheduleId, setCancellingScheduleId] = useState<string | null>(null)
   const handleCancelSchedule = async (scheduleId: string, scheduleName: string) => {
-    if (!confirm(`"${scheduleName}" schedule cancel karna chahte hain? Yeh permanently delete ho jayega.`)) return
+    if (!confirm(`Are you sure you want to cancel the "${scheduleName}" schedule? This will permanently delete it.`)) return
     setCancellingScheduleId(scheduleId)
     try {
       const res = await fetch('/api/user/automation', {
@@ -262,7 +262,7 @@ export default function QueueClippingAutomationClient() {
       })
       const result = await res.json()
       if (!res.ok) throw new Error(result.error || 'Failed to cancel schedule')
-      showFeedback('Schedule cancel ho gaya.', 'success')
+      showFeedback('Schedule cancelled successfully.', 'success')
       fetchContext()
     } catch (err: any) {
       showFeedback(err.message, 'error')
