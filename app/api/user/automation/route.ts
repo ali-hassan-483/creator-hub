@@ -238,6 +238,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, message: 'Cleared schedules' })
     }
 
+    // Cancel (delete) a specific schedule by ID
+    if (action === 'cancel_schedule') {
+      const { scheduleId } = body
+      if (!scheduleId) {
+        return NextResponse.json({ error: 'scheduleId is required' }, { status: 400 })
+      }
+      // Verify it belongs to this user
+      const existing = await prisma.scheduledAutomation.findFirst({
+        where: { id: scheduleId, userId },
+      })
+      if (!existing) {
+        return NextResponse.json({ error: 'Schedule not found' }, { status: 404 })
+      }
+      await prisma.scheduledAutomation.delete({ where: { id: scheduleId } })
+      return NextResponse.json({ success: true, message: 'Schedule cancelled successfully' })
+    }
+
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Automation request failed' }, { status: 500 })

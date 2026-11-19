@@ -249,6 +249,28 @@ export default function QueueClippingAutomationClient() {
     }
   }
 
+  // Cancel a specific schedule
+  const [cancellingScheduleId, setCancellingScheduleId] = useState<string | null>(null)
+  const handleCancelSchedule = async (scheduleId: string, scheduleName: string) => {
+    if (!confirm(`"${scheduleName}" schedule cancel karna chahte hain? Yeh permanently delete ho jayega.`)) return
+    setCancellingScheduleId(scheduleId)
+    try {
+      const res = await fetch('/api/user/automation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cancel_schedule', scheduleId }),
+      })
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error || 'Failed to cancel schedule')
+      showFeedback('Schedule cancel ho gaya.', 'success')
+      fetchContext()
+    } catch (err: any) {
+      showFeedback(err.message, 'error')
+    } finally {
+      setCancellingScheduleId(null)
+    }
+  }
+
   return (
     <div className="p-4 sm:p-8 max-w-7xl mx-auto space-y-7 font-sans">
       {/* Title */}
@@ -492,9 +514,24 @@ export default function QueueClippingAutomationClient() {
                       <span className="font-bold text-[#2b3345] dark:text-[#f1f5f9]">
                         {sc.campaign?.name || sc.name || 'Automation Schedule'}
                       </span>
-                      <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/15 text-emerald-600">
-                        Active
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/15 text-emerald-600">
+                          Active
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleCancelSchedule(sc.id, sc.campaign?.name || sc.name || 'Automation Schedule')}
+                          disabled={cancellingScheduleId === sc.id}
+                          title="Cancel Schedule"
+                          className="p-1 rounded-lg text-rose-500 hover:bg-rose-500/10 transition disabled:opacity-50"
+                        >
+                          {cancellingScheduleId === sc.id ? (
+                            <RefreshCw size={12} className="animate-spin" />
+                          ) : (
+                            <X size={12} />
+                          )}
+                        </button>
+                      </div>
                     </div>
                     <p className="text-[11px] text-[#6c7a9c] dark:text-[#94a3b8]">
                       Repeat: {opt.repeatDays || 7} days · {opt.timesPerDay || 1}x daily
