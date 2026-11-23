@@ -68,8 +68,8 @@ mkdir -p "$WORK_DIR"
 cd "$WORK_DIR"
 
 echo "📥 Downloading worker daemon scripts..."
-curl -sSL "${CREATOR_HUB_URL}/scripts/upload-worker.js" -o "$WORK_DIR/upload-worker.js"
-curl -sSL "${CREATOR_HUB_URL}/scripts/whop-worker.py" -o "$WORK_DIR/whop-worker.py"
+curl -sSL "${CREATOR_HUB_URL}/api/scripts/upload-worker.js" -o "$WORK_DIR/upload-worker.js"
+curl -sSL "${CREATOR_HUB_URL}/api/scripts/whop-worker.py" -o "$WORK_DIR/whop-worker.py"
 
 # Write .env configuration
 cat <<EOF > "$WORK_DIR/.env"
