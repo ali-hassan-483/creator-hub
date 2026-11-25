@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getClipsDir } from '@/tools/campaign-processor'
+import { getClipsDir, getSourcesDir } from '@/tools/campaign-processor'
 import * as fs from 'fs'
 import * as path from 'path'
 import { Readable } from 'stream'
@@ -9,6 +9,7 @@ export const dynamic = 'force-dynamic'
 /**
  * GET /api/n8n/video-stream?campaignId=xxx&file=xxx.mp4
  * Serves the video file directly as binary stream to n8n HTTP Request node.
+ * For readyToPost campaigns: looks in clips/ first, then falls back to sources/
  */
 export async function GET(req: NextRequest) {
   try {
@@ -21,11 +22,19 @@ export async function GET(req: NextRequest) {
     }
 
     const safeName = path.basename(fileName)
-    const clipsDir = getClipsDir(campaignId)
-    const filePath = path.join(clipsDir, safeName)
 
+    // Look in clips/ first, then fall back to sources/ (for readyToPost campaigns)
+    const clipsDir = getClipsDir(campaignId)
+    const sourcesDir = getSourcesDir(campaignId)
+
+    let filePath = path.join(clipsDir, safeName)
     if (!fs.existsSync(filePath)) {
-      return NextResponse.json({ error: 'Video file not found' }, { status: 404 })
+      const sourcePath = path.join(sourcesDir, safeName)
+      if (fs.existsSync(sourcePath)) {
+        filePath = sourcePath
+      } else {
+        return NextResponse.json({ error: 'Video file not found' }, { status: 404 })
+      }
     }
 
     const stat = fs.statSync(filePath)

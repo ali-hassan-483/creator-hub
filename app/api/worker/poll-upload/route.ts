@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { validateVpsApiKey } from '@/lib/vps-service'
 import { decryptIfPresent } from '@/lib/encryption'
-import { getClipsDir } from '@/tools/campaign-processor'
+import { getClipsDir, getSourcesDir } from '@/tools/campaign-processor'
 import { getPakistanTodayStart } from '@/lib/date-utils'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -386,10 +386,31 @@ export async function GET(req: NextRequest) {
         }
 
         // Find available unposted clips in campaign directory
-        const clipsDir = getClipsDir(campaign.id)
+        // For readyToPost campaigns: if clips/ is empty, fall back to sources/ directory
+        const cfg = (campaign.config as Record<string, any>) || {}
+        const isReadyToPost = cfg.readyToPost === 'yes'
+
+        let clipsDir = getClipsDir(campaign.id)
+        let usingSourcesDir = false
+
+        if (isReadyToPost) {
+          // Check clips dir first
+          const clipsEmpty = !fs.existsSync(clipsDir) ||
+            fs.readdirSync(clipsDir).filter((f) => f.endsWith('.mp4')).length === 0
+          if (clipsEmpty) {
+            // Fall back to sources directory (ready-to-post = upload sources as-is)
+            const sourcesDir = getSourcesDir(campaign.id)
+            if (fs.existsSync(sourcesDir) && fs.readdirSync(sourcesDir).filter((f) => f.endsWith('.mp4')).length > 0) {
+              clipsDir = sourcesDir
+              usingSourcesDir = true
+              console.log(`[Worker Poll] 🎯 readyToPost campaign "${campaign.name}": clips/ empty, using sources/ directory`)
+            }
+          }
+        }
+
         if (!fs.existsSync(clipsDir)) continue
 
-        const postedDir = path.join(clipsDir, 'posted')
+        const postedDir = path.join(getClipsDir(campaign.id), 'posted')
         const postedFiles = new Set(
           fs.existsSync(postedDir) ? fs.readdirSync(postedDir) : []
         )
@@ -407,13 +428,12 @@ export async function GET(req: NextRequest) {
           .filter((f) => f.endsWith('.mp4') && !postedFiles.has(f) && !inProgressClips.has(f))
 
         if (allClips.length === 0) {
-          console.warn(`[Worker Poll] No available (unreserved) clips left in campaign ${campaign.name} (${inProgressClips.size} currently in-progress)`)
+          console.warn(`[Worker Poll] No available (unreserved) clips left in campaign ${campaign.name} (${inProgressClips.size} currently in-progress)${usingSourcesDir ? ' [sources dir]' : ''}`)
           continue
         }
 
         // Pick random available unreserved clip (not always the first one!)
         const clipFileName = allClips[Math.floor(Math.random() * allClips.length)]
-        const cfg = (campaign.config as Record<string, any>) || {}
 
         // Look for corresponding .meta.json file — meta title/description takes PRIORITY
         const metaFileName = clipFileName.replace(/\.mp4$/, '.meta.json')
@@ -578,6 +598,7 @@ export async function GET(req: NextRequest) {
               id: campaign.id,
               name: campaign.name,
               niche: cfg.niche || 'General',
+              readyToPost: cfg.readyToPost === 'yes',
             },
             clip: {
               filename: clipFileName,
