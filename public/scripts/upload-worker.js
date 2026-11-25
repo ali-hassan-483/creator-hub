@@ -108,8 +108,8 @@ async function downloadClip(downloadUrl, targetPath) {
     throw new Error(`Failed to download clip (${res.status}): ${res.statusText}`)
   }
 
-  const fileStream = fs.createWriteStream(targetPath)
-  const buffer = Buffer.from(await res.arrayBuffer())
+  const arrayBuffer = await res.arrayBuffer()
+  const buffer = Buffer.from(arrayBuffer)
   fs.writeFileSync(targetPath, buffer)
 
   const stats = fs.statSync(targetPath)

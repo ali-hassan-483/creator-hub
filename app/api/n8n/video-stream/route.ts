@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getClipsDir } from '@/tools/campaign-processor'
 import * as fs from 'fs'
 import * as path from 'path'
+import { Readable } from 'stream'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,8 +30,9 @@ export async function GET(req: NextRequest) {
 
     const stat = fs.statSync(filePath)
     const fileStream = fs.createReadStream(filePath)
+    const webStream = (Readable as any).toWeb ? (Readable as any).toWeb(fileStream) : fileStream
 
-    return new Response(fileStream as any, {
+    return new Response(webStream as any, {
       status: 200,
       headers: {
         'Content-Type': 'video/mp4',
