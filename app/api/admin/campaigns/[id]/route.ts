@@ -108,81 +108,39 @@ export async function DELETE(
     await requireAdmin()
     const { id } = params
 
-    await prisma.$transaction(async (tx) => {
-      // 1. Delete earnings under this campaign or its tasks
-      await tx.earning.deleteMany({
-        where: {
-          OR: [
-            { campaignId: id },
-            { task: { campaignId: id } },
-          ],
-        },
-      })
-
-      // 2. Delete task status history for tasks under this campaign
-      await tx.taskStatusHistory.deleteMany({
-        where: { task: { campaignId: id } },
-      })
-
-      // 3. Delete pending tasks under this campaign
-      await tx.pendingTask.deleteMany({
-        where: { campaignId: id },
-      })
-
-      // 4. Delete automations and their child channels & credentials
-      const autos = await tx.automation.findMany({
-        where: { campaignId: id },
-        select: { id: true },
-      })
-      const autoIds = autos.map((a) => a.id)
-      if (autoIds.length > 0) {
-        await tx.automationChannel.deleteMany({
-          where: { automationId: { in: autoIds } },
-        })
-        await tx.automationCredential.deleteMany({
-          where: { automationId: { in: autoIds } },
-        })
-        await tx.automation.deleteMany({
-          where: { id: { in: autoIds } },
-        })
-      }
-
-      // 5. Delete scheduled automations and their child channels (CASCADE)
-      const scheduledAutos = await tx.scheduledAutomation.findMany({
-        where: { campaignId: id },
-        select: { id: true },
-      })
-      const scheduledIds = scheduledAutos.map((s) => s.id)
-      if (scheduledIds.length > 0) {
-        await tx.scheduledAutomationChannel.deleteMany({
-          where: { scheduledAutomationId: { in: scheduledIds } },
-        })
-        await tx.scheduledAutomation.deleteMany({
-          where: { id: { in: scheduledIds } },
-        })
-      }
-
-      // 6. Delete user access
-      await tx.campaignUserAccess.deleteMany({ where: { campaignId: id } })
-
-      // 7. Delete the campaign
-      await tx.campaign.delete({
-        where: { id },
-      })
-    })
-
-    // 8. Clean up disk files safely
-    try {
-      const { getCampaignDir } = await import('@/tools/campaign-processor')
-      const dir = getCampaignDir(id)
-      if (fs.existsSync(dir)) {
-        fs.rmSync(dir, { recursive: true, force: true })
-      }
-    } catch (diskErr) {
-      console.warn(`[Campaign DELETE] Could not remove storage dir for ${id}:`, diskErr)
+    // Soft disable: set status to 'ended' — all DB records (earnings, tasks, automations) are preserved
+    const campaign = await prisma.campaign.findUnique({ where: { id }, select: { id: true } })
+    if (!campaign) {
+      return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ success: true, message: 'Campaign deleted successfully.' })
+    await prisma.campaign.update({
+      where: { id },
+      data: { status: 'ended' },
+    })
+
+    // Delete only disk files: sources/ and clips/ subdirectories to free storage
+    try {
+      const { getSourcesDir, getClipsDir } = await import('@/tools/campaign-processor')
+      const dirsToDelete = [getSourcesDir(id), getClipsDir(id)]
+      for (const dir of dirsToDelete) {
+        try {
+          if (fs.existsSync(dir)) {
+            fs.rmSync(dir, { recursive: true, force: true })
+            console.log(`[Campaign Disable] Removed disk dir: ${dir}`)
+          }
+        } catch (dirErr) {
+          console.warn(`[Campaign Disable] Could not remove ${dir}:`, dirErr)
+        }
+      }
+    } catch (diskErr) {
+      console.warn(`[Campaign Disable] Could not access storage dirs for ${id}:`, diskErr)
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Campaign disabled. Database records preserved; source and clip files removed from disk.',
+    })
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Internal server error.' }, { status: 500 })
   }

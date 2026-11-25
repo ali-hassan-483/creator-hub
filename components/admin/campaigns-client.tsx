@@ -751,20 +751,27 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
     }
   }
 
-  // Delete Campaign
+  // Disable Campaign (soft delete: status → ended, disk files removed, DB data preserved)
   async function handleDelete(id: string) {
-    if (!confirm('Are you sure you want to delete this campaign? This action cannot be undone.')) return
+    if (!confirm(
+      'Disable this campaign?\n\n' +
+      '• Database records (earnings, tasks, automations) will be PRESERVED\n' +
+      '• Source videos and clips will be DELETED from VPS disk\n' +
+      '• Campaign will be hidden from users (status → ended)\n' +
+      '• Admin can still see it in this panel\n\n' +
+      'Continue?'
+    )) return
     try {
       const res = await fetch(`/api/admin/campaigns/${id}`, { method: 'DELETE' })
       const data = await res.json()
       if (!res.ok) {
-        alert(data.error || 'Failed to delete campaign')
+        alert(data.error || 'Failed to disable campaign')
         return
       }
       await refreshCampaigns()
     } catch (err: any) {
       console.error(err)
-      alert(err.message || 'Failed to delete campaign')
+      alert(err.message || 'Failed to disable campaign')
     }
   }
 
@@ -1226,13 +1233,15 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                               ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
                               : c.status === 'paused'
                               ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                              : c.status === 'ended'
+                              ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
                               : 'bg-muted text-muted-foreground border-border'
                           }`}
                         >
                           <option value="active">Active</option>
                           <option value="paused">Paused</option>
                           <option value="draft">Disabled / Draft</option>
-                          <option value="ended">Ended</option>
+                          <option value="ended">Ended / Disabled</option>
                         </select>
                       </td>
 
@@ -1291,7 +1300,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                           <button
                             onClick={() => handleDelete(c.id)}
                             className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
-                            title="Delete Campaign"
+                            title="Disable Campaign (preserves DB data, removes disk files)"
                           >
                             <Trash2 size={15} />
                           </button>
