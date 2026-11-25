@@ -598,7 +598,6 @@ export async function GET(req: NextRequest) {
               id: campaign.id,
               name: campaign.name,
               niche: cfg.niche || 'General',
-              readyToPost: cfg.readyToPost === 'yes',
             },
             clip: {
               filename: clipFileName,

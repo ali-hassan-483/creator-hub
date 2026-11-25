@@ -298,19 +298,9 @@ async function pollAndProcess() {
       )
 
       // 3. Upload to YouTube from this VPS node's clean IP
-      const { videoId } = await uploadToYouTube(accessToken, tempFilePath, fileSize, job.clip)
+      const { videoId, youtubeLink } = await uploadToYouTube(accessToken, tempFilePath, fileSize, job.clip)
 
-      // 4. Build correct link: readyToPost (as-is landscape) → /watch, otherwise /shorts
-      const isReadyToPost = job.campaign?.readyToPost === true
-      const youtubeLink = isReadyToPost
-        ? `https://www.youtube.com/watch?v=${videoId}`
-        : `https://youtube.com/shorts/${videoId}`
-
-      if (isReadyToPost) {
-        console.log(`🔗 [Worker] Ready-to-Post campaign — using regular watch link (not Shorts)`)
-      }
-
-      // 5. Report back to Creator Hub
+      // 4. Report back to Creator Hub
       await reportUploadComplete(job, videoId, youtubeLink)
 
       console.log(`✨ [Worker] Upload complete on @${job.channel.channelHandle || job.channel.channelName}: ${youtubeLink}`)
