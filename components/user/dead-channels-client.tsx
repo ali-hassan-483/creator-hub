@@ -194,7 +194,7 @@ export function DeadChannelsClient({ initialChannels, initialStats }: DeadChanne
                 </span>
               </h1>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Channels with at least 10 uploaded videos whose latest 10 videos total under 100 views are automatically deactivated to protect posting limits.
+                Channels with at least 10 videos whose latest 10 videos total under 100 views. Listed here for your review so you can easily delete them if desired.
               </p>
             </div>
           </div>
@@ -255,15 +255,15 @@ export function DeadChannelsClient({ initialChannels, initialStats }: DeadChanne
         </div>
 
         <div className="p-4 rounded-2xl bg-card border border-border/50 shadow-sm flex items-center gap-3.5">
-          <div className="p-3 rounded-xl bg-purple-500/10 text-purple-500">
-            <ShieldAlert size={20} />
+          <div className="p-3 rounded-xl bg-blue-500/10 text-blue-500">
+            <Info size={20} />
           </div>
           <div>
-            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Upload Protection</p>
-            <p className="text-base font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-              <CheckCircle2 size={15} /> Uploading Blocked
+            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Status &amp; Uploads</p>
+            <p className="text-base font-bold text-foreground flex items-center gap-1.5">
+              <CheckCircle2 size={15} className="text-emerald-500" /> Active &amp; Ready
             </p>
-            <p className="text-[10px] text-muted-foreground">Status automatically set to Inactive</p>
+            <p className="text-[10px] text-muted-foreground">Uploads are NOT blocked; manage or delete here</p>
           </div>
         </div>
       </div>
@@ -330,7 +330,10 @@ export function DeadChannelsClient({ initialChannels, initialStats }: DeadChanne
                         {ch.channelHandle.startsWith('@') ? ch.channelHandle : `@${ch.channelHandle}`}
                       </span>
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
-                        Deactivated (Dead)
+                        Dead Channel (&lt;100 views)
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                        Active
                       </span>
                       {ch.niche && (
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-muted text-muted-foreground">

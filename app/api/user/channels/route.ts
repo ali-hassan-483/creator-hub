@@ -55,20 +55,20 @@ export async function GET() {
       },
     })
 
-    // Exclude dead channels:
-    // A channel is dead if extraData.isDead === true OR (has >= 10 videos and sum of views across latest 10 videos < 100)
-    const channels = rawChannels.filter((c) => {
+    // Include all channels (do not exclude dead channels; dead channels are informational and upload is active)
+    const channels = rawChannels.map((c) => {
       const extra = (c.extraData as Record<string, any>) || {}
-      if (extra.isDead === true || c.status === 'inactive') return false
-
       const videos = c.videoAnalytics || []
-      if (videos.length >= 10) {
-        const totalViews = videos.reduce((acc, v) => acc + Number(v.viewCount || 0), 0)
-        if (totalViews < 100) {
-          return false
-        }
+      const hasEnoughVideos = videos.length >= 10
+      const totalViews = hasEnoughVideos
+        ? videos.reduce((acc, v) => acc + Number(v.viewCount || 0), 0)
+        : null
+      const isDead = extra.isDead === true || (hasEnoughVideos && totalViews !== null && totalViews < 100)
+      return {
+        ...c,
+        status: c.status === 'inactive' && isDead ? 'active' : c.status,
+        isDead,
       }
-      return true
     })
 
     const addedToday = await prisma.channel.count({

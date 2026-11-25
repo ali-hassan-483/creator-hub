@@ -20,6 +20,7 @@ interface ChannelItem {
   clientId: string | null
   platform: string
   status: 'active' | 'inactive' | 'pending' | 'error'
+  isDead?: boolean
   extraData?: any
   addedAt: string
   _count?: {
@@ -764,6 +765,14 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
                                   {copiedId === `hnd-${ch.id}` ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
                                 </button>
                               )}
+                              {ch.isDead && (
+                                <span
+                                  className="ml-1 inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-rose-500/10 text-rose-500 border border-rose-500/20"
+                                  title="Low views: <100 views across latest 10 videos. Informational only — uploads remain active."
+                                >
+                                  Dead
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -888,9 +897,19 @@ export function ChannelsClient({ initialChannels, stats: initialStats }: Channel
 
                 <div className="space-y-2 pt-2 border-t border-border text-xs">
                   <div className="flex items-center justify-between">
-                    <span className="px-2 py-0.5 rounded bg-muted text-muted-foreground font-medium">
-                      {ch.niche || 'General'}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="px-2 py-0.5 rounded bg-muted text-muted-foreground font-medium">
+                        {ch.niche || 'General'}
+                      </span>
+                      {ch.isDead && (
+                        <span
+                          className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-500/10 text-rose-500 border border-rose-500/20"
+                          title="Low views: <100 views across latest 10 videos. Informational only — uploads remain active."
+                        >
+                          Dead
+                        </span>
+                      )}
+                    </div>
                     <select
                       value={ch.status === 'active' ? 'active' : 'inactive'}
                       onChange={(e) => handleStatusChange(ch.id, e.target.value)}

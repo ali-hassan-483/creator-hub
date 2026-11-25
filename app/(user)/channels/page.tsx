@@ -12,7 +12,7 @@ export default async function ChannelsPage() {
   const todayStart = new Date()
   todayStart.setHours(0, 0, 0, 0)
 
-  // Strictly isolate data to this authenticated user only (excluding dead channels)
+  // Fetch all channels for this user (including dead ones — shown with a warning badge)
   const rawChannels = await prisma.channel.findMany({
     where: { userId, removedAt: null },
     orderBy: { addedAt: 'desc' },
@@ -40,17 +40,16 @@ export default async function ChannelsPage() {
     },
   })
 
-  // Filter out dead channels
-  const channels = rawChannels.filter((c) => {
+  // All channels shown; compute isDead flag per channel for UI badge
+  const channels = rawChannels.map((c) => {
     const extra = (c.extraData as Record<string, any>) || {}
-    if (extra.isDead === true || c.status === 'inactive') return false
-
     const videos = c.videoAnalytics || []
-    if (videos.length >= 10) {
-      const totalViews = videos.reduce((acc, v) => acc + Number(v.viewCount || 0), 0)
-      if (totalViews < 100) return false
-    }
-    return true
+    const hasEnoughVideos = videos.length >= 10
+    const totalViews = hasEnoughVideos
+      ? videos.reduce((acc, v) => acc + Number(v.viewCount || 0), 0)
+      : null
+    const isDead = extra.isDead === true || (hasEnoughVideos && totalViews !== null && totalViews < 100)
+    return { ...c, isDead }
   })
 
   const addedToday = await prisma.channel.count({
@@ -71,7 +70,8 @@ export default async function ChannelsPage() {
     niche: c.niche,
     clientId: c.clientId,
     platform: c.platform,
-    status: c.status,
+    status: (c.status === 'inactive' && c.isDead ? 'active' : c.status) as 'active' | 'inactive' | 'pending' | 'error',
+    isDead: c.isDead,
     extraData: c.extraData,
     addedAt: c.addedAt.toISOString(),
     _count: {
@@ -84,7 +84,7 @@ export default async function ChannelsPage() {
     totalChannels: channels.length,
     addedToday,
     removedToday,
-    activeCount: channels.filter((c) => c.status === 'active').length,
+    activeCount: formattedChannels.filter((c) => c.status === 'active').length,
   }
 
   return (

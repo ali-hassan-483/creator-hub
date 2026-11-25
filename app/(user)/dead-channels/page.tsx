@@ -44,7 +44,7 @@ export default async function DeadChannelsPage() {
         channelEmail: ch.channelEmail || '',
         whopEmail: ch.whopEmail || '',
         niche: ch.niche || 'General',
-        status: ch.status,
+        status: ch.status === 'inactive' && isDead ? 'active' : ch.status,
         isDead: true,
         deadDetectedAt: extra.deadDetectedAt || ch.addedAt.toISOString(),
         videoCount: videos.length,

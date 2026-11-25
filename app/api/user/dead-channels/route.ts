@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic'
  * Condition:
  * Channel has at least 10 recorded videos, AND the sum of views across its latest 10 videos
  * is fewer than 100 (< 100).
- * Dead channels have their status automatically set to 'inactive' to block uploads.
+ * Dead channels remain 'active' so uploading is NOT blocked; this is strictly informational.
  */
 async function scanAndFlagDeadChannels(userId: string, forceFetchYouTube = false) {
   const channels = await prisma.channel.findMany({
@@ -104,23 +104,22 @@ async function scanAndFlagDeadChannels(userId: string, forceFetchYouTube = false
     const avgViews = videos.length > 0 ? Math.round(viewCounts.reduce((a, b) => a + b, 0) / viewCounts.length) : 0
     const isDead = hasEnoughVideos && totalViews < 100
 
-    // If channel is dead, automatically deactivate it so it is excluded from Channels page & automations
+    // If channel is dead, flag it in extraData for user reference, but keep status 'active' so uploads are NOT blocked
     if (isDead) {
-      if (channel.status === 'active' || !extra.isDead) {
-        await prisma.channel.update({
-          where: { id: channel.id },
-          data: {
-            status: 'inactive', // Deactivate so uploading is blocked
-            extraData: {
-              ...extra,
-              isDead: true,
-              deadReason: `Latest ${videos.length} videos total views (${totalViews}) is under 100 (requires ≥ 10 videos)`,
-              deadDetectedAt: extra.deadDetectedAt || now.toISOString(),
-              lastDeadScanAt: now.toISOString(),
-            },
+      const shouldRestoreActive = channel.status === 'inactive' && extra.isDead
+      await prisma.channel.update({
+        where: { id: channel.id },
+        data: {
+          ...(shouldRestoreActive ? { status: 'active' } : {}),
+          extraData: {
+            ...extra,
+            isDead: true,
+            deadReason: `Latest ${videos.length} videos total views (${totalViews}) is under 100 (requires ≥ 10 videos)`,
+            deadDetectedAt: extra.deadDetectedAt || now.toISOString(),
+            lastDeadScanAt: now.toISOString(),
           },
-        })
-      }
+        },
+      })
 
       results.push({
         id: channel.id,
@@ -130,7 +129,7 @@ async function scanAndFlagDeadChannels(userId: string, forceFetchYouTube = false
         channelEmail: channel.channelEmail || '',
         whopEmail: channel.whopEmail || '',
         niche: channel.niche || 'General',
-        status: 'inactive',
+        status: shouldRestoreActive ? 'active' : channel.status,
         isDead: true,
         deadDetectedAt: extra.deadDetectedAt || now.toISOString(),
         videoCount: videos.length,
