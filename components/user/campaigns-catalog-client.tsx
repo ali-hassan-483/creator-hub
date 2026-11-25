@@ -5,7 +5,7 @@ import Link from 'next/link'
 import {
   Megaphone, Eye, Zap, Search, CheckCircle2,
   AlertCircle, ArrowRight, FileText, Sparkles, Clock, ExternalLink, Film,
-  Radio, DollarSign, AtSign
+  Radio, DollarSign, AtSign, Upload
 } from 'lucide-react'
 
 interface UserCampaignItem {
@@ -125,6 +125,14 @@ export function CampaignsCatalogClient({ initialCampaigns }: CampaignsCatalogCli
                     </div>
                   )}
 
+                  {/* Daily Post Limit Badge */}
+                  {c.config?.dailyPostLimit && (
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 text-xs font-semibold border border-cyan-500/20">
+                      <Upload size={13} />
+                      <span>Daily Post Limit: {c.config.dailyPostLimit}</span>
+                    </div>
+                  )}
+
                   {/* YouTube Mention Badge */}
                   {c.config?.fixYoutubeMentions === 'yes' ? (
                     <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-rose-500/10 text-rose-600 dark:text-rose-400 text-xs font-semibold border border-rose-500/20">
@@ -206,6 +214,17 @@ export function CampaignsCatalogClient({ initialCampaigns }: CampaignsCatalogCli
                   <div>
                     <span className="font-bold">CPM: {selectedCampaign.config.cpm.startsWith('$') ? selectedCampaign.config.cpm : `$${selectedCampaign.config.cpm}`}</span>
                     <p className="text-[10px] opacity-80">Per 1,000 verified views</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Daily Post Limit */}
+              {selectedCampaign.config?.dailyPostLimit && (
+                <div className="p-2.5 bg-cyan-500/10 border border-cyan-500/20 rounded-lg text-xs flex items-center gap-2 text-cyan-700 dark:text-cyan-300">
+                  <Upload size={16} />
+                  <div>
+                    <span className="font-bold">Daily Post Limit: {selectedCampaign.config.dailyPostLimit}</span>
+                    <p className="text-[10px] opacity-80">Maximum uploads per channel per day</p>
                   </div>
                 </div>
               )}
