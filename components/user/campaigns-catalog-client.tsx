@@ -98,7 +98,7 @@ export function CampaignsCatalogClient({ initialCampaigns }: CampaignsCatalogCli
                   {/* Available Clips Badge */}
                   <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-semibold border border-blue-500/20">
                     <Film size={13} />
-                    <span>{c.availableClips ?? 0} Clips Ready</span>
+                    <span>{c.config?.readyToPost === 'yes' ? 'Unlimited' : `${c.availableClips ?? 0} Clips Ready`}</span>
                   </div>
 
                   {/* Min Views Requirement Badge */}

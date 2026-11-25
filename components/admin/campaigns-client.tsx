@@ -933,6 +933,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                 filteredCampaigns.map((c) => {
                   const cfg = c.config || {}
                   const ss = setupStatuses[c.id]
+                  const isReadyToPost = cfg.readyToPost === 'yes'
                   const liveClipCount = ss?.clipCount ?? c.availableClips ?? 0
 
                   return (
@@ -1067,7 +1068,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                                 <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-0.5">
                                   <span className="font-semibold uppercase tracking-wider text-[9px]">Clips Pool</span>
                                   <span className="font-mono text-[10px] font-bold">
-                                    {ss.clipCount ?? c.availableClips ?? 0}/100
+                                    {isReadyToPost ? 'Unlimited' : `${ss.clipCount ?? c.availableClips ?? 0}/100`}
                                   </span>
                                 </div>
                                 {ss.clipStatus === 'generating' && (
@@ -1114,7 +1115,9 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                                         <CheckCircle2 size={10} />
                                         <span>
-                                          {ss.editingApproved ? 'Auto-Editing Active' : 'Ready'} ({ss.clipCount ?? c.availableClips ?? 0})
+                                          {isReadyToPost
+                                            ? 'Ready to Post (Unlimited)'
+                                            : `${ss.editingApproved ? 'Auto-Editing Active' : 'Ready'} (${ss.clipCount ?? c.availableClips ?? 0})`}
                                         </span>
                                       </span>
                                       {ss.editingApproved ? (
@@ -1183,7 +1186,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                                   </div>
                                 )}
 
-                                {(ss.clipCount ?? c.availableClips ?? 0) > 100 && (
+                                {!isReadyToPost && (ss.clipCount ?? c.availableClips ?? 0) > 100 && (
                                   <button
                                     type="button"
                                     onClick={() => handlePruneExcessClips(c.id)}
@@ -1251,10 +1254,10 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                           {/* Available Clips Badge in Admin */}
                           <span
                             className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
-                            title="Total edited clips ready for submission"
+                            title={isReadyToPost ? "Ready to post campaign: unlimited clips" : "Total edited clips ready for submission"}
                           >
                             <Film size={12} />
-                            <span>{liveClipCount} Clips</span>
+                            <span>{isReadyToPost ? 'Unlimited' : `${liveClipCount} Clips`}</span>
                           </span>
 
                           <button
