@@ -334,7 +334,7 @@ export default function UnifiedCredentialsClient() {
             <span>Action Required: Video Uploading is BLOCKED until all account credentials are added!</span>
           </div>
           <p className="leading-relaxed">
-            Aapke added channels ke mutabiq Whop account ke credentials hona lazmi hain:
+            The following Whop account credentials are required based on your added channels:
           </p>
           <div className="pt-1 font-mono text-[11px]">
             {missingWhopEmails.length > 0 && (

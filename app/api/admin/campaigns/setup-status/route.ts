@@ -33,6 +33,18 @@ async function getClipStatus(
   campaignName?: string,
   isActive = false
 ) {
+  // If Ready to Post, no video editing needed — clips and titles are ready
+  if (campaignCfg?.readyToPost === 'yes') {
+    const { getTitlePoolStats } = await import('@/tools/title-pool-manager')
+    const titleStats = getTitlePoolStats(campaignId)
+    return {
+      clipStatus: 'ready' as const,
+      clipProgress: `✅ Ready to Post (${clipCount} clips available, ${titleStats.unused} AI titles in pool)`,
+      clipError: null,
+      editingApproved: true,
+    }
+  }
+
   const editingApproved = campaignCfg?.editingApproved === true
 
   // Check if an editing process is already actively running on disk (e.g. in worker-editor)
@@ -302,6 +314,24 @@ export async function POST(req: NextRequest) {
 
     // ── ACTION: Generate Clips / Start Auto-Editing ─────────────────────────
     if (action === 'generate_clips' || action === 'start_editing') {
+      // If Ready to Post, no FFMPEG video generation needed — just sync videos & titles pool
+      if (cfg.readyToPost === 'yes') {
+        const { syncReadyToPostCampaign, getTitlePoolStats } = await import('@/tools/title-pool-manager')
+        const syncRes = await syncReadyToPostCampaign(campaignId, {
+          ...cfg,
+          campaignName: campaign.name,
+          niche: cfg.niche || 'general',
+        })
+        const stats = getTitlePoolStats(campaignId)
+        return NextResponse.json({
+          message: `Ready to Post campaign synced: ${syncRes.clipsReady} clips available, ${stats.unused} AI titles in pool.`,
+          status: 'ready',
+          campaignId,
+          clipCount: syncRes.clipsReady,
+          editingApproved: true,
+        })
+      }
+
       const sourcesDir = getSourcesDir(campaignId)
       const sourceCount = fs.existsSync(sourcesDir)
         ? fs.readdirSync(sourcesDir).filter(f => !f.startsWith('.')).length

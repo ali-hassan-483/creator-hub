@@ -84,6 +84,23 @@ export async function maintainCampaignClipPool(
   let currentCount = countEditedClips(campaignId)
   log(`Current pool count: ${currentCount}/${maxTarget}`)
 
+  // ── Ready to Post Campaign: Skip FFMPEG rendering, sync videos & maintain 100 titles pool ──
+  if (cfg.readyToPost === 'yes') {
+    log('⚡ Campaign is Ready to Post. Syncing clips & maintaining 100 AI titles pool...')
+    const { syncReadyToPostCampaign, getTitlePoolStats } = await import('./title-pool-manager')
+    const syncRes = await syncReadyToPostCampaign(campaignId, cfg)
+    const stats = getTitlePoolStats(campaignId)
+
+    onStatusUpdate?.({
+      campaignId,
+      currentClips: syncRes.clipsReady,
+      targetClips: syncRes.clipsReady,
+      status: 'completed',
+      lastMessage: `Ready to Post: ${syncRes.clipsReady} clips available, ${stats.unused} AI titles in pool.`,
+    })
+    return syncRes.clipsReady
+  }
+
   if (currentCount >= maxTarget) {
     onStatusUpdate?.({
       campaignId,

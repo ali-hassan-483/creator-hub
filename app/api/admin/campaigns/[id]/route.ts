@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth-helpers'
 import { prisma } from '@/lib/db'
+import * as fs from 'fs'
 import { z } from 'zod'
 
 const updateCampaignSchema = z.object({
@@ -108,25 +109,27 @@ export async function DELETE(
     const { id } = params
 
     await prisma.$transaction(async (tx) => {
-      // 1. Delete tasks under this campaign
-      const tasks = await tx.pendingTask.findMany({
-        where: { campaignId: id },
-        select: { id: true },
+      // 1. Delete earnings under this campaign or its tasks
+      await tx.earning.deleteMany({
+        where: {
+          OR: [
+            { campaignId: id },
+            { task: { campaignId: id } },
+          ],
+        },
       })
-      const taskIds = tasks.map((t) => t.id)
-      if (taskIds.length > 0) {
-        await tx.taskStatusHistory.deleteMany({
-          where: { taskId: { in: taskIds } },
-        })
-        await tx.earning.deleteMany({
-          where: { taskId: { in: taskIds } },
-        })
-        await tx.pendingTask.deleteMany({
-          where: { id: { in: taskIds } },
-        })
-      }
 
-      // 2. Delete automations under this campaign
+      // 2. Delete task status history for tasks under this campaign
+      await tx.taskStatusHistory.deleteMany({
+        where: { task: { campaignId: id } },
+      })
+
+      // 3. Delete pending tasks under this campaign
+      await tx.pendingTask.deleteMany({
+        where: { campaignId: id },
+      })
+
+      // 4. Delete automations and their child channels & credentials
       const autos = await tx.automation.findMany({
         where: { campaignId: id },
         select: { id: true },
@@ -144,17 +147,40 @@ export async function DELETE(
         })
       }
 
-      // 3. Delete scheduled automations
-      await tx.scheduledAutomation.deleteMany({ where: { campaignId: id } })
+      // 5. Delete scheduled automations and their child channels (CASCADE)
+      const scheduledAutos = await tx.scheduledAutomation.findMany({
+        where: { campaignId: id },
+        select: { id: true },
+      })
+      const scheduledIds = scheduledAutos.map((s) => s.id)
+      if (scheduledIds.length > 0) {
+        await tx.scheduledAutomationChannel.deleteMany({
+          where: { scheduledAutomationId: { in: scheduledIds } },
+        })
+        await tx.scheduledAutomation.deleteMany({
+          where: { id: { in: scheduledIds } },
+        })
+      }
 
-      // 4. Delete user access
+      // 6. Delete user access
       await tx.campaignUserAccess.deleteMany({ where: { campaignId: id } })
 
-      // 5. Delete campaign
+      // 7. Delete the campaign
       await tx.campaign.delete({
         where: { id },
       })
     })
+
+    // 8. Clean up disk files safely
+    try {
+      const { getCampaignDir } = await import('@/tools/campaign-processor')
+      const dir = getCampaignDir(id)
+      if (fs.existsSync(dir)) {
+        fs.rmSync(dir, { recursive: true, force: true })
+      }
+    } catch (diskErr) {
+      console.warn(`[Campaign DELETE] Could not remove storage dir for ${id}:`, diskErr)
+    }
 
     return NextResponse.json({ success: true, message: 'Campaign deleted successfully.' })
   } catch (err: any) {

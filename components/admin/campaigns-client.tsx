@@ -756,9 +756,15 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
     if (!confirm('Are you sure you want to delete this campaign? This action cannot be undone.')) return
     try {
       const res = await fetch(`/api/admin/campaigns/${id}`, { method: 'DELETE' })
-      if (res.ok) await refreshCampaigns()
-    } catch (err) {
+      const data = await res.json()
+      if (!res.ok) {
+        alert(data.error || 'Failed to delete campaign')
+        return
+      }
+      await refreshCampaigns()
+    } catch (err: any) {
       console.error(err)
+      alert(err.message || 'Failed to delete campaign')
     }
   }
 

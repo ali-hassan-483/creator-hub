@@ -73,8 +73,8 @@ export async function GET(req: NextRequest) {
         const allClips = fs.readdirSync(clipsDir).filter(f => f.endsWith('.mp4'))
         if (allClips.length === 0) continue
 
-        // Pick the first available clip
-        const clipFileName = allClips[0]
+        // Pick random available clip (not always the first one!)
+        const clipFileName = allClips[Math.floor(Math.random() * allClips.length)]
         const clipFullPath = path.join(clipsDir, clipFileName)
         const cfg = (campaign.config as any) || {}
 

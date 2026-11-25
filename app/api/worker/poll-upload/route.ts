@@ -411,8 +411,8 @@ export async function GET(req: NextRequest) {
           continue
         }
 
-        // Pick exactly 1 available unreserved clip
-        const clipFileName = allClips[0]
+        // Pick random available unreserved clip (not always the first one!)
+        const clipFileName = allClips[Math.floor(Math.random() * allClips.length)]
         const cfg = (campaign.config as Record<string, any>) || {}
 
         // Look for corresponding .meta.json file — meta title/description takes PRIORITY
@@ -437,6 +437,24 @@ export async function GET(req: NextRequest) {
           }
         } else {
           console.warn(`[Worker Poll] ⚠️ No meta.json found for ${clipFileName} at ${metaFullPath}`)
+        }
+
+        // For Ready to Post campaigns (or if no title found), pull from the dedicated 100-title AI pool
+        if (cfg.readyToPost === 'yes' || !title) {
+          try {
+            const { getNextTitleFromPool, ensureTitlesPool } = await import('@/tools/title-pool-manager')
+            const pooled = getNextTitleFromPool(campaign.id, channel.channelHandle || channel.channelName || undefined)
+            if (pooled) {
+              title = pooled.title
+              description = pooled.description
+              if (pooled.hashtags && Array.isArray(pooled.hashtags)) tags = pooled.hashtags
+              console.log(`[Worker Poll] 🎯 Assigned fresh AI title from 100-title pool for ${clipFileName}: "${title}"`)
+            }
+            // Keep pool topped up to 100 in background
+            ensureTitlesPool(campaign.id, cfg, 100).catch(() => {})
+          } catch (poolErr: any) {
+            console.warn(`[Worker Poll] Title pool lookup error:`, poolErr.message)
+          }
         }
 
         // 2. Check if this title was already used by another channel in this automation run

@@ -246,6 +246,39 @@ export async function runCampaignSetup(
     throw new Error('No source videos could be downloaded from the provided Drive/YouTube URL(s). Make sure Google Drive link is public ("Anyone with the link can view").')
   }
 
+  // ── Ready to Post: Skip transcription & editing, place directly into clips pool ──
+  if (cfg.readyToPost === 'yes') {
+    log('⚡ Ready to Post campaign detected: Copying videos directly to clips pool (skipping transcription & editing)...')
+    for (const src of sourceVideoPaths) {
+      const dest = path.join(clipsDir, path.basename(src))
+      if (!fs.existsSync(dest)) {
+        try {
+          fs.copyFileSync(src, dest)
+        } catch (e) {
+          console.warn(`[Setup:${campaignId}] Failed to copy ${src} to clips:`, e)
+        }
+      }
+    }
+
+    // Trigger title pool creation
+    import('./title-pool-manager').then(({ syncReadyToPostCampaign }) => {
+      syncReadyToPostCampaign(campaignId, cfg).catch((e) => console.error('[Setup] Error syncing ready-to-post:', e))
+    })
+
+    log('✅ Ready to Post setup complete!')
+    fs.writeFileSync(getSetupFlagPath(campaignId), new Date().toISOString(), 'utf8')
+
+    return {
+      campaignId,
+      sourceVideoPaths,
+      logoPaths: [],
+      hookPaths: [],
+      ctaPaths: [],
+      transcriptPaths: {},
+      alreadySetup: false,
+    }
+  }
+
   // ── Step 2: Download logos + hooks + CTAs ─────────────────────────────────
   log('📥 Step 2/4: Downloading assets (logo, hooks, CTAs)...')
 

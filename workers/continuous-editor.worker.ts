@@ -36,6 +36,20 @@ async function runContinuousEditorLoop() {
         const count = countEditedClips(campaign.id)
         const cfg = (campaign.config || {}) as Record<string, any>
 
+        // Ready to Post campaigns don't need style approval — sync clips & maintain 100 AI titles pool
+        if (cfg.readyToPost === 'yes') {
+          try {
+            await maintainCampaignClipPool(campaign.id, {
+              ...cfg,
+              campaignName: campaign.name,
+              niche: cfg.niche || 'general',
+            })
+          } catch (err: any) {
+            console.error(`❌ Error syncing ready-to-post campaign ${campaign.id}:`, err.message)
+          }
+          continue
+        }
+
         // Only auto-generate if admin has explicitly approved/started editing for this campaign
         if (cfg.editingApproved !== true) {
           console.log(`[Continuous Editor] Campaign "${campaign.name}" (${campaign.id}): Style confirmation pending (waiting for admin to start auto-editing). Skipping.`)
