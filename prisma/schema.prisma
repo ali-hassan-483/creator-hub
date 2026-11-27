@@ -175,6 +175,8 @@ model Channel {
   @@index([userId])
   @@index([status])
   @@index([addedAt])
+  @@index([platform])
+  @@index([userId, platform])
   @@map("channels")
 }
 
