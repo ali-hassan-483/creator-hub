@@ -29,6 +29,8 @@ interface UserItem {
     label: string | null
   } | null
   totalChannels: number
+  youtubeChannelsCount?: number
+  instagramPagesCount?: number
   channelsAddedToday: number
   channelsRemovedToday: number
   totalEarnings: number
@@ -200,10 +202,21 @@ export function UsersTable({ initialUsers, availableIps }: UsersTableProps) {
 
                     {/* Channels & Daily activity */}
                     <td className="px-5 py-4">
-                      <div className="space-y-1">
+                      <div className="space-y-1.5">
                         <div className="flex items-center gap-1.5 font-semibold text-foreground">
                           <Tv size={14} className="text-muted-foreground" />
-                          <span>{user.totalChannels} channels</span>
+                          <span>{user.totalChannels} Total</span>
+                        </div>
+                        {/* Separate YouTube channels & Instagram pages */}
+                        <div className="flex items-center gap-1.5 text-xs">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-500/10 text-red-600 dark:text-red-400 font-medium border border-red-500/20" title="YouTube Channels">
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                            {user.youtubeChannelsCount ?? user.totalChannels} YT
+                          </span>
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 font-medium border border-fuchsia-500/20" title="Instagram Pages">
+                            <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-500"></span>
+                            {user.instagramPagesCount ?? 0} IG
+                          </span>
                         </div>
                         <div className="flex items-center gap-2 text-xs">
                           <span className="flex items-center text-emerald-600 dark:text-emerald-400 font-medium">

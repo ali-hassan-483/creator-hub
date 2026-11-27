@@ -37,6 +37,7 @@ export default async function AdminUsersPage() {
           addedAt: true,
           removedAt: true,
           status: true,
+          platform: true,
         },
       },
       earnings: {
@@ -77,6 +78,8 @@ export default async function AdminUsersPage() {
   // Format users with daily counters
   const formattedUsers = users.map((u) => {
     const activeChannels = u.channels.filter((c) => c.removedAt === null)
+    const youtubeChannels = activeChannels.filter((c) => (c.platform || 'youtube') === 'youtube')
+    const instagramPages = activeChannels.filter((c) => c.platform === 'instagram')
     const addedToday = u.channels.filter(
       (c) => c.addedAt >= todayStart && c.removedAt === null
     ).length
@@ -99,6 +102,8 @@ export default async function AdminUsersPage() {
       lastLoginAt: u.lastLoginAt ? u.lastLoginAt.toISOString() : null,
       assignedIp: u.vps,
       totalChannels: activeChannels.length,
+      youtubeChannelsCount: youtubeChannels.length,
+      instagramPagesCount: instagramPages.length,
       channelsAddedToday: addedToday,
       channelsRemovedToday: removedToday,
       totalEarnings,

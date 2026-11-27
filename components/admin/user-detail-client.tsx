@@ -393,7 +393,17 @@ export function UserDetailClient({ initialUser, availableIps }: UserDetailProps)
                 user.channels.map((c: any) => (
                   <tr key={c.id} className="hover:bg-muted/20">
                     <td className="px-5 py-3.5 font-medium text-foreground">{c.channelName || 'Unnamed Channel'}</td>
-                    <td className="px-5 py-3.5 capitalize text-muted-foreground">{c.platform}</td>
+                    <td className="px-5 py-3.5">
+                      {c.platform === 'instagram' ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 border border-fuchsia-500/20">
+                          Instagram
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20">
+                          YouTube
+                        </span>
+                      )}
+                    </td>
                     <td className="px-5 py-3.5 font-mono text-xs text-muted-foreground">{c.channelIdExt || '—'}</td>
                     <td className="px-5 py-3.5">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${

@@ -10,6 +10,7 @@ import {
   Loader2, HardDriveDownload, CircleAlert, Wand2
 } from 'lucide-react'
 import { CampaignPreviewMockup } from './campaign-preview-mockup'
+import { getCampaignPlatforms, getPlatformGuidelines, Platform } from '@/lib/platform-config'
 
 interface UserOption {
   id: string
@@ -42,6 +43,10 @@ const defaultFormState = {
   // AI brief scanner
   briefText: '',
 
+  // Target Platforms
+  platformOption: 'youtube' as 'youtube' | 'instagram' | 'both',
+  supportedPlatforms: ['youtube'] as ('youtube' | 'instagram')[],
+
   // Identity (Screenshot 1)
   name: '',
   niche: '',
@@ -62,6 +67,21 @@ const defaultFormState = {
   minViews: 0,
   minEngagementRate: 0,
   audioNotes: '',
+
+  // Dedicated YouTube fields
+  youtubeCpm: '',
+  youtubeMinViews: 0,
+  youtubeOnScreenTextAiGuide: '',
+  youtubeTitlesAiGuide: '',
+  youtubeDescriptionsAiGuide: '',
+
+  // Dedicated Instagram fields
+  instagramMention: '',
+  instagramCpm: '',
+  instagramMinViews: 0,
+  instagramOnScreenTextAiGuide: '',
+  instagramCaptionGuide: '',
+  instagramDescriptionsAiGuide: '',
 
   // Story Re-Cut & Timing (Brand-Safe Whop Shorts Style)
   shortDuration: 45,
@@ -475,8 +495,17 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
         submissionLink: p.submissionLink || prev.submissionLink,
         whopChannelName: p.whopChannelName || prev.whopChannelName,
         cpm: p.cpm || prev.cpm,
+        youtubeCpm: p.youtubeCpm || p.cpm || prev.youtubeCpm,
+        instagramCpm: p.instagramCpm || p.cpm || prev.instagramCpm,
         fixYoutubeMentions: p.fixYoutubeMentions || prev.fixYoutubeMentions,
-        youtubeMentionChannel: p.youtubeMentionChannel || prev.youtubeMentionChannel,
+        youtubeMentionChannel: p.youtubeMentionChannel || p.mention || prev.youtubeMentionChannel,
+        instagramMention: p.instagramMention || p.mention || prev.instagramMention,
+        youtubeTitlesAiGuide: p.titlesAiGuide || prev.youtubeTitlesAiGuide,
+        youtubeDescriptionsAiGuide: p.descriptionsAiGuide || prev.youtubeDescriptionsAiGuide,
+        youtubeOnScreenTextAiGuide: p.onScreenTextAiGuide || prev.youtubeOnScreenTextAiGuide,
+        instagramCaptionGuide: p.instagramCaptionGuide || p.titlesAiGuide || prev.instagramCaptionGuide,
+        instagramDescriptionsAiGuide: p.descriptionsAiGuide || prev.instagramDescriptionsAiGuide,
+        instagramOnScreenTextAiGuide: p.onScreenTextAiGuide || prev.instagramOnScreenTextAiGuide,
         enablePendingTasks: p.enablePendingTasks || prev.enablePendingTasks,
         dailyPostLimit: p.dailyPostLimit !== undefined ? p.dailyPostLimit : prev.dailyPostLimit,
         sourceVideoUrls: p.sourceVideoUrls || prev.sourceVideoUrls,
@@ -522,15 +551,50 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
     setLoading(true)
     setError('')
 
+    const platforms: ('youtube' | 'instagram')[] =
+      formData.platformOption === 'both'
+        ? ['youtube', 'instagram']
+        : [formData.platformOption]
+
+    const ytMention = formData.youtubeMentionChannel.trim()
+    const igMention = formData.instagramMention.trim()
+    const ytCpm = formData.youtubeCpm.trim() || formData.cpm.trim()
+    const igCpm = formData.instagramCpm.trim() || formData.cpm.trim()
+    const ytMinViews = Number(formData.youtubeMinViews) || Number(formData.minViews) || 0
+    const igMinViews = Number(formData.instagramMinViews) || Number(formData.minViews) || 0
+
+    const youtubeGuidelines = {
+      mention: ytMention,
+      cpm: ytCpm,
+      minViews: ytMinViews,
+      onScreenTextGuide: formData.youtubeOnScreenTextAiGuide.trim() || formData.onScreenTextAiGuide.trim(),
+      titleGuide: formData.youtubeTitlesAiGuide.trim() || formData.titlesAiGuide.trim(),
+      descriptionGuide: formData.youtubeDescriptionsAiGuide.trim() || formData.descriptionsAiGuide.trim(),
+    }
+
+    const instagramGuidelines = {
+      mention: igMention,
+      cpm: igCpm,
+      minViews: igMinViews,
+      onScreenTextGuide: formData.instagramOnScreenTextAiGuide.trim() || formData.onScreenTextAiGuide.trim(),
+      captionGuide: formData.instagramCaptionGuide.trim() || formData.titlesAiGuide.trim(),
+      descriptionGuide: formData.instagramDescriptionsAiGuide.trim() || formData.descriptionsAiGuide.trim(),
+    }
+
     const config = {
+      supportedPlatforms: platforms,
+      youtube: youtubeGuidelines,
+      instagram: instagramGuidelines,
+
       niche: formData.niche.trim(),
       readyToPost: formData.readyToPost,
       subcampaignGid: formData.subcampaignGid.trim(),
       submissionLink: formData.submissionLink.trim(),
       fixYoutubeMentions: formData.fixYoutubeMentions,
-      youtubeMentionChannel: formData.youtubeMentionChannel.trim(),
+      youtubeMentionChannel: ytMention,
+      instagramMention: igMention,
       whopChannelName: formData.whopChannelName.trim(),
-      cpm: formData.cpm.trim(),
+      cpm: ytCpm || igCpm || formData.cpm.trim(),
       enablePendingTasks: formData.enablePendingTasks,
       dailyPostLimit: Number(formData.dailyPostLimit) || 45,
       sourceVideoUrls: formData.sourceVideoUrls.trim(),
@@ -646,8 +710,18 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
     setError('')
     setAiMessage('')
 
+    const platforms = getCampaignPlatforms(cfg)
+    const isYt = platforms.includes('youtube')
+    const isIg = platforms.includes('instagram')
+    const platformOption: 'youtube' | 'instagram' | 'both' = (isYt && isIg) ? 'both' : (isIg ? 'instagram' : 'youtube')
+
+    const ytGuide = getPlatformGuidelines(cfg, 'youtube')
+    const igGuide = getPlatformGuidelines(cfg, 'instagram')
+
     setFormData({
       ...defaultFormState,
+      platformOption,
+      supportedPlatforms: platforms,
       name: c.name || '',
       status: c.status || 'active',
       minViews: c.minViews || 0,
@@ -659,8 +733,20 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
       cpm: cfg.cpm || '',
       subcampaignGid: cfg.subcampaignGid || '',
       niche: cfg.niche || 'Gaming',
-      fixYoutubeMentions: (cfg.fixYoutubeMentions as 'no' | 'yes') || 'no',
-      youtubeMentionChannel: cfg.youtubeMentionChannel || '',
+      fixYoutubeMentions: (cfg.fixYoutubeMentions as 'no' | 'yes') || (ytGuide.mention ? 'yes' : 'no'),
+      youtubeMentionChannel: ytGuide.mention || cfg.youtubeMentionChannel || '',
+      youtubeCpm: ytGuide.cpm ? String(ytGuide.cpm) : (cfg.cpm || ''),
+      youtubeMinViews: ytGuide.minViews !== undefined ? ytGuide.minViews : (c.minViews || 0),
+      youtubeOnScreenTextAiGuide: ytGuide.onScreenTextGuide || cfg.onScreenTextAiGuide || '',
+      youtubeTitlesAiGuide: ytGuide.titleGuide || cfg.titlesAiGuide || '',
+      youtubeDescriptionsAiGuide: ytGuide.descriptionGuide || cfg.descriptionsAiGuide || '',
+
+      instagramMention: igGuide.mention || cfg.instagramMention || '',
+      instagramCpm: igGuide.cpm ? String(igGuide.cpm) : '',
+      instagramMinViews: igGuide.minViews !== undefined ? igGuide.minViews : 0,
+      instagramOnScreenTextAiGuide: igGuide.onScreenTextGuide || '',
+      instagramCaptionGuide: igGuide.captionGuide || igGuide.titleGuide || '',
+      instagramDescriptionsAiGuide: igGuide.descriptionGuide || '',
       enablePendingTasks: (cfg.enablePendingTasks as 'disabled' | 'enabled') || 'disabled',
       sourceVideoUrls: cfg.sourceVideoUrls || '',
       specifyTimeRanges: cfg.specifyTimeRanges ?? false,
@@ -946,9 +1032,30 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                           </div>
                           <div>
                             <p className="font-semibold text-foreground">{c.name}</p>
-                            <span className="text-[11px] text-muted-foreground">
-                              {cfg.subcampaignGid ? `GID: ${cfg.subcampaignGid}` : 'Main Campaign'}
-                            </span>
+                            <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                              <span className="text-[11px] text-muted-foreground">
+                                {cfg.subcampaignGid ? `GID: ${cfg.subcampaignGid}` : 'Main Campaign'}
+                              </span>
+                              {(() => {
+                                const platforms = getCampaignPlatforms(cfg)
+                                const hasYt = platforms.includes('youtube')
+                                const hasIg = platforms.includes('instagram')
+                                return (
+                                  <span className="flex items-center gap-1">
+                                    {hasYt && (
+                                      <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20">
+                                        YT
+                                      </span>
+                                    )}
+                                    {hasIg && (
+                                      <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 border border-fuchsia-500/20">
+                                        IG
+                                      </span>
+                                    )}
+                                  </span>
+                                )
+                              })()}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -964,20 +1071,42 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                               {cfg.whopChannelName}
                             </p>
                           )}
-                          {cfg.cpm && (
-                            <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                              CPM: {cfg.cpm.startsWith('$') ? cfg.cpm : `$${cfg.cpm}`}
-                            </span>
-                          )}
-                          {cfg.fixYoutubeMentions === 'yes' ? (
-                            <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
-                              Mention: {cfg.youtubeMentionChannel || 'Yes'}
-                            </span>
-                          ) : (
-                            <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground">
-                              Mention: No
-                            </span>
-                          )}
+                          {(() => {
+                            const yt = getPlatformGuidelines(cfg, 'youtube')
+                            const ig = getPlatformGuidelines(cfg, 'instagram')
+                            const platforms = getCampaignPlatforms(cfg)
+                            const hasYt = platforms.includes('youtube')
+                            const hasIg = platforms.includes('instagram')
+
+                            return (
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-1 flex-wrap">
+                                  {hasYt && yt.cpm && (
+                                    <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                                      {hasIg ? `YT: $${String(yt.cpm).replace(/^\$/, '')}` : `CPM: $${String(yt.cpm).replace(/^\$/, '')}`}
+                                    </span>
+                                  )}
+                                  {hasIg && ig.cpm && (
+                                    <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 border border-fuchsia-500/20">
+                                      IG: ${String(ig.cpm).replace(/^\$/, '')}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1 flex-wrap">
+                                  {hasYt && yt.mention && (
+                                    <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                                      YT: {yt.mention}
+                                    </span>
+                                  )}
+                                  {hasIg && ig.mention && (
+                                    <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 border border-fuchsia-500/20">
+                                      IG: {ig.mention}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })()}
                         </div>
                       </td>
 
@@ -1466,6 +1595,54 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                       System will navigate to this Whop channel URL, dismiss 'Got it' popup, search for this campaign, and submit clips.
                     </p>
                   </div>
+
+                  {/* TARGET PLATFORMS SELECTION */}
+                  <div className="col-span-1 sm:col-span-2 pt-1">
+                    <label className="block text-xs font-semibold text-foreground mb-1.5">
+                      Target Platforms <span className="text-red-500">*</span>
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, platformOption: 'youtube' })}
+                        className={`flex items-center justify-center gap-2 p-2.5 rounded-lg border text-xs font-semibold transition-all ${
+                          formData.platformOption === 'youtube'
+                            ? 'bg-red-500/10 border-red-500/40 text-red-600 dark:text-red-400 shadow-sm ring-1 ring-red-500/30'
+                            : 'bg-background border-border text-muted-foreground hover:text-foreground hover:bg-muted/30'
+                        }`}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-red-500 shrink-0"></span>
+                        YouTube Only
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, platformOption: 'instagram' })}
+                        className={`flex items-center justify-center gap-2 p-2.5 rounded-lg border text-xs font-semibold transition-all ${
+                          formData.platformOption === 'instagram'
+                            ? 'bg-fuchsia-500/10 border-fuchsia-500/40 text-fuchsia-600 dark:text-fuchsia-400 shadow-sm ring-1 ring-fuchsia-500/30'
+                            : 'bg-background border-border text-muted-foreground hover:text-foreground hover:bg-muted/30'
+                        }`}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-fuchsia-500 shrink-0"></span>
+                        Instagram Only
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, platformOption: 'both' })}
+                        className={`flex items-center justify-center gap-2 p-2.5 rounded-lg border text-xs font-semibold transition-all ${
+                          formData.platformOption === 'both'
+                            ? 'bg-gradient-to-r from-red-500/10 to-fuchsia-500/10 border-primary/40 text-primary shadow-sm ring-1 ring-primary/30'
+                            : 'bg-background border-border text-muted-foreground hover:text-foreground hover:bg-muted/30'
+                        }`}
+                      >
+                        <span className="flex gap-1 shrink-0">
+                          <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                          <span className="w-2 h-2 rounded-full bg-fuchsia-500"></span>
+                        </span>
+                        Both (YT + IG)
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -1474,37 +1651,188 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                 <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                   <Film size={14} /> Source Material & Rules
                 </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">Fix YouTube Channel Mentions</label>
-                    <select
-                      value={formData.fixYoutubeMentions}
-                      onChange={(e: any) => setFormData({ ...formData, fixYoutubeMentions: e.target.value })}
-                      className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    >
-                      <option value="no">No</option>
-                      <option value="yes">Yes</option>
-                    </select>
-                  </div>
-
-                  {formData.fixYoutubeMentions === 'yes' && (
-                    <div className="animate-in fade-in slide-in-from-top-1 duration-150">
-                      <label className="block text-xs font-medium text-foreground mb-1">
-                        Channel to Mention <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. @MrBeast or @ClipFarm"
-                        value={formData.youtubeMentionChannel}
-                        onChange={(e) => setFormData({ ...formData, youtubeMentionChannel: e.target.value })}
-                        className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
-                      />
-                      <p className="text-[10px] text-muted-foreground mt-0.5">
-                        Specify YouTube channel handle to mention
-                      </p>
+                {/* PLATFORM-SPECIFIC SETTINGS & GUIDELINES */}
+                {(formData.platformOption === 'youtube' || formData.platformOption === 'both') && (
+                  <div className="p-3.5 rounded-xl border border-red-500/30 bg-red-500/5 space-y-3">
+                    <div className="flex items-center justify-between border-b border-red-500/20 pb-2">
+                      <span className="flex items-center gap-1.5 text-xs font-bold text-red-600 dark:text-red-400">
+                        <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                        🔴 YouTube Platform Settings & Guidelines
+                      </span>
+                      <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Shorts / Videos</span>
                     </div>
-                  )}
 
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-foreground mb-1">
+                          YouTube Channel Mention
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. @SEGA_West"
+                          value={formData.youtubeMentionChannel}
+                          onChange={(e) => setFormData({ ...formData, youtubeMentionChannel: e.target.value })}
+                          className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                        />
+                        <p className="text-[10px] text-muted-foreground mt-0.5">Handle to tag on YouTube</p>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-foreground mb-1">
+                          YouTube CPM ($ / 1k Views)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 5.00"
+                          value={formData.youtubeCpm}
+                          onChange={(e) => setFormData({ ...formData, youtubeCpm: e.target.value })}
+                          className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                        />
+                        <p className="text-[10px] text-muted-foreground mt-0.5">Rate per 1k views on YT</p>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-foreground mb-1">
+                          YouTube Minimum Views
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="1000"
+                          value={formData.youtubeMinViews}
+                          onChange={(e) => setFormData({ ...formData, youtubeMinViews: Number(e.target.value) })}
+                          className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                        />
+                        <p className="text-[10px] text-muted-foreground mt-0.5">Views threshold for payment</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                      <div>
+                        <label className="block text-xs font-medium text-foreground mb-1">YouTube On-Screen Text Guide</label>
+                        <textarea
+                          rows={2}
+                          placeholder="Hook guidelines for YouTube..."
+                          value={formData.youtubeOnScreenTextAiGuide}
+                          onChange={(e) => setFormData({ ...formData, youtubeOnScreenTextAiGuide: e.target.value })}
+                          className="w-full p-2 bg-background border border-input rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-foreground mb-1">YouTube Titles AI Guide</label>
+                        <textarea
+                          rows={2}
+                          placeholder="Title curiosity guidelines..."
+                          value={formData.youtubeTitlesAiGuide}
+                          onChange={(e) => setFormData({ ...formData, youtubeTitlesAiGuide: e.target.value })}
+                          className="w-full p-2 bg-background border border-input rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-foreground mb-1">YouTube Description Guide</label>
+                        <textarea
+                          rows={2}
+                          placeholder="YouTube descriptions & links..."
+                          value={formData.youtubeDescriptionsAiGuide}
+                          onChange={(e) => setFormData({ ...formData, youtubeDescriptionsAiGuide: e.target.value })}
+                          className="w-full p-2 bg-background border border-input rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {(formData.platformOption === 'instagram' || formData.platformOption === 'both') && (
+                  <div className="p-3.5 rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/5 space-y-3">
+                    <div className="flex items-center justify-between border-b border-fuchsia-500/20 pb-2">
+                      <span className="flex items-center gap-1.5 text-xs font-bold text-fuchsia-600 dark:text-fuchsia-400">
+                        <span className="w-2 h-2 rounded-full bg-fuchsia-500"></span>
+                        🟣 Instagram Platform Settings & Guidelines
+                      </span>
+                      <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Reels</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-foreground mb-1">
+                          Instagram Account Mention
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. @sega"
+                          value={formData.instagramMention}
+                          onChange={(e) => setFormData({ ...formData, instagramMention: e.target.value })}
+                          className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-fuchsia-500/50"
+                        />
+                        <p className="text-[10px] text-muted-foreground mt-0.5">Handle to tag on Instagram</p>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-foreground mb-1">
+                          Instagram CPM ($ / 1k Views)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 4.00"
+                          value={formData.instagramCpm}
+                          onChange={(e) => setFormData({ ...formData, instagramCpm: e.target.value })}
+                          className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-fuchsia-500/50"
+                        />
+                        <p className="text-[10px] text-muted-foreground mt-0.5">Rate per 1k views on IG</p>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-foreground mb-1">
+                          Instagram Minimum Views
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="2000"
+                          value={formData.instagramMinViews}
+                          onChange={(e) => setFormData({ ...formData, instagramMinViews: Number(e.target.value) })}
+                          className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-fuchsia-500/50"
+                        />
+                        <p className="text-[10px] text-muted-foreground mt-0.5">Views threshold for payment</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                      <div>
+                        <label className="block text-xs font-medium text-foreground mb-1">Instagram On-Screen Text Guide</label>
+                        <textarea
+                          rows={2}
+                          placeholder="Reels on-screen text hook..."
+                          value={formData.instagramOnScreenTextAiGuide}
+                          onChange={(e) => setFormData({ ...formData, instagramOnScreenTextAiGuide: e.target.value })}
+                          className="w-full p-2 bg-background border border-input rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-fuchsia-500/50"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-foreground mb-1">Instagram Caption & Hook Guide</label>
+                        <textarea
+                          rows={2}
+                          placeholder="Instagram caption, CTA, comment hook..."
+                          value={formData.instagramCaptionGuide}
+                          onChange={(e) => setFormData({ ...formData, instagramCaptionGuide: e.target.value })}
+                          className="w-full p-2 bg-background border border-input rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-fuchsia-500/50"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-foreground mb-1">Instagram Hashtags & Info</label>
+                        <textarea
+                          rows={2}
+                          placeholder="#gaming #reels #ad..."
+                          value={formData.instagramDescriptionsAiGuide}
+                          onChange={(e) => setFormData({ ...formData, instagramDescriptionsAiGuide: e.target.value })}
+                          className="w-full p-2 bg-background border border-input rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-fuchsia-500/50"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
                     <label className="block text-xs font-medium text-foreground mb-1">Whop Channel Name</label>
                     <input
@@ -1517,7 +1845,7 @@ export function CampaignsClient({ initialCampaigns, allUsers }: CampaignsClientP
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">Campaign CPM ($ / 1,000 Views)</label>
+                    <label className="block text-xs font-medium text-foreground mb-1">Default / Fallback CPM ($ / 1,000 Views)</label>
                     <input
                       type="text"
                       placeholder="e.g. 2.50 or $3.00"
